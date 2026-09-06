@@ -13,6 +13,15 @@
   let pc = null;
   let hostId = null;
   let currentQuality = window.DEFAULT_QUALITY;
+  let reconnectTimer = null;
+
+  // Só é "transmissão ativa" quando o vídeo realmente começa a renderizar
+  // quadros. `ontrack` dispara assim que a negociação SDP é concluída, o que
+  // pode acontecer mesmo que a conexão de mídia (ICE/UDP) nunca se estabeleça
+  // — nesse caso a tela fica preta para sempre apesar do "sinal" ter chegado.
+  video.addEventListener('playing', () => {
+    connText.textContent = 'transmissão ativa';
+  });
 
   for (const [key, preset] of Object.entries(window.QUALITY_PRESETS)) {
     const opt = document.createElement('option');
@@ -88,9 +97,10 @@
     const conn = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
     conn.ontrack = (event) => {
+      if (conn !== pc) return; // conexão antiga, já substituída
       video.srcObject = event.streams[0];
       showVideo();
-      connText.textContent = 'transmissão ativa';
+      connText.textContent = 'sinal recebido, conectando mídia...';
     };
 
     conn.onicecandidate = (event) => {
@@ -100,15 +110,32 @@
     };
 
     conn.onconnectionstatechange = () => {
-      if (['failed', 'disconnected', 'closed'].includes(conn.connectionState)) {
-        connText.textContent = 'conexão perdida';
+      if (conn !== pc) return; // conexão antiga, já substituída
+      if (conn.connectionState === 'failed') {
+        connText.textContent = 'falha na conexão de mídia — verifique firewall/antivírus, tentando novamente...';
+        scheduleReconnect();
+      } else if (conn.connectionState === 'disconnected') {
+        connText.textContent = 'conexão instável...';
       }
     };
 
     return conn;
   }
 
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      closePeer();
+      socket.emit('role:viewer');
+    }, 4000);
+  }
+
   function closePeer() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     if (pc) {
       pc.close();
       pc = null;
