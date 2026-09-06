@@ -10,6 +10,33 @@ const HOST = '0.0.0.0';
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Servidores ICE usados pelos clientes (transmissor e visualizadores) para o
+// WebRTC. STUN sozinho não é suficiente quando um dos lados está atrás de um
+// NAT/firewall restritivo (comum em redes domésticas com antivírus mais
+// agressivo): a conexão fica presa em "conectando" para sempre porque não há
+// como retransmitir a mídia. Um servidor TURN resolve isso fazendo o relay.
+// Por padrão usamos um TURN público de testes (OpenRelay); para uso sério,
+// defina TURN_URLS/TURN_USERNAME/TURN_CREDENTIAL com um TURN próprio.
+function buildIceServers() {
+  const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const turnUrls = (process.env.TURN_URLS || 'turn:openrelay.metered.ca:80,turn:openrelay.metered.ca:443,turn:openrelay.metered.ca:443?transport=tcp')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+  if (turnUrls.length > 0) {
+    servers.push({
+      urls: turnUrls,
+      username: process.env.TURN_USERNAME || 'openrelayproject',
+      credential: process.env.TURN_CREDENTIAL || 'openrelayproject',
+    });
+  }
+  return servers;
+}
+
+app.get('/ice-servers', (req, res) => {
+  res.json(buildIceServers());
+});
+
 const server = http.createServer(app);
 const io = new Server(server);
 

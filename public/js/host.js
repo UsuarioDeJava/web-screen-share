@@ -12,7 +12,17 @@
   const viewerCountEl = document.getElementById('viewer-count');
   const viewerListEl = document.getElementById('viewer-list');
 
-  const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+  let iceServersPromise = fetchIceServers();
+
+  async function fetchIceServers() {
+    try {
+      const res = await fetch('/ice-servers');
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('Falha ao obter configuração de ICE servers, usando STUN padrão.', err);
+    }
+    return [{ urls: 'stun:stun.l.google.com:19302' }];
+  }
 
   let localStream = null;
   /** @type {Map<string, RTCPeerConnection>} */
@@ -95,11 +105,11 @@
     sender.setParameters(params).catch((err) => console.warn('setParameters falhou', err));
   });
 
-  function createPeerForViewer(viewerId) {
+  async function createPeerForViewer(viewerId) {
     const existing = peers.get(viewerId);
     if (existing) existing.close();
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: await iceServersPromise });
     peers.set(viewerId, pc);
     renderViewerList();
 

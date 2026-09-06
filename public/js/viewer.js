@@ -8,7 +8,17 @@
   const btnMute = document.getElementById('btn-mute');
   const qualitySelect = document.getElementById('quality-select');
 
-  const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+  let iceServersPromise = fetchIceServers();
+
+  async function fetchIceServers() {
+    try {
+      const res = await fetch('/ice-servers');
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn('Falha ao obter configuração de ICE servers, usando STUN padrão.', err);
+    }
+    return [{ urls: 'stun:stun.l.google.com:19302' }];
+  }
 
   let pc = null;
   let hostId = null;
@@ -74,7 +84,7 @@
     if (data.type === 'offer') {
       hostId = from;
       closePeer();
-      pc = createPeerConnection();
+      pc = await createPeerConnection();
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -93,8 +103,8 @@
     }
   });
 
-  function createPeerConnection() {
-    const conn = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  async function createPeerConnection() {
+    const conn = new RTCPeerConnection({ iceServers: await iceServersPromise });
 
     conn.ontrack = (event) => {
       if (conn !== pc) return; // conexão antiga, já substituída

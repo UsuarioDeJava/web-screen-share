@@ -45,6 +45,23 @@ npm start
 Por padrão o servidor sobe na porta `3000`. Para mudar, defina a variável de ambiente
 `PORT` antes de iniciar (ex.: `PORT=8080 npm start`).
 
+### Servidor TURN (para conexões atrás de NAT/firewall mais restritivo)
+
+O WebRTC tenta primeiro conectar diretamente entre transmissor e visualizador. Quando
+isso não é possível (firewall, antivírus ou NAT mais fechado em um dos lados), é
+preciso um servidor **TURN** para retransmitir a mídia — sem ele, a conexão fica presa
+em "conectando" para sempre. Por padrão o projeto já usa um TURN público de testes
+([OpenRelay](https://www.metered.ca/tools/openrelay/)), suficiente para uso pessoal
+esporádico. Para algo mais confiável (ou privado), rode seu próprio
+[coturn](https://github.com/coturn/coturn) e configure:
+
+```bash
+TURN_URLS="turn:seu-servidor:3478,turn:seu-servidor:3478?transport=tcp" \
+TURN_USERNAME=usuario \
+TURN_CREDENTIAL=senha \
+npm start
+```
+
 Ao iniciar, o terminal mostra os endereços disponíveis, por exemplo:
 
 ```
@@ -84,3 +101,12 @@ Servidor rodando em http://0.0.0.0:3000
   VPN) e acesse pelo IP dela — não é necessário abrir portas no roteador.
 - Apenas um transmissor é suportado por vez; se outra aba/janela iniciar como
   transmissor, a anterior é avisada e desligada.
+- Se um visualizador ficar travado em "sinal recebido, conectando mídia..." (tela
+  preta, sem nunca virar "transmissão ativa" nem mostrar erro), é sinal de que a
+  conexão direta (P2P) não está conseguindo se estabelecer para aquele dispositivo —
+  normalmente firewall/antivírus bloqueando UDP ou NAT restritivo. O app já tenta usar
+  o TURN de fallback (veja acima) e reconecta automaticamente a cada tentativa; se
+  mesmo assim continuar preso, vale configurar um TURN próprio, já que o público tem
+  banda limitada e é compartilhado. Note que qualquer TURN faz o vídeo passar por um
+  relay de terceiros quando a conexão direta falha — para privacidade total, use um
+  TURN próprio em vez do público padrão.
