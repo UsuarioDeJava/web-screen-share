@@ -1,0 +1,17 @@
+{
+  "name": "web-screen-share",
+  "version": "1.0.0",
+  "description": "Compartilhamento da tela do PC pelo navegador (WebRTC), acessível via LAN/Tailscale.",
+  "main": "server/index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}

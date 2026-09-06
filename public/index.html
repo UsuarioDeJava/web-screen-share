@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tela do PC — Web Screen Share</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="viewer-page">
+  <div class="viewer-stage" id="stage">
+    <video id="remote-video" autoplay playsinline muted></video>
+    <div class="placeholder" id="placeholder">Conectando ao servidor...</div>
+  </div>
+
+  <div class="controls-bar">
+    <div class="status">
+      <span id="conn-dot" class="dot"></span>
+      <span id="conn-text">conectando...</span>
+    </div>
+    <div class="row">
+      <button id="btn-mute">🔇 Ativar som</button>
+      <label class="row" style="gap:6px;">
+        Qualidade:
+        <select id="quality-select"></select>
+      </label>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/quality.js"></script>
+  <script src="js/viewer.js"></script>
+</body>
+</html>
