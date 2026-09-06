@@ -1,27 +1,32 @@
 # web-screen-share
 
-Compartilhe a tela de um PC (Windows ou Linux) pelo navegador, e assista de qualquer
-outro dispositivo na mesma rede local ou via Tailscale, sem instalar nada além do Node.js.
+Transmita a tela do seu PC (Windows ou Linux) pela rede, e assista de qualquer outro
+dispositivo — celular, notebook, outro PC — abrindo o endereço direto no **VLC**.
+Não precisa de navegador, site, nem instalar nada além do **FFmpeg** no PC que
+transmite.
 
 ## Como funciona
 
-- Um servidor Node.js (Express + Socket.io) serve a interface web e faz a sinalização
-  WebRTC. Ele escuta em `0.0.0.0`, então fica acessível por qualquer IP da máquina
-  (rede local, Tailscale, etc).
-- O **transmissor** (`/host.html`) roda no navegador do PC que vai compartilhar a tela
-  e usa `getDisplayMedia` para capturar a tela (e, se o navegador permitir, o áudio).
-- O **visualizador** (`/`) roda no navegador de quem vai assistir e recebe o vídeo via
-  WebRTC (peer-to-peer entre o transmissor e cada visualizador).
+Um único script chama o `ffmpeg` pra capturar sua tela (e o áudio do sistema, quando
+disponível) e servir isso como um stream de vídeo (MPEG-TS) num servidor HTTP simples,
+escutando em `0.0.0.0` — acessível por qualquer IP da máquina (rede local, Tailscale,
+etc). Do outro lado, o VLC conecta direto nesse endereço, sem precisar de nenhum app
+ou site intermediário.
 
 ## Requisitos
 
-- [Node.js](https://nodejs.org/) 18 ou superior, no PC que vai transmitir.
-- Um navegador baseado em Chromium (Chrome/Edge) é recomendado no transmissor, por ter
-  o melhor suporte a captura de áudio do sistema junto com a tela.
+- **No PC que transmite:** [FFmpeg](https://ffmpeg.org/download.html) instalado e no
+  PATH.
+  - Linux: `sudo apt install ffmpeg` (Debian/Ubuntu/Mint) ou o gerenciador de pacotes
+    da sua distro.
+  - Windows: baixe um build em https://www.gyan.dev/ffmpeg/builds/, extraia e adicione
+    a pasta `bin` ao PATH.
+- **Em quem vai assistir:** [VLC](https://www.videolan.org/vlc/) (ou qualquer player
+  que abra streams de rede, como o mpv).
 
-## Como rodar
+## Como transmitir
 
-### Linux / macOS
+### Linux
 
 ```bash
 ./start.sh
@@ -29,84 +34,69 @@ outro dispositivo na mesma rede local ou via Tailscale, sem instalar nada além 
 
 ### Windows
 
-Dê dois cliques em `start.bat`, ou pelo PowerShell/CMD:
+Dê dois cliques em `start.bat`, ou rode pelo CMD/PowerShell:
 
 ```bat
 start.bat
 ```
 
-### Manualmente (qualquer SO)
+O terminal mostra os endereços pra usar, por exemplo:
+
+```
+Transmitindo sua tela em http://0.0.0.0:8080
+No VLC de outro dispositivo: Mídia > Abrir Transmissão de Rede > cole um destes endereços:
+    http://192.168.0.42:8080
+    http://100.x.y.z:8080   <- IP do Tailscale, se estiver ativo
+```
+
+## Como assistir
+
+1. Abra o **VLC** no dispositivo que vai assistir.
+2. Vá em **Mídia > Abrir Transmissão de Rede** (`Ctrl+N`).
+3. Cole o endereço mostrado no terminal (ex.: `http://192.168.0.42:8080`).
+4. Clique em **Reproduzir**. Pode levar alguns segundos pra imagem aparecer (é normal,
+   é o tempo de o VLC sincronizar com o início do stream).
+
+## Configurações (variáveis de ambiente)
+
+| Variável        | Padrão | O que faz                                                        |
+|-----------------|--------|-------------------------------------------------------------------|
+| `PORT`          | `8080` | Porta do servidor HTTP.                                           |
+| `FRAMERATE`     | `30`   | Quadros por segundo capturados.                                   |
+| `VIDEO_BITRATE` | `4M`   | Bitrate do vídeo. Se a internet de quem assiste for fraca, baixe pra `1M` ou `500k` antes de iniciar. |
+| `VIDEO_SIZE`    | (auto) | Só Linux. Força uma resolução específica (ex.: `1280x720`) em vez de capturar a tela inteira. |
+| `AUDIO_SOURCE`  | (auto) | Só Linux. Nome da fonte PulseAudio a capturar. Use `pactl list short sources` pra listar; o script já tenta detectar o monitor do áudio padrão sozinho. |
+| `AUDIO_DEVICE`  | (nenhum) | Só Windows. Nome exato do dispositivo de captura de áudio (ver abaixo). |
+
+Exemplo, pra internet fraca:
 
 ```bash
-npm install
-npm start
+VIDEO_BITRATE=800k FRAMERATE=15 ./start.sh
 ```
 
-Por padrão o servidor sobe na porta `3000`. Para mudar, defina a variável de ambiente
-`PORT` antes de iniciar (ex.: `PORT=8080 npm start`).
+## Áudio do sistema
 
-### Servidor TURN (para conexões atrás de NAT/firewall mais restritivo)
+- **Linux:** o script detecta sozinho o monitor do dispositivo de áudio padrão
+  (via PulseAudio/PipeWire) e já transmite com som, se existir. Se não pegar
+  automaticamente, rode `pactl list short sources`, ache a linha terminada em
+  `.monitor` e force com `AUDIO_SOURCE=nome ./start.sh`.
+- **Windows:** o FFmpeg não consegue captar o áudio do sistema sozinho — é preciso
+  habilitar o **"Mixagem Estéreo"** (Stereo Mix) nos dispositivos de gravação do
+  Windows, ou instalar um cabo de áudio virtual (ex.: VB-Audio Virtual Cable). Depois,
+  descubra o nome exato do dispositivo com:
+  ```bat
+  ffmpeg -f dshow -list_devices true -i dummy
+  ```
+  e rode com `set AUDIO_DEVICE=Nome Exato do Dispositivo` antes do `start.bat`. Sem
+  isso, a transmissão sai só com vídeo.
 
-O WebRTC tenta primeiro conectar diretamente entre transmissor e visualizador. Quando
-isso não é possível (firewall, antivírus ou NAT mais fechado em um dos lados), é
-preciso um servidor **TURN** para retransmitir a mídia — sem ele, a conexão fica presa
-em "conectando" para sempre. Por padrão o projeto já usa um TURN público de testes
-([OpenRelay](https://www.metered.ca/tools/openrelay/)), suficiente para uso pessoal
-esporádico. Para algo mais confiável (ou privado), rode seu próprio
-[coturn](https://github.com/coturn/coturn) e configure:
+## Limitações (é o jeito mais simples, então tem trade-offs)
 
-```bash
-TURN_URLS="turn:seu-servidor:3478,turn:seu-servidor:3478?transport=tcp" \
-TURN_USERNAME=usuario \
-TURN_CREDENTIAL=senha \
-npm start
-```
-
-Ao iniciar, o terminal mostra os endereços disponíveis, por exemplo:
-
-```
-Servidor rodando em http://0.0.0.0:3000
-  - No próprio PC (transmissor): http://localhost:3000/host.html
-  - Para outros dispositivos na LAN/Tailscale, use um dos endereços abaixo:
-      http://192.168.0.42:3000/
-      http://100.x.y.z:3000/   <- IP do Tailscale, se estiver ativo
-```
-
-## Uso
-
-1. No PC que vai transmitir, abra `http://localhost:3000/host.html` e clique em
-   **"Iniciar transmissão"**. Escolha a tela/janela a compartilhar no prompt do
-   navegador.
-2. Em outro dispositivo (celular, notebook) na mesma LAN ou conectado via Tailscale,
-   abra `http://<IP-do-PC>:3000/`. O vídeo aparece automaticamente assim que a
-   transmissão começa.
-3. Cada visualizador pode, independentemente:
-   - **Ativar/desativar o som** com o botão na barra inferior (o som começa desligado
-     por padrão, pois os navegadores bloqueiam áudio automático sem interação do
-     usuário).
-   - **Trocar a qualidade** (Alta / Média / Baixa / Mínima) no seletor da barra
-     inferior, para reduzir resolução, taxa de quadros e bitrate caso a internet
-     esteja fraca. Isso ajusta a transmissão apenas para aquele visualizador,
-     sem afetar os demais.
-
-## Observações
-
-- `getDisplayMedia` exige um "contexto seguro". Como o transmissor sempre acessa via
-  `localhost`, isso funciona mesmo sem HTTPS. Os visualizadores não precisam de
-  contexto seguro, pois apenas recebem o vídeo.
-- Captura de áudio do sistema junto com a tela depende do navegador/SO (no Windows,
-  o Chrome geralmente permite ao compartilhar a tela inteira; no Linux o suporte é
-  mais limitado). Se não for possível, a transmissão segue apenas com vídeo.
-- Para acesso fora da rede local, use [Tailscale](https://tailscale.com/) (ou outra
-  VPN) e acesse pelo IP dela — não é necessário abrir portas no roteador.
-- Apenas um transmissor é suportado por vez; se outra aba/janela iniciar como
-  transmissor, a anterior é avisada e desligada.
-- Se um visualizador ficar travado em "sinal recebido, conectando mídia..." (tela
-  preta, sem nunca virar "transmissão ativa" nem mostrar erro), é sinal de que a
-  conexão direta (P2P) não está conseguindo se estabelecer para aquele dispositivo —
-  normalmente firewall/antivírus bloqueando UDP ou NAT restritivo. O app já tenta usar
-  o TURN de fallback (veja acima) e reconecta automaticamente a cada tentativa; se
-  mesmo assim continuar preso, vale configurar um TURN próprio, já que o público tem
-  banda limitada e é compartilhado. Note que qualquer TURN faz o vídeo passar por um
-  relay de terceiros quando a conexão direta falha — para privacidade total, use um
-  TURN próprio em vez do público padrão.
+- **Um espectador por vez.** O servidor HTTP embutido do FFmpeg aceita uma conexão de
+  cada vez; quando alguém desconecta, o script reinicia sozinho e já fica pronto pra
+  o próximo. Não dá pra duas pessoas assistindo ao mesmo tempo com esse esquema.
+- **Sem controles na tela** (mudo, qualidade) — use o próprio controle de volume do
+  VLC pra mutar/ajustar o som, e as variáveis `VIDEO_BITRATE`/`FRAMERATE` acima (antes
+  de iniciar a transmissão) se a internet de quem for assistir estiver fraca.
+- Funciona bem em LAN/Tailscale. Pra internet "de verdade" (redes públicas/lentas),
+  pode ter mais delay/travamentos que uma solução com buffer adaptativo.
