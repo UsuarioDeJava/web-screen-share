@@ -3,7 +3,9 @@ setlocal enabledelayedexpansion
 
 if "%PORT%"=="" set "PORT=8080"
 if "%FRAMERATE%"=="" set "FRAMERATE=30"
-if "%VIDEO_BITRATE%"=="" set "VIDEO_BITRATE=4M"
+if "%VIDEO_BITRATE%"=="" set "VIDEO_BITRATE=2M"
+
+set /a GOP=%FRAMERATE% * 2
 
 where ffmpeg >nul 2>nul
 if errorlevel 1 (
@@ -46,9 +48,9 @@ set "LOGFILE=%TEMP%\web-screen-share-ffmpeg.log"
 
 :loop
 if defined AUDIO_DEVICE (
-  ffmpeg -hide_banner -loglevel warning -f gdigrab -framerate %FRAMERATE% -i desktop -f dshow -i audio="%AUDIO_DEVICE%" -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v %VIDEO_BITRATE% -c:a aac -b:a 128k -f mpegts -listen 1 http://0.0.0.0:%PORT% > "%LOGFILE%" 2>&1
+  ffmpeg -hide_banner -loglevel warning -f gdigrab -framerate %FRAMERATE% -i desktop -f dshow -i audio="%AUDIO_DEVICE%" -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v %VIDEO_BITRATE% -maxrate %VIDEO_BITRATE% -bufsize %VIDEO_BITRATE% -g %GOP% -keyint_min %FRAMERATE% -c:a aac -b:a 128k -f mpegts -listen 1 http://0.0.0.0:%PORT% > "%LOGFILE%" 2>&1
 ) else (
-  ffmpeg -hide_banner -loglevel warning -f gdigrab -framerate %FRAMERATE% -i desktop -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v %VIDEO_BITRATE% -f mpegts -listen 1 http://0.0.0.0:%PORT% > "%LOGFILE%" 2>&1
+  ffmpeg -hide_banner -loglevel warning -f gdigrab -framerate %FRAMERATE% -i desktop -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v %VIDEO_BITRATE% -maxrate %VIDEO_BITRATE% -bufsize %VIDEO_BITRATE% -g %GOP% -keyint_min %FRAMERATE% -f mpegts -listen 1 http://0.0.0.0:%PORT% > "%LOGFILE%" 2>&1
 )
 type "%LOGFILE%"
 

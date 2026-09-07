@@ -7,7 +7,7 @@ set -e
 
 PORT="${PORT:-8080}"
 FRAMERATE="${FRAMERATE:-30}"
-VIDEO_BITRATE="${VIDEO_BITRATE:-4M}"
+VIDEO_BITRATE="${VIDEO_BITRATE:-2M}"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
   echo "FFmpeg não encontrado. Instale com: sudo apt install ffmpeg (ou o gerenciador de pacotes da sua distro)."
@@ -39,7 +39,11 @@ if [ -n "${VIDEO_SIZE:-}" ]; then
 fi
 VIDEO_ARGS+=(-i "$X_DISPLAY")
 
-ENCODE_ARGS=(-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v "$VIDEO_BITRATE")
+GOP="$((FRAMERATE * 2))"
+# maxrate/bufsize evitam picos acima de VIDEO_BITRATE que travam links fracos.
+ENCODE_ARGS=(-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
+  -b:v "$VIDEO_BITRATE" -maxrate "$VIDEO_BITRATE" -bufsize "$VIDEO_BITRATE" \
+  -g "$GOP" -keyint_min "$FRAMERATE")
 
 if [ -n "$AUDIO_SOURCE" ]; then
   echo "Capturando áudio do sistema em: $AUDIO_SOURCE"

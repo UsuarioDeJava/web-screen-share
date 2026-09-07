@@ -63,7 +63,7 @@ No VLC de outro dispositivo: Mídia > Abrir Transmissão de Rede > cole um deste
 |-----------------|--------|-------------------------------------------------------------------|
 | `PORT`          | `8080` | Porta do servidor HTTP.                                           |
 | `FRAMERATE`     | `30`   | Quadros por segundo capturados.                                   |
-| `VIDEO_BITRATE` | `4M`   | Bitrate do vídeo. Se a internet de quem assiste for fraca, baixe pra `1M` ou `500k` antes de iniciar. |
+| `VIDEO_BITRATE` | `2M`   | Bitrate do vídeo (também usado como teto de pico e buffer). Se a internet de quem assiste for fraca, baixe pra `1M`, `500k` ou menos antes de iniciar — é o ajuste que mais importa. |
 | `VIDEO_SIZE`    | (auto) | Só Linux. Força uma resolução específica (ex.: `1280x720`) em vez de capturar a tela inteira. |
 | `AUDIO_SOURCE`  | (auto) | Só Linux. Nome da fonte PulseAudio a capturar. Use `pactl list short sources` pra listar; o script já tenta detectar o monitor do áudio padrão sozinho. |
 | `AUDIO_DEVICE`  | (nenhum) | Só Windows. Nome exato do dispositivo de captura de áudio (ver abaixo). |
@@ -100,3 +100,11 @@ VIDEO_BITRATE=800k FRAMERATE=15 ./start.sh
   de iniciar a transmissão) se a internet de quem for assistir estiver fraca.
 - Funciona bem em LAN/Tailscale. Pra internet "de verdade" (redes públicas/lentas),
   pode ter mais delay/travamentos que uma solução com buffer adaptativo.
+- **Se o vídeo aparecer travado/lag extremo, tipo só o cursor do mouse "pulando" pela
+  tela parada** — é o link de quem assiste não aguentando o `VIDEO_BITRATE` configurado
+  (o TCP vai acumulando dados atrasados em vez de descartar, então tudo fica cada vez
+  mais "no passado"). Baixe `VIDEO_BITRATE` (e opcionalmente `FRAMERATE`) até caber no
+  link real da pessoa — não tem como adivinhar esse número, é tentativa e erro:
+  ```bash
+  VIDEO_BITRATE=500k FRAMERATE=15 ./start.sh
+  ```
