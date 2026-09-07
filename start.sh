@@ -1,98 +1,75 @@
 #!/usr/bin/env bash
-# Transmite a tela (e o áudio do sistema, se disponível) via HTTP/MPEG-TS,
-# pra assistir de qualquer dispositivo da rede abrindo o endereço no VLC
-# (Mídia > Abrir Transmissão de Rede). Não precisa de navegador nem servidor
-# além do próprio ffmpeg.
+# Sobe um servidor MediaMTX: o OBS publica a tela (via "Serviço Personalizado" >
+# RTMP) e qualquer dispositivo da rede assiste pelo VLC (RTSP) ou por um navegador
+# (HLS). Baixa o MediaMTX sozinho na primeira vez, não precisa instalar nada.
 set -e
 
-PORT="${PORT:-8080}"
-FRAMERATE="${FRAMERATE:-30}"
-VIDEO_BITRATE="${VIDEO_BITRATE:-2M}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN="$DIR/mediamtx"
+MEDIAMTX_VERSION="v1.21.0"
 
-if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "FFmpeg não encontrado. Instale com: sudo apt install ffmpeg (ou o gerenciador de pacotes da sua distro)."
-  exit 1
-fi
+RTMP_PORT="${RTMP_PORT:-1935}"
+RTSP_PORT="${RTSP_PORT:-8554}"
+HLS_PORT="${HLS_PORT:-8888}"
+STREAM_KEY="${STREAM_KEY:-screen}"
 
-if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
-  exec 3<&- 2>/dev/null; exec 3>&- 2>/dev/null
-  echo "A porta $PORT já está em uso por outro processo (talvez outra instância deste"
-  echo "script já rodando em outro terminal?). Veja o que está usando com:"
-  echo "    lsof -i:$PORT   (ou: ss -ltnp | grep $PORT)"
-  echo "Feche o outro processo, ou use outra porta: PORT=8081 ./start.sh"
-  exit 1
-fi
+if [ ! -x "$BIN" ]; then
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64) MTX_ARCH="amd64" ;;
+    aarch64|arm64) MTX_ARCH="arm64" ;;
+    armv7l) MTX_ARCH="armv7" ;;
+    armv6l|armv6) MTX_ARCH="armv6" ;;
+    *)
+      echo "Arquitetura '$ARCH' não tem download automático."
+      echo "Baixe manualmente em https://github.com/bluenviron/mediamtx/releases e"
+      echo "coloque o binário 'mediamtx' nesta pasta."
+      exit 1
+      ;;
+  esac
 
-X_DISPLAY="${DISPLAY:-:0.0}"
-
-AUDIO_SOURCE="${AUDIO_SOURCE:-}"
-if [ -z "$AUDIO_SOURCE" ] && command -v pactl >/dev/null 2>&1; then
-  DEFAULT_SINK="$(pactl get-default-sink 2>/dev/null || true)"
-  if [ -n "$DEFAULT_SINK" ]; then
-    AUDIO_SOURCE="${DEFAULT_SINK}.monitor"
+  URL="https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MTX_ARCH}.tar.gz"
+  echo "Baixando o MediaMTX (servidor de streaming) — só acontece uma vez..."
+  TMP="$(mktemp -d)"
+  if ! curl -fL "$URL" -o "$TMP/mediamtx.tar.gz"; then
+    echo "Falha ao baixar de $URL"
+    rm -rf "$TMP"
+    exit 1
   fi
+  tar -xzf "$TMP/mediamtx.tar.gz" -C "$TMP"
+  cp "$TMP/mediamtx" "$BIN"
+  chmod +x "$BIN"
+  rm -rf "$TMP"
 fi
 
-VIDEO_ARGS=(-f x11grab -framerate "$FRAMERATE")
-if [ -n "${VIDEO_SIZE:-}" ]; then
-  VIDEO_ARGS+=(-video_size "$VIDEO_SIZE")
-fi
-VIDEO_ARGS+=(-i "$X_DISPLAY")
-
-GOP="$((FRAMERATE * 2))"
-# maxrate/bufsize evitam picos acima de VIDEO_BITRATE que travam links fracos.
-ENCODE_ARGS=(-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
-  -b:v "$VIDEO_BITRATE" -maxrate "$VIDEO_BITRATE" -bufsize "$VIDEO_BITRATE" \
-  -g "$GOP" -keyint_min "$FRAMERATE")
-
-if [ -n "$AUDIO_SOURCE" ]; then
-  echo "Capturando áudio do sistema em: $AUDIO_SOURCE"
-  AUDIO_ARGS=(-f pulse -i "$AUDIO_SOURCE")
-  ENCODE_ARGS+=(-c:a aac -b:a 128k)
-else
-  echo "Nenhuma fonte de áudio detectada/definida — transmitindo sem som."
-  echo "(Rode 'pactl list short sources' pra achar a sua e force com: AUDIO_SOURCE=nome ./start.sh)"
-  AUDIO_ARGS=()
+CONFIG="$DIR/mediamtx.yml"
+if [ ! -f "$CONFIG" ]; then
+  cat > "$CONFIG" <<EOF
+rtmpAddress: :$RTMP_PORT
+rtspAddress: :$RTSP_PORT
+hlsAddress: :$HLS_PORT
+paths:
+  all_others:
+EOF
 fi
 
 echo ""
-echo "Transmitindo sua tela em http://0.0.0.0:$PORT"
-echo "No VLC de outro dispositivo: Mídia > Abrir Transmissão de Rede > cole um destes endereços:"
+echo "=== No PC que transmite: configure o OBS ==="
+echo "Configurações > Transmissão > Serviço: Personalizado..."
+echo "  Servidor:            rtmp://localhost:$RTMP_PORT"
+echo "  Chave de transmissão: $STREAM_KEY"
+echo "(clique em 'Iniciar Transmissão' no OBS depois de rodar este script)"
+echo ""
+echo "=== Para assistir de outro dispositivo na LAN/Tailscale ==="
 for ip in $(hostname -I 2>/dev/null); do
-  echo "    http://$ip:$PORT"
+  echo "  VLC (Mídia > Abrir Transmissão de Rede):"
+  echo "      rtsp://$ip:$RTSP_PORT/$STREAM_KEY"
+  echo "  Navegador:"
+  echo "      http://$ip:$HLS_PORT/$STREAM_KEY/index.m3u8"
 done
 echo ""
 echo "(Ctrl+C para parar)"
 echo ""
 
-BIND_FAILS=0
-LOG_TMP="$(mktemp)"
-trap 'rm -f "$LOG_TMP"' EXIT
-
-while true; do
-  ffmpeg -hide_banner -loglevel warning \
-    "${VIDEO_ARGS[@]}" \
-    "${AUDIO_ARGS[@]}" \
-    "${ENCODE_ARGS[@]}" \
-    -f mpegts -listen 1 "http://0.0.0.0:$PORT" 2>&1 | tee "$LOG_TMP"
-
-  if grep -q "Address already in use" "$LOG_TMP"; then
-    BIND_FAILS=$((BIND_FAILS + 1))
-    if [ "$BIND_FAILS" -ge 5 ]; then
-      echo ""
-      echo "A porta $PORT continua ocupada depois de $BIND_FAILS tentativas — não é algo"
-      echo "que vá se resolver sozinho. Provavelmente outra instância deste script (ou outro"
-      echo "programa) já está usando essa porta. Veja com: lsof -i:$PORT"
-      echo "Feche o outro processo, ou rode com outra porta: PORT=8081 ./start.sh"
-      exit 1
-    fi
-    WAIT=$((BIND_FAILS * 3))
-    echo "Porta $PORT ocupada, tentando de novo em ${WAIT}s (tentativa $BIND_FAILS/5)..."
-    sleep "$WAIT"
-    continue
-  fi
-
-  BIND_FAILS=0
-  echo "Espectador desconectou. Aguardando a próxima conexão..."
-  sleep 1
-done
+cd "$DIR"
+exec "$BIN" "$CONFIG"
