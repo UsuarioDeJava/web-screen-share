@@ -1,58 +1,36 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 
-set "DIR=%~dp0"
-set "BIN=%DIR%mediamtx.exe"
-set "MEDIAMTX_VERSION=v1.21.0"
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js nao encontrado. Instale em https://nodejs.org/ e tente novamente.
+  pause
+  exit /b 1
+)
 
-if "%RTMP_PORT%"=="" set "RTMP_PORT=1935"
-if "%RTSP_PORT%"=="" set "RTSP_PORT=8554"
-if "%HLS_PORT%"=="" set "HLS_PORT=8888"
-if "%STREAM_KEY%"=="" set "STREAM_KEY=screen"
+if not exist node_modules (
+  echo Instalando dependencias...
+  call npm install
+)
 
-if not exist "%BIN%" (
-  echo Baixando o MediaMTX ^(servidor de streaming^) - so acontece uma vez...
-  set "URL=https://github.com/bluenviron/mediamtx/releases/download/%MEDIAMTX_VERSION%/mediamtx_%MEDIAMTX_VERSION%_windows_amd64.zip"
-  curl -fL "!URL!" -o "%TEMP%\mediamtx.zip"
-  if errorlevel 1 (
-    echo Falha ao baixar. Baixe manualmente em https://github.com/bluenviron/mediamtx/releases
-    echo e coloque mediamtx.exe nesta pasta.
-    pause
-    exit /b 1
+if "%TLS_CERT%"=="" if "%TLS_KEY%"=="" (
+  where tailscale >nul 2>nul
+  if not errorlevel 1 (
+    for /f "delims=" %%H in ('tailscale status --json 2^>nul ^| node scripts\tailscale-dnsname.js 2^>nul') do set "TS_HOSTNAME=%%H"
+
+    if defined TS_HOSTNAME (
+      if not exist "!TS_HOSTNAME!.crt" (
+        echo Gerando certificado HTTPS do Tailscale para !TS_HOSTNAME!...
+        tailscale cert "!TS_HOSTNAME!"
+      )
+      if exist "!TS_HOSTNAME!.crt" if exist "!TS_HOSTNAME!.key" (
+        set "TLS_CERT=%CD%\!TS_HOSTNAME!.crt"
+        set "TLS_KEY=%CD%\!TS_HOSTNAME!.key"
+      )
+    )
   )
-  tar -xf "%TEMP%\mediamtx.zip" -C "%DIR%"
-  del "%TEMP%\mediamtx.zip"
 )
 
-set "CONFIG=%DIR%mediamtx.yml"
-if not exist "%CONFIG%" (
-  > "%CONFIG%" echo rtmpAddress: :%RTMP_PORT%
-  >> "%CONFIG%" echo rtspAddress: :%RTSP_PORT%
-  >> "%CONFIG%" echo hlsAddress: :%HLS_PORT%
-  >> "%CONFIG%" echo paths:
-  >> "%CONFIG%" echo   all_others:
-)
-
-echo.
-echo === No PC que transmite: configure o OBS ===
-echo Configuracoes ^> Transmissao ^> Servico: Personalizado...
-echo   Servidor:             rtmp://localhost:%RTMP_PORT%
-echo   Chave de transmissao: %STREAM_KEY%
-echo (clique em "Iniciar Transmissao" no OBS depois de rodar este script)
-echo.
-echo === Para assistir de outro dispositivo na LAN/Tailscale ===
-for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /c:"IPv4"') do (
-  set "IP=%%A"
-  set "IP=!IP: =!"
-  echo   VLC ^(Midia ^> Abrir Transmissao de Rede^):
-  echo       rtsp://!IP!:%RTSP_PORT%/%STREAM_KEY%
-  echo   Navegador:
-  echo       http://!IP!:%HLS_PORT%/%STREAM_KEY%/index.m3u8
-)
-echo.
-echo (Feche esta janela para parar)
-echo.
-
-cd /d "%DIR%"
-"%BIN%" "%CONFIG%"
+call npm start
 pause

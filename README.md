@@ -1,116 +1,141 @@
 # web-screen-share
 
-Transmita a tela do seu PC (Windows ou Linux, **incluindo Wayland/KDE** — Bazzite,
-Fedora, etc.) usando o **OBS Studio**, e assista de qualquer outro dispositivo da rede
-pelo **VLC** ou por um navegador.
-
-## Por que OBS em vez de captura direta?
-
-Uma versão anterior deste projeto tentava capturar a tela direto com `ffmpeg`
-(`x11grab`). Isso não funciona em sessões **Wayland** (padrão no KDE Plasma de
-distros como o Bazzite): a tela aparece preta, só o cursor do mouse se move, porque
-`x11grab` só enxerga o X11/XWayland, não o compositor Wayland de verdade.
-
-O OBS resolve isso porque usa o **portal de captura de tela do próprio sistema**
-(o mesmo mecanismo do botão "Compartilhar tela" nativo), funcionando tanto em X11
-quanto em Wayland — e já vem com controle de bitrate/qualidade/áudio numa interface
-gráfica, então não precisamos reinventar nada disso.
+Compartilhe a tela de um PC (Windows ou Linux) pelo navegador, e assista de qualquer
+outro dispositivo na mesma rede local ou via Tailscale, sem instalar nada além do Node.js.
 
 ## Como funciona
 
-- **[MediaMTX](https://github.com/bluenviron/mediamtx)** é um servidor de streaming
-  (binário único, sem dependências) que fica escutando em `0.0.0.0`. O `start.sh` /
-  `start.bat` baixa ele sozinho na primeira vez e sobe o servidor.
-- O **OBS** transmite a tela pra esse servidor via RTMP, usando a opção "Serviço:
-  Personalizado" (a mesma tela que se usaria pra transmitir pra Twitch/YouTube, só
-  que apontando pro seu próprio PC em vez de um serviço externo).
-- Quem for assistir abre o endereço direto no **VLC** (RTSP) ou num **navegador**
-  (HLS) — o servidor serve os dois automaticamente, sem configuração extra.
+- Um servidor Node.js (Express + Socket.io) serve a interface web e faz a sinalização
+  WebRTC. Ele escuta em `0.0.0.0`, então fica acessível por qualquer IP da máquina
+  (rede local, Tailscale, etc).
+- O **transmissor** (`/host.html`) roda no navegador do PC que vai compartilhar a tela
+  e usa `getDisplayMedia` para capturar a tela (e, se o navegador permitir, o áudio).
+- O **visualizador** (`/`) roda no navegador de quem vai assistir e recebe o vídeo via
+  WebRTC (peer-to-peer entre o transmissor e cada visualizador).
 
 ## Requisitos
 
-- **No PC que transmite:** [OBS Studio](https://obsproject.com/) instalado. Nada
-  além disso — o `start.sh`/`start.bat` cuida do servidor.
-- **Em quem vai assistir:** [VLC](https://www.videolan.org/vlc/) ou um navegador
-  qualquer.
+- [Node.js](https://nodejs.org/) 18 ou superior, no PC que vai transmitir.
+- Um navegador baseado em Chromium (Chrome/Edge) é recomendado no transmissor, por ter
+  o melhor suporte a captura de áudio do sistema junto com a tela.
 
-## Como usar
+## Como rodar
 
-### 1. Suba o servidor
+### Linux / macOS
 
-**Linux:**
 ```bash
 ./start.sh
 ```
 
-**Windows:** dê dois cliques em `start.bat`, ou rode pelo CMD/PowerShell.
+### Windows
 
-Na primeira vez ele baixa o MediaMTX automaticamente. O terminal mostra algo assim:
+Dê dois cliques em `start.bat`, ou pelo PowerShell/CMD:
 
-```
-=== No PC que transmite: configure o OBS ===
-Configurações > Transmissão > Serviço: Personalizado...
-  Servidor:             rtmp://localhost:1935
-  Chave de transmissão: screen
-
-=== Para assistir de outro dispositivo na LAN/Tailscale ===
-  VLC (Mídia > Abrir Transmissão de Rede):
-      rtsp://192.168.0.42:8554/screen
-  Navegador:
-      http://192.168.0.42:8888/screen/index.m3u8
+```bat
+start.bat
 ```
 
-### 2. Configure o OBS (uma vez só)
-
-No PC que vai transmitir, com o OBS aberto:
-
-1. **Configurações > Transmissão**
-2. **Serviço:** `Personalizado...`
-3. **Servidor:** `rtmp://localhost:1935` (exatamente como o terminal mostrou)
-4. **Chave de transmissão:** `screen`
-5. Adicione uma fonte de **Captura de Tela** na sua cena (funciona no Wayland/KDE
-   normalmente, incluindo áudio do sistema via a fonte de áudio "Saída de Áudio
-   Desktop" que o OBS já cria por padrão).
-6. Clique em **Iniciar Transmissão**.
-
-### 3. Assista de outro dispositivo
-
-- **VLC:** Mídia > Abrir Transmissão de Rede (`Ctrl+N`) > cole o endereço
-  `rtsp://<IP-do-PC>:8554/screen` mostrado no terminal > Reproduzir.
-- **Navegador:** abra direto `http://<IP-do-PC>:8888/screen/index.m3u8` (o Chrome
-  não toca `.m3u8` nativamente — funciona bem no Safari/iOS; no Chrome/Firefox use o
-  VLC, ou toque no link com um player compatível com HLS).
-
-## Configurações (variáveis de ambiente)
-
-| Variável      | Padrão   | O que faz                                              |
-|---------------|----------|---------------------------------------------------------|
-| `RTMP_PORT`   | `1935`   | Porta onde o OBS publica.                                |
-| `RTSP_PORT`   | `8554`   | Porta RTSP pro VLC.                                      |
-| `HLS_PORT`    | `8888`   | Porta HLS pro navegador.                                 |
-| `STREAM_KEY`  | `screen` | Nome do "canal" — use o mesmo valor no OBS e na URL de quem assiste. |
-
-Exemplo, se a porta 8080 já estiver em uso por outra coisa:
+### Manualmente (qualquer SO)
 
 ```bash
-RTMP_PORT=19350 RTSP_PORT=8555 HLS_PORT=8889 ./start.sh
+npm install
+npm start
 ```
 
-## Qualidade / internet fraca
+Por padrão o servidor sobe na porta `3000`. Para mudar, defina a variável de ambiente
+`PORT` antes de iniciar (ex.: `PORT=8080 npm start`).
 
-Como quem controla o encode agora é o OBS, ajuste a qualidade direto nele:
-**Configurações > Saída > (modo Avançado) > Transmissão** — baixe o **bitrate de
-vídeo** (ex.: 800 kbps) e a **resolução de saída** (Configurações > Vídeo) se a
-internet de quem for assistir estiver fraca. Isso já evita o problema clássico de
-bitrate alto demais pra internet: tela travada com só o cursor "pulando".
+### HTTPS via certificado do Tailscale
 
-## Limitações
+Se o [Tailscale](https://tailscale.com/) estiver instalado e com os certificados
+HTTPS habilitados na sua tailnet (ativado por padrão em contas novas; confira em
+`login.tailscale.com/admin/dns` se não funcionar), o `start.sh`/`start.bat` detectam
+isso sozinhos, geram um certificado pro nome MagicDNS desta máquina
+(`algo.sua-tailnet.ts.net`) com `tailscale cert`, e sobem o servidor em HTTPS
+automaticamente — não precisa fazer nada além de rodar o script normalmente.
 
-- Suporta múltiplos espectadores simultâneos (diferente da versão anterior baseada só
-  em ffmpeg) — o MediaMTX foi feito pra isso.
-- Roda em qualquer rede que alcance essas portas (LAN, Tailscale). Pra internet
-  "de verdade" fora dessas redes, normalmente precisa abrir porta no roteador ou usar
-  uma VPN como o Tailscale.
-- O arquivo `mediamtx.yml` gerado na primeira execução fica no `.gitignore` — se
-  quiser mexer em configurações mais avançadas do MediaMTX, edite esse arquivo direto
-  (veja a [documentação](https://mediamtx.org/docs)).
+Isso importa porque alguns navegadores restringem WebRTC (ou simplesmente se
+comportam de forma inconsistente) em páginas servidas por HTTP simples; HTTPS evita
+essa categoria de problema por completo. Se um visualizador específico não conseguir
+conectar mesmo com HTTPS ativo, o problema é outra coisa (veja a seção de TURN logo
+abaixo e as observações no fim deste arquivo).
+
+Pra gerar o certificado manualmente (ou se a detecção automática falhar):
+
+```bash
+tailscale status --json   # confirme o DNSName em "Self"
+tailscale cert algo.sua-tailnet.ts.net
+TLS_CERT="$(pwd)/algo.sua-tailnet.ts.net.crt" TLS_KEY="$(pwd)/algo.sua-tailnet.ts.net.key" npm start
+```
+
+Quem for assistir deve acessar pelo nome MagicDNS, não pelo IP (`https://algo.sua-tailnet.ts.net:3000/`) — o certificado só é válido para esse nome.
+
+Ao iniciar, o terminal mostra os endereços disponíveis, por exemplo:
+
+```
+Servidor rodando em http://0.0.0.0:3000
+  - No próprio PC (transmissor): http://localhost:3000/host.html
+  - Para outros dispositivos na LAN/Tailscale, use um dos endereços abaixo:
+      http://192.168.0.42:3000/
+      http://100.x.y.z:3000/   <- IP do Tailscale, se estiver ativo
+```
+
+Com HTTPS ativo, aparece `https://` no lugar e uma nota confirmando que está usando o
+certificado do Tailscale.
+
+### Servidor TURN (para conexões atrás de NAT/firewall mais restritivo)
+
+O WebRTC tenta primeiro conectar diretamente entre transmissor e visualizador. Quando
+isso não é possível (firewall, antivírus ou NAT mais fechado em um dos lados), é
+preciso um servidor **TURN** para retransmitir a mídia — sem ele, a conexão fica presa
+em "conectando" para sempre. Por padrão o projeto já usa um TURN público de testes
+([OpenRelay](https://www.metered.ca/tools/openrelay/)), suficiente para uso pessoal
+esporádico. Para algo mais confiável (ou privado), rode seu próprio
+[coturn](https://github.com/coturn/coturn) e configure:
+
+```bash
+TURN_URLS="turn:seu-servidor:3478,turn:seu-servidor:3478?transport=tcp" \
+TURN_USERNAME=usuario \
+TURN_CREDENTIAL=senha \
+npm start
+```
+
+## Uso
+
+1. No PC que vai transmitir, abra `http://localhost:3000/host.html` e clique em
+   **"Iniciar transmissão"**. Escolha a tela/janela a compartilhar no prompt do
+   navegador.
+2. Em outro dispositivo (celular, notebook) na mesma LAN ou conectado via Tailscale,
+   abra `http://<IP-do-PC>:3000/`. O vídeo aparece automaticamente assim que a
+   transmissão começa.
+3. Cada visualizador pode, independentemente:
+   - **Ativar/desativar o som** com o botão na barra inferior (o som começa desligado
+     por padrão, pois os navegadores bloqueiam áudio automático sem interação do
+     usuário).
+   - **Trocar a qualidade** (Alta / Média / Baixa / Mínima) no seletor da barra
+     inferior, para reduzir resolução, taxa de quadros e bitrate caso a internet
+     esteja fraca. Isso ajusta a transmissão apenas para aquele visualizador,
+     sem afetar os demais.
+
+## Observações
+
+- `getDisplayMedia` exige um "contexto seguro". Como o transmissor sempre acessa via
+  `localhost`, isso funciona mesmo sem HTTPS. Os visualizadores não precisam de
+  contexto seguro pra WebRTC em si, mas HTTPS (via Tailscale, veja acima) evita
+  restrições extras que alguns navegadores aplicam em páginas HTTP simples.
+- Captura de áudio do sistema junto com a tela depende do navegador/SO (no Windows,
+  o Chrome geralmente permite ao compartilhar a tela inteira; no Linux o suporte é
+  mais limitado). Se não for possível, a transmissão segue apenas com vídeo.
+- Para acesso fora da rede local, use [Tailscale](https://tailscale.com/) (ou outra
+  VPN) e acesse pelo IP dela — não é necessário abrir portas no roteador.
+- Apenas um transmissor é suportado por vez; se outra aba/janela iniciar como
+  transmissor, a anterior é avisada e desligada.
+- Se um visualizador ficar travado em "sinal recebido, conectando mídia..." (tela
+  preta, sem nunca virar "transmissão ativa" nem mostrar erro), é sinal de que a
+  conexão direta (P2P) não está conseguindo se estabelecer para aquele dispositivo —
+  normalmente firewall/antivírus bloqueando UDP ou NAT restritivo. O app já tenta usar
+  o TURN de fallback (veja acima) e reconecta automaticamente a cada tentativa; se
+  mesmo assim continuar preso, vale configurar um TURN próprio, já que o público tem
+  banda limitada e é compartilhado. Note que qualquer TURN faz o vídeo passar por um
+  relay de terceiros quando a conexão direta falha — para privacidade total, use um
+  TURN próprio em vez do público padrão.
