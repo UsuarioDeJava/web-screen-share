@@ -53,6 +53,15 @@ quem transmite — ele só serve a página e faz a sinalização; quem efetivame
 compartilha a tela continua sendo o navegador de alguém, abrindo `/host.html` apontando
 pro endereço do container.
 
+A imagem é publicada automaticamente em `ghcr.io/usuariodejava/web-screen-share` a
+cada mudança no código ([.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml)).
+**Passo único depois do primeiro build:** o GitHub cria o pacote como privado por
+padrão, o que bloqueia o `docker pull` anônimo que o CasaOS (e o `docker compose`
+em geral) faz. Deixe-o público em
+`github.com/users/UsuarioDeJava/packages/container/web-screen-share/settings` >
+"Danger Zone" > **Change visibility** > **Public**. Sem isso o CasaOS mostra erro
+tipo "No such image" ou "unauthorized" ao tentar instalar.
+
 **Importante:** `getDisplayMedia` (a API que captura a tela) só funciona em "contexto
 seguro" — e isso deixa de valer de graça quando o servidor não está mais em
 `localhost` pro transmissor (ele passa a acessar pelo IP/hostname do NAS). Por isso,
