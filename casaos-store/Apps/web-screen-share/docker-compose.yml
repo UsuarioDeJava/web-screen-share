@@ -1,0 +1,63 @@
+name: web-screen-share
+services:
+  web-screen-share:
+    image: ghcr.io/usuariodejava/web-screen-share:latest
+    container_name: web-screen-share
+    restart: unless-stopped
+    ports:
+      - target: 3000
+        published: "3000"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/data
+        target: /data
+    x-casaos:
+      ports:
+        - container: "3000"
+          description:
+            en_US: Web interface (HTTPS)
+            pt_BR: Interface web (HTTPS)
+      volumes:
+        - container: /data
+          description:
+            en_US: Self-signed HTTPS certificate, generated on first start
+            pt_BR: Certificado HTTPS autoassinado, gerado na primeira execução
+x-casaos:
+  architectures:
+    - amd64
+  main: web-screen-share
+  store_app_id: web-screen-share
+  author: UsuarioDeJava
+  developer: UsuarioDeJava
+  category: Social
+  icon: https://raw.githubusercontent.com/UsuarioDeJava/web-screen-share/refs/heads/claude/webrtc-tailscale-https/casaos-store/Apps/web-screen-share/icon.png
+  index: /
+  port_map: "3000"
+  scheme: https
+  title:
+    en_US: Web Screen Share
+  tagline:
+    en_US: Screen-sharing room in the browser
+    pt_BR: Sala de compartilhamento de tela no navegador
+  description:
+    en_US: >-
+      A mini Discord just for screen sharing (no voice, no camera). Everyone joins
+      with a temporary nickname, can share their own screen and watch everyone
+      else's, with per-stream mute, volume and quality controls. Video goes
+      peer-to-peer (WebRTC) between browsers.
+    pt_BR: >-
+      Um mini Discord só pra compartilhar tela (sem voz nem câmera). Cada pessoa
+      entra com um nick temporário, pode compartilhar a própria tela e assistir a
+      dos outros, com mute, volume e qualidade separados por transmissão. O vídeo
+      vai direto entre os navegadores (WebRTC).
+  tips:
+    before_install:
+      en_US: >-
+        Open it at https://<this-server>:3000. The browser will warn about the
+        self-signed certificate on each device's first visit; just proceed.
+        Screen sharing requires HTTPS, which is why the app always uses it.
+      pt_BR: >-
+        Acesse por https://<este-servidor>:3000. Na primeira visita de cada
+        dispositivo o navegador avisa sobre o certificado autoassinado; é só
+        continuar. Compartilhar tela exige HTTPS, por isso o app sempre usa.

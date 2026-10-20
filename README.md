@@ -78,16 +78,45 @@ mostrar um aviso de segurança na primeira visita — é esperado, clique em
 avançar/continuar. Se quiser evitar esse aviso, monte um certificado de verdade (ex.:
 gerado com `tailscale cert`, veja a seção abaixo) nas variáveis `TLS_CERT`/`TLS_KEY`.
 
+#### No CasaOS, pela loja própria (recomendado: atualiza com um clique)
+
+Este repositório também funciona como uma fonte de apps do CasaOS
+([casaos-store/](casaos-store/Apps/web-screen-share/docker-compose.yml)). Adicionando
+essa fonte, o app aparece na loja e o CasaOS sabe de onde ele vem, o que libera a
+atualização direto pela interface:
+
+1. No CasaOS, abra a **App Store**, clique em **+ Mais aplicativos** (*More apps*),
+   cole o endereço abaixo e clique em **Adicionar**:
+
+   ```
+   https://github.com/UsuarioDeJava/web-screen-share/archive/refs/heads/claude/webrtc-tailscale-https.zip
+   ```
+
+2. Procure **Web Screen Share** na loja e instale. Depois, todo mundo acessa
+   `https://<IP-ou-hostname-do-NAS>:3000/`.
+3. Pra atualizar: no menu (três pontinhos) do ícone do app, clique em **Verificar e
+   atualizar**. O CasaOS baixa a imagem mais recente e recria o container, mantendo as
+   configurações. Ele também confere sozinho, a cada ~10 minutos, se a imagem publicada
+   mudou.
+
+Se você já tinha instalado colando o `docker-compose.yml` ("app personalizado"),
+desinstale essa versão antes de instalar pela loja: apps instalados assim não ficam
+ligados a nenhuma loja, então o **Verificar e atualizar** deles não tem de onde
+atualizar. A única coisa perdida é o certificado autoassinado, que é gerado de novo
+(cada dispositivo aceita o aviso de segurança mais uma vez).
+
+#### Com Docker Compose (ou "app personalizado" no CasaOS)
+
 ```bash
 docker compose up -d
 ```
 
 Isso baixa a imagem já publicada (`ghcr.io/usuariodejava/web-screen-share`) e sobe o
-servidor na porta `3000`. Pra importar no CasaOS: **App Store > Instalar um app
-personalizado** (ou **Custom Install**) e cole o conteúdo de `docker-compose.yml` deste
-repositório, ajustando a porta se já tiver algo usando a 3000. Depois, todo mundo
-acessa `https://<IP-ou-hostname-do-NAS>:3000/` (pra atualizar uma instalação
-existente pra versão nova, peça pro CasaOS baixar a imagem de novo / recriar o app).
+servidor na porta `3000`. Também dá pra importar no CasaOS sem a loja: **App Store >
+Instalar um app personalizado** (ou **Custom Install**) e cole o conteúdo de
+`docker-compose.yml` deste repositório, ajustando a porta se já tiver algo usando a
+3000 — mas aí as atualizações precisam ser feitas na mão (`docker compose pull && docker
+compose up -d`, ou reinstalando).
 
 Pra usar um certificado próprio (sem aviso de segurança), descomente no
 `docker-compose.yml` as linhas que montam os arquivos `.crt`/`.key` e as variáveis
