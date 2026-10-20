@@ -1,0 +1,48 @@
+name: Publish CasaOS store
+
+# O CasaOS mostra como nome da loja o primeiro trecho do caminho da URL. Num link
+# do github.com isso é sempre o dono do repositório; publicando no GitHub Pages
+# (usuario.github.io/web-screen-share/store.zip) o nome vira "web-screen-share".
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - casaos-store/**
+      - .github/workflows/casaos-store.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package store
+        run: |
+          mkdir -p site
+          cd casaos-store
+          zip -r -X ../site/store.zip Apps
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

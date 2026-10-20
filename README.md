@@ -68,6 +68,11 @@ em geral) faz. Deixe-o público em
 "Danger Zone" > **Change visibility** > **Public**. Sem isso o CasaOS mostra erro
 tipo "No such image" ou "unauthorized" ao tentar instalar.
 
+A loja do CasaOS (pasta `casaos-store/`) é publicada no GitHub Pages por
+[.github/workflows/casaos-store.yml](.github/workflows/casaos-store.yml). **Passo único:**
+em `github.com/UsuarioDeJava/web-screen-share/settings/pages`, em "Build and deployment" >
+**Source**, escolha **GitHub Actions** (o workflow não consegue ativar isso sozinho).
+
 **Importante:** `getDisplayMedia` (a API que captura a tela) só funciona em "contexto
 seguro" — e ninguém acessa o NAS via `localhost`, todo mundo usa o IP/hostname dele.
 Por isso, diferente do `start.sh`/`start.bat`, **a imagem Docker sempre sobe em
@@ -86,10 +91,11 @@ essa fonte, o app aparece na loja e o CasaOS sabe de onde ele vem, o que libera 
 atualização direto pela interface:
 
 1. No CasaOS, abra a **App Store**, clique em **+ Mais aplicativos** (*More apps*),
-   cole o endereço abaixo e clique em **Adicionar**:
+   cole o endereço abaixo e clique em **Adicionar**. Na lista de fontes ela aparece
+   como **web-screen-share**:
 
    ```
-   https://github.com/UsuarioDeJava/web-screen-share/archive/refs/heads/main.zip
+   https://usuariodejava.github.io/web-screen-share/store.zip
    ```
 
 2. Procure **Web Screen Share** na loja e instale. Depois, todo mundo acessa
