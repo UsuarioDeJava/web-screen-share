@@ -1,7 +1,10 @@
 services:
   web-screen-share:
-    build: .
-    image: web-screen-share:latest
+    # Imagem já publicada — é isso que o CasaOS (e o `docker compose` em geral,
+    # ao importar este arquivo sozinho) baixa e roda, sem precisar do código-fonte
+    # nem buildar nada. Se preferir compilar você mesmo a partir deste repositório,
+    # troque a linha abaixo por "build: ." (precisa clonar o repo antes).
+    image: ghcr.io/usuariodejava/web-screen-share:latest
     container_name: web-screen-share
     restart: unless-stopped
     ports:

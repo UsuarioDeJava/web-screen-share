@@ -64,12 +64,13 @@ avançar/continuar. Se quiser evitar esse aviso, monte um certificado de verdade
 gerado com `tailscale cert`, veja a seção abaixo) nas variáveis `TLS_CERT`/`TLS_KEY`.
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-Isso sobe o servidor na porta `3000`. Pra importar no CasaOS: **App Store > Instalar um
-app personalizado** (ou **Custom Install**) e cole o conteúdo de `docker-compose.yml`
-deste repositório, ajustando a porta se já tiver algo usando a 3000. Depois, qualquer
+Isso baixa a imagem já publicada (`ghcr.io/usuariodejava/web-screen-share`) e sobe o
+servidor na porta `3000`. Pra importar no CasaOS: **App Store > Instalar um app
+personalizado** (ou **Custom Install**) e cole o conteúdo de `docker-compose.yml` deste
+repositório, ajustando a porta se já tiver algo usando a 3000. Depois, qualquer
 dispositivo acessa `https://<IP-ou-hostname-do-NAS>:3000/`:
 - quem for **transmitir** abre `/host.html`;
 - quem for **assistir** abre `/` (a raiz).
@@ -77,6 +78,10 @@ dispositivo acessa `https://<IP-ou-hostname-do-NAS>:3000/`:
 Pra usar um certificado próprio (sem aviso de segurança), descomente no
 `docker-compose.yml` as linhas que montam os arquivos `.crt`/`.key` e as variáveis
 `TLS_CERT`/`TLS_KEY`, apontando pros caminhos dentro do container.
+
+Se preferir compilar a imagem você mesmo em vez de baixar a pronta (precisa clonar
+este repositório primeiro), troque a linha `image:` do `docker-compose.yml` por
+`build: .` e rode `docker compose up -d --build`.
 
 ### HTTPS via certificado do Tailscale
 
