@@ -51,9 +51,31 @@ const server = useHttps
   : http.createServer(app);
 const io = new Server(server);
 
-// Estado da sinalização: um transmissor (host) por vez, N visualizadores.
-let host = null; // { id: socket.id }
-const viewers = new Map(); // socket.id -> { id }
+const ROOM = 'sala';
+const MAX_NAME_LENGTH = 24;
+
+const users = new Map(); // socket.id -> { id, name, sharing, clientId }
+
+function cleanName(raw) {
+  return typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LENGTH) : '';
+}
+
+function uniqueName(name) {
+  const taken = new Set([...users.values()].map((u) => u.name.toLowerCase()));
+  if (!taken.has(name.toLowerCase())) return name;
+  for (let i = 2; ; i += 1) {
+    const candidate = `${name} (${i})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+const publicUser = ({ id, name, sharing }) => ({ id, name, sharing });
+
+function removeUser(socket) {
+  if (!users.delete(socket.id)) return;
+  socket.leave(ROOM);
+  io.to(ROOM).emit('user:left', { id: socket.id });
+}
 
 function listLanAddresses() {
   const interfaces = os.networkInterfaces();
@@ -69,70 +91,64 @@ function listLanAddresses() {
 }
 
 io.on('connection', (socket) => {
-  socket.on('role:host', () => {
-    // Se já existe um transmissor, avisa o antigo que foi substituído.
-    if (host && host.id !== socket.id) {
-      io.to(host.id).emit('host:replaced');
-    }
-    host = { id: socket.id };
+  socket.on('join', (payload, ack) => {
+    if (typeof ack !== 'function') return;
+    if (users.has(socket.id)) return ack({ error: 'Você já está na sala.' });
+    const name = cleanName(payload && payload.name);
+    if (!name) return ack({ error: 'Escolha um nick.' });
 
-    // Reencaminha todos os visualizadores já esperando para negociar com o novo host.
-    for (const viewerId of viewers.keys()) {
-      io.to(host.id).emit('viewer:joined', { viewerId });
-    }
-
-    // Avisa todos os visualizadores que o transmissor está pronto (renegociação limpa).
-    io.emit('host:available');
-  });
-
-  socket.on('role:viewer', () => {
-    viewers.set(socket.id, { id: socket.id });
-    if (host) {
-      socket.emit('host:available');
-      io.to(host.id).emit('viewer:joined', { viewerId: socket.id });
-    } else {
-      socket.emit('host:unavailable');
-    }
-  });
-
-  // Relay genérico de sinalização (offer/answer/ICE candidates).
-  socket.on('signal', ({ to, data }) => {
-    if (!to) return;
-    io.to(to).emit('signal', { from: socket.id, data });
-  });
-
-  // Visualizador pede uma qualidade diferente; repassa ao host com o id do viewer.
-  socket.on('quality:change', ({ quality }) => {
-    if (!host) return;
-    io.to(host.id).emit('quality:change', { viewerId: socket.id, quality });
-  });
-
-  socket.on('disconnect', () => {
-    if (host && host.id === socket.id) {
-      host = null;
-      io.emit('host:left');
-    } else if (viewers.has(socket.id)) {
-      viewers.delete(socket.id);
-      if (host) {
-        io.to(host.id).emit('viewer:left', { viewerId: socket.id });
+    // Após uma queda de rede o cliente reconecta com outro socket, mas o antigo
+    // continua "vivo" aqui até o timeout de ping. Derruba esse fantasma pra
+    // pessoa não aparecer duplicada (nem com o nick trocado pra "Nome (2)").
+    const clientId = typeof payload.clientId === 'string' ? payload.clientId.slice(0, 64) : '';
+    if (clientId) {
+      for (const u of users.values()) {
+        const ghost = u.clientId === clientId && io.sockets.sockets.get(u.id);
+        if (ghost) {
+          removeUser(ghost);
+          ghost.disconnect(true);
+        }
       }
     }
+
+    const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId };
+    users.set(socket.id, user);
+    socket.join(ROOM);
+    socket.to(ROOM).emit('user:joined', publicUser(user));
+    ack({ me: publicUser(user), users: [...users.values()].map(publicUser) });
   });
+
+  socket.on('share', (sharing) => {
+    const user = users.get(socket.id);
+    if (!user) return;
+    user.sharing = Boolean(sharing);
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
+  // Relay ponto a ponto da sinalização WebRTC (watch/offer/answer/candidate/...).
+  socket.on('signal', (msg) => {
+    if (!users.has(socket.id) || !msg || typeof msg.to !== 'string' || !users.has(msg.to)) return;
+    io.to(msg.to).emit('signal', { from: socket.id, data: msg.data });
+  });
+
+  socket.on('leave', () => removeUser(socket));
+  socket.on('disconnect', () => removeUser(socket));
 });
 
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';
   console.log(`Servidor rodando em ${scheme}://${HOST}:${PORT}${useHttps ? ' (HTTPS via certificado do Tailscale)' : ''}`);
-  console.log(`  - No próprio PC (transmissor): ${scheme}://localhost:${PORT}/host.html`);
+  console.log(`  - Neste PC: ${scheme}://localhost:${PORT}/`);
   const lan = listLanAddresses();
   if (lan.length > 0) {
-    console.log('  - Para outros dispositivos na LAN/Tailscale, use um dos endereços abaixo:');
+    console.log('  - De outros dispositivos na LAN/Tailscale, use um dos endereços abaixo:');
     for (const addr of lan) {
       console.log(`      ${scheme}://${addr}:${PORT}/`);
     }
   }
   if (!useHttps) {
-    console.log('  (Sem HTTPS. Se o visualizador tiver problemas de conexão WebRTC, veja o');
-    console.log('   README sobre como gerar um certificado com `tailscale cert`.)');
+    console.log('  (Sem HTTPS: só quem abrir via localhost consegue compartilhar a tela. Pra');
+    console.log('   outros PCs também transmitirem, veja no README como gerar um certificado');
+    console.log('   com `tailscale cert`.)');
   }
 });
