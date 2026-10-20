@@ -1,0 +1,25 @@
+services:
+  web-screen-share:
+    build: .
+    image: web-screen-share:latest
+    container_name: web-screen-share
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - web-screen-share-data:/data
+      # Pra usar um certificado de verdade (ex.: gerado com `tailscale cert` no
+      # host) em vez do autoassinado, monte os arquivos e descomente junto com
+      # as variáveis TLS_CERT/TLS_KEY abaixo.
+      # - /caminho/no/host/seu-dominio.crt:/certs/cert.crt:ro
+      # - /caminho/no/host/seu-dominio.key:/certs/cert.key:ro
+    environment:
+      - PORT=3000
+      # - TLS_CERT=/certs/cert.crt
+      # - TLS_KEY=/certs/cert.key
+      # - TURN_URLS=
+      # - TURN_USERNAME=
+      # - TURN_CREDENTIAL=
+
+volumes:
+  web-screen-share-data:

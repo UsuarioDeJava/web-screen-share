@@ -45,6 +45,39 @@ npm start
 Por padrão o servidor sobe na porta `3000`. Para mudar, defina a variável de ambiente
 `PORT` antes de iniciar (ex.: `PORT=8080 npm start`).
 
+### Rodando em container (Docker / CasaOS)
+
+Também dá pra rodar o servidor num container, por exemplo num NAS com
+[CasaOS](https://casaos.io/). Nesse caso **o servidor roda numa máquina separada** de
+quem transmite — ele só serve a página e faz a sinalização; quem efetivamente
+compartilha a tela continua sendo o navegador de alguém, abrindo `/host.html` apontando
+pro endereço do container.
+
+**Importante:** `getDisplayMedia` (a API que captura a tela) só funciona em "contexto
+seguro" — e isso deixa de valer de graça quando o servidor não está mais em
+`localhost` pro transmissor (ele passa a acessar pelo IP/hostname do NAS). Por isso,
+diferente do `start.sh`/`start.bat`, **a imagem Docker sempre sobe em HTTPS**: se você
+não montar um certificado de verdade, ela gera um autoassinado sozinha na primeira vez
+(guardado no volume `/data`, não é regenerado nos reinícios seguintes). O navegador vai
+mostrar um aviso de segurança na primeira visita — é esperado, clique em
+avançar/continuar. Se quiser evitar esse aviso, monte um certificado de verdade (ex.:
+gerado com `tailscale cert`, veja a seção abaixo) nas variáveis `TLS_CERT`/`TLS_KEY`.
+
+```bash
+docker compose up -d --build
+```
+
+Isso sobe o servidor na porta `3000`. Pra importar no CasaOS: **App Store > Instalar um
+app personalizado** (ou **Custom Install**) e cole o conteúdo de `docker-compose.yml`
+deste repositório, ajustando a porta se já tiver algo usando a 3000. Depois, qualquer
+dispositivo acessa `https://<IP-ou-hostname-do-NAS>:3000/`:
+- quem for **transmitir** abre `/host.html`;
+- quem for **assistir** abre `/` (a raiz).
+
+Pra usar um certificado próprio (sem aviso de segurança), descomente no
+`docker-compose.yml` as linhas que montam os arquivos `.crt`/`.key` e as variáveis
+`TLS_CERT`/`TLS_KEY`, apontando pros caminhos dentro do container.
+
 ### HTTPS via certificado do Tailscale
 
 Se o [Tailscale](https://tailscale.com/) estiver instalado e com os certificados
@@ -119,9 +152,12 @@ npm start
 
 ## Observações
 
-- `getDisplayMedia` exige um "contexto seguro". Como o transmissor sempre acessa via
-  `localhost`, isso funciona mesmo sem HTTPS. Os visualizadores não precisam de
-  contexto seguro pra WebRTC em si, mas HTTPS (via Tailscale, veja acima) evita
+- `getDisplayMedia` exige um "contexto seguro". Rodando com `start.sh`/`start.bat`
+  (transmissor e servidor na mesma máquina), isso funciona mesmo sem HTTPS porque o
+  transmissor acessa via `localhost`. Já no Docker (servidor numa máquina separada,
+  veja acima), o transmissor NÃO está mais em `localhost`, então HTTPS passa a ser
+  obrigatório pra captura funcionar — por isso a imagem Docker sempre sobe em HTTPS.
+  Os visualizadores não precisam de contexto seguro pra WebRTC em si, mas HTTPS evita
   restrições extras que alguns navegadores aplicam em páginas HTTP simples.
 - Captura de áudio do sistema junto com a tela depende do navegador/SO (no Windows,
   o Chrome geralmente permite ao compartilhar a tela inteira; no Linux o suporte é
