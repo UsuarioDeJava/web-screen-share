@@ -89,7 +89,7 @@ atualização direto pela interface:
    cole o endereço abaixo e clique em **Adicionar**:
 
    ```
-   https://github.com/UsuarioDeJava/web-screen-share/archive/refs/heads/claude/webrtc-tailscale-https.zip
+   https://github.com/UsuarioDeJava/web-screen-share/archive/refs/heads/main.zip
    ```
 
 2. Procure **Web Screen Share** na loja e instale. Depois, todo mundo acessa

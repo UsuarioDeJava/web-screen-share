@@ -31,7 +31,7 @@ x-casaos:
   author: UsuarioDeJava
   developer: UsuarioDeJava
   category: Social
-  icon: https://raw.githubusercontent.com/UsuarioDeJava/web-screen-share/refs/heads/claude/webrtc-tailscale-https/casaos-store/Apps/web-screen-share/icon.png
+  icon: https://raw.githubusercontent.com/UsuarioDeJava/web-screen-share/refs/heads/main/casaos-store/Apps/web-screen-share/icon.png
   index: /
   port_map: "3000"
   scheme: https
