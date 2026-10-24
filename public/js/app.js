@@ -463,40 +463,54 @@
     sender.setParameters(params).catch((err) => console.warn('setParameters falhou', err));
   }
 
-  async function addCandidate(entry, candidate) {
+  // Sem permissão de câmera/microfone o navegador troca o IP local por um nome .local
+  // (mDNS), que não resolve entre redes diferentes (o Tailscale não repassa mDNS). A
+  // mesma porta no IP de onde o outro lado chega ao servidor costuma alcançar o socket.
+  function withPeerAddress(candidate, address) {
+    if (!address || !candidate.candidate) return null;
+    const parts = candidate.candidate.split(' ');
+    if (parts[7] !== 'host' || !parts[4] || !parts[4].endsWith('.local')) return null;
+    parts[4] = address;
+    return { ...candidate, candidate: parts.join(' ') };
+  }
+
+  async function addCandidate(entry, candidate, address) {
     if (!candidate) return;
     if (!entry.pc.remoteDescription) {
-      entry.pending.push(candidate);
+      entry.pending.push({ candidate, address });
       return;
     }
-    try {
-      await entry.pc.addIceCandidate(candidate);
-    } catch (err) {
-      console.warn('Falha ao adicionar ICE candidate', err);
+    for (const c of [candidate, withPeerAddress(candidate, address)]) {
+      if (!c) continue;
+      try {
+        await entry.pc.addIceCandidate(c);
+      } catch (err) {
+        console.warn('Falha ao adicionar ICE candidate', err);
+      }
     }
   }
 
   async function flushPending(entry) {
-    for (const candidate of entry.pending.splice(0)) await addCandidate(entry, candidate);
+    for (const { candidate, address } of entry.pending.splice(0)) await addCandidate(entry, candidate, address);
   }
 
   // ---------- sinalização ----------
 
   // Processa em ordem: um candidate não pode ser aplicado antes do offer/answer
   // da mesma conexão terminar de ser processado.
-  socket.on('signal', ({ from, data }) => {
+  socket.on('signal', ({ from, address, data }) => {
     signalQueue = signalQueue
-      .then(() => handleSignal(from, data))
+      .then(() => handleSignal(from, data, address))
       .catch((err) => console.warn('Erro de sinalização', err));
   });
 
-  async function handleSignal(from, data) {
+  async function handleSignal(from, data, address) {
     if (!me || !data) return;
-    if (data.stream === me.id) await handleAsBroadcaster(from, data);
-    else if (data.stream === from) await handleAsViewer(from, data);
+    if (data.stream === me.id) await handleAsBroadcaster(from, data, address);
+    else if (data.stream === from) await handleAsViewer(from, data, address);
   }
 
-  async function handleAsBroadcaster(viewerId, data) {
+  async function handleAsBroadcaster(viewerId, data, address) {
     if (data.type === 'watch') {
       if (localStream) await startOutgoing(viewerId, data.quality);
       return;
@@ -517,11 +531,11 @@
       await flushPending(o);
       applyQuality(o);
     } else if (data.type === 'candidate') {
-      await addCandidate(o, data.candidate);
+      await addCandidate(o, data.candidate, address);
     }
   }
 
-  async function handleAsViewer(broadcasterId, data) {
+  async function handleAsViewer(broadcasterId, data, address) {
     const s = streams.get(broadcasterId);
     if (!s || !s.watching) return;
     if (data.type === 'offer') {
@@ -565,7 +579,7 @@
       await pc.setLocalDescription(answer);
       send(broadcasterId, { stream: broadcasterId, sid: data.sid, type: 'answer', sdp: pc.localDescription });
     } else if (data.type === 'candidate' && s.pc && data.sid === s.sid) {
-      await addCandidate(s, data.candidate);
+      await addCandidate(s, data.candidate, address);
     }
   }
 
@@ -797,11 +811,14 @@
       });
     }
     const local = pair && report.get(pair.localCandidateId);
+    const remote = pair && report.get(pair.remoteCandidateId);
     let route = '—';
     if (local) {
       if (local.candidateType === 'relay') route = 'via servidor TURN (relay)';
       else if (local.candidateType === 'host') route = 'direta (rede local)';
       else route = 'direta (P2P)';
+      const remoteAddress = remote && (remote.address || remote.ip);
+      if (remoteAddress) route += `, ${remoteAddress}`;
     }
     const lines = [
       `Conexão: ${CONNECTION_LABELS[pc.connectionState] || pc.connectionState}`,

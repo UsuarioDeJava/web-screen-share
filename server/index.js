@@ -71,6 +71,13 @@ function uniqueName(name) {
 
 const publicUser = ({ id, name, sharing }) => ({ id, name, sharing });
 
+// IP de onde o cliente chega até este servidor (ex.: o do Tailscale). Vai junto dos
+// sinais pro outro lado alcançá-lo mesmo quando o navegador esconde o próprio IP.
+function clientAddress(socket) {
+  const address = socket.handshake.address || '';
+  return address.startsWith('::ffff:') ? address.slice(7) : address;
+}
+
 function removeUser(socket) {
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
@@ -113,6 +120,7 @@ io.on('connection', (socket) => {
 
     const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId };
     users.set(socket.id, user);
+    console.log(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
     ack({ me: publicUser(user), users: [...users.values()].map(publicUser) });
@@ -128,7 +136,7 @@ io.on('connection', (socket) => {
   // Relay ponto a ponto da sinalização WebRTC (watch/offer/answer/candidate/...).
   socket.on('signal', (msg) => {
     if (!users.has(socket.id) || !msg || typeof msg.to !== 'string' || !users.has(msg.to)) return;
-    io.to(msg.to).emit('signal', { from: socket.id, data: msg.data });
+    io.to(msg.to).emit('signal', { from: socket.id, address: clientAddress(socket), data: msg.data });
   });
 
   socket.on('leave', () => removeUser(socket));
