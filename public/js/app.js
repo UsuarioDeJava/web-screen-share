@@ -47,6 +47,9 @@
   const emptyEl = $('empty');
   const emptyHint = $('empty-hint');
   const toastEl = $('toast');
+  const loginVersionEl = $('login-version');
+  const sidebarVersionEl = $('sidebar-version');
+  const updateBanner = $('update-banner');
 
   const socket = io();
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
@@ -73,6 +76,7 @@
   let sidCounter = 0;
   let signalQueue = Promise.resolve();
   let toastTimer = null;
+  let pageVersion = null; // versão do servidor quando esta página foi carregada
 
   // ---------- helpers de DOM ----------
 
@@ -130,6 +134,21 @@
 
   try { nickInput.value = localStorage.getItem('wss-nick') || ''; } catch {}
 
+  function setPageVersion(version) {
+    if (pageVersion || !version) return;
+    pageVersion = version;
+    const label = version === 'dev' ? 'versão de desenvolvimento' : `versão ${version}`;
+    loginVersionEl.textContent = label;
+    sidebarVersionEl.textContent = label;
+  }
+
+  fetch('/version', { cache: 'no-store' })
+    .then((res) => res.json())
+    .then(({ version }) => setPageVersion(version))
+    .catch(() => {});
+
+  $('btn-reload').addEventListener('click', () => window.location.reload());
+
   function showLogin(error) {
     appEl.hidden = true;
     loginEl.hidden = false;
@@ -171,6 +190,10 @@
         return;
       }
       me = { id: res.me.id, name: res.me.name };
+      setPageVersion(res.version);
+      // O container reinicia ao atualizar e o socket reconecta sozinho, mas esta
+      // página continua com o código antigo até ser recarregada.
+      updateBanner.hidden = !res.version || res.version === pageVersion;
       users.clear();
       for (const u of res.users) users.set(u.id, u);
       // Reconexão no meio de uma transmissão: continua transmitindo.

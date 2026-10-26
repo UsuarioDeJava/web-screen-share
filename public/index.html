@@ -19,6 +19,7 @@
       <button type="submit" id="login-btn" class="btn btn-primary">Entrar</button>
       <p id="login-error" class="login-error" role="alert"></p>
       <p class="login-hint">Sem senha: o nick só vale enquanto você estiver na sala.</p>
+      <p id="login-version" class="app-version"></p>
     </form>
   </section>
 
@@ -32,6 +33,7 @@
       </div>
       <div class="sidebar-section">Na sala — <span id="user-count">0</span></div>
       <ul id="user-list" class="user-list"></ul>
+      <div id="sidebar-version" class="app-version sidebar-version"></div>
       <div class="me">
         <span id="me-avatar" class="avatar"></span>
         <div class="me-info">
@@ -55,6 +57,11 @@
           <button id="btn-share" class="btn btn-primary" type="button"></button>
         </div>
       </header>
+
+      <div id="update-banner" class="update-banner" role="status" hidden>
+        <span>Uma versão nova foi instalada no servidor. Recarregue a página pra usar.</span>
+        <button id="btn-reload" class="btn btn-primary" type="button">Recarregar</button>
+      </div>
 
       <div class="stage">
         <div id="grid" class="grid"><div id="grid-inner" class="grid-inner"></div></div>

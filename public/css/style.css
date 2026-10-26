@@ -166,6 +166,22 @@ button { cursor: pointer; }
 .login-error { min-height: 1.4em; margin: 0; color: var(--live); font-size: 13px; }
 .login-hint { margin: 0; color: var(--faint); font-size: 12px; }
 
+.app-version { margin: 0; color: var(--faint); font-size: 11px; }
+.sidebar-version { flex: none; padding: 6px 16px 10px; }
+
+.update-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(91, 108, 255, 0.16);
+  font-size: 13px;
+}
+.update-banner .btn { height: 32px; }
+
 /* ---------- layout da sala ---------- */
 
 .app {
@@ -551,6 +567,7 @@ button { cursor: pointer; }
 
   .sidebar-head,
   .sidebar-section,
+  .sidebar-version,
   .user-you,
   .me .avatar,
   .me-name { display: none; }

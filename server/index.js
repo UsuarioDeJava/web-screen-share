@@ -8,9 +8,14 @@ const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
+const VERSION = process.env.APP_VERSION || 'dev';
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+app.get('/version', (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ version: VERSION });
+});
 
 // Servidores ICE usados pelos clientes (transmissor e visualizadores) para o
 // WebRTC. STUN sozinho não é suficiente quando um dos lados está atrás de um
@@ -123,7 +128,7 @@ io.on('connection', (socket) => {
     console.log(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
-    ack({ me: publicUser(user), users: [...users.values()].map(publicUser) });
+    ack({ me: publicUser(user), users: [...users.values()].map(publicUser), version: VERSION });
   });
 
   socket.on('share', (sharing) => {
@@ -145,6 +150,7 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';
+  console.log(`Web Screen Share, versão ${VERSION}`);
   console.log(`Servidor rodando em ${scheme}://${HOST}:${PORT}${useHttps ? ' (HTTPS via certificado do Tailscale)' : ''}`);
   console.log(`  - Neste PC: ${scheme}://localhost:${PORT}/`);
   const lan = listLanAddresses();

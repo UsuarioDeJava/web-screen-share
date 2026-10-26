@@ -103,7 +103,9 @@ atualização direto pela interface:
 3. Pra atualizar: no menu (três pontinhos) do ícone do app, clique em **Verificar e
    atualizar**. O CasaOS baixa a imagem mais recente e recria o container, mantendo as
    configurações. Ele também confere sozinho, a cada ~10 minutos, se a imagem publicada
-   mudou.
+   mudou. A versão instalada (`versão AAAA.MM.DD-commit`) aparece na tela de entrada e
+   embaixo da lista de pessoas; quem estava com a página aberta durante a atualização
+   vê um aviso pra recarregar.
 
 Se você já tinha instalado colando o `docker-compose.yml` ("app personalizado"),
 desinstale essa versão antes de instalar pela loja: apps instalados assim não ficam
