@@ -4,12 +4,42 @@ set -e
 DATA_DIR="${DATA_DIR:-/data}"
 mkdir -p "$DATA_DIR"
 
+# Certificado próprio largado na pasta de dados (ex.: gerado com `tailscale cert`):
+# o primeiro par NOME.crt + NOME.key cuja chave confere com o certificado é usado.
+find_custom_cert() {
+  for crt in "$DATA_DIR"/*.crt; do
+    [ -f "$crt" ] || continue
+    [ "$(basename "$crt")" = "selfsigned.crt" ] && continue
+    key="${crt%.crt}.key"
+    if [ ! -f "$key" ]; then
+      echo "AVISO: achei $(basename "$crt"), mas não $(basename "$key") do lado; ignorando." >&2
+      continue
+    fi
+    cert_pub="$(openssl x509 -noout -pubkey -in "$crt" 2>/dev/null || true)"
+    key_pub="$(openssl pkey -pubout -in "$key" 2>/dev/null || true)"
+    if [ -z "$cert_pub" ] || [ "$cert_pub" != "$key_pub" ]; then
+      echo "AVISO: $(basename "$crt") e $(basename "$key") não formam um par válido; ignorando." >&2
+      continue
+    fi
+    echo "$crt"
+    return 0
+  done
+  return 1
+}
+
 # getDisplayMedia só funciona em "contexto seguro". Rodando num container (fora
 # do PC que transmite), a página do transmissor não é mais "localhost" pra
 # quem abre no navegador, então sem HTTPS a captura de tela nem começa. Por
 # isso, diferente do start.sh (que só usa HTTPS se achar o Tailscale), aqui a
-# imagem sempre sobe em HTTPS — com um certificado próprio (autoassinado,
-# gerado uma vez e guardado em /data) se nenhum TLS_CERT/TLS_KEY for montado.
+# imagem sempre sobe em HTTPS: com TLS_CERT/TLS_KEY se definidos, senão com um
+# certificado deixado na pasta de dados, senão com um autoassinado gerado aqui.
+if [ -z "$TLS_CERT" ] || [ -z "$TLS_KEY" ] || [ ! -f "$TLS_CERT" ] || [ ! -f "$TLS_KEY" ]; then
+  if CUSTOM_CERT="$(find_custom_cert)"; then
+    export TLS_CERT="$CUSTOM_CERT"
+    export TLS_KEY="${CUSTOM_CERT%.crt}.key"
+  fi
+fi
+
 if [ -z "$TLS_CERT" ] || [ -z "$TLS_KEY" ] || [ ! -f "$TLS_CERT" ] || [ ! -f "$TLS_KEY" ]; then
   if [ ! -f "$DATA_DIR/selfsigned.crt" ] || [ ! -f "$DATA_DIR/selfsigned.key" ]; then
     echo "Gerando certificado HTTPS autoassinado (só acontece uma vez, fica em /data)..."
@@ -24,8 +54,17 @@ if [ -z "$TLS_CERT" ] || [ -z "$TLS_KEY" ] || [ ! -f "$TLS_CERT" ] || [ ! -f "$T
   export TLS_KEY="$DATA_DIR/selfsigned.key"
   echo "Usando certificado autoassinado — o navegador vai mostrar um aviso de"
   echo "segurança na primeira visita (normal, clique em avançar/continuar)."
-  echo "Pra evitar o aviso, monte um certificado de verdade via TLS_CERT/TLS_KEY"
-  echo "(ex.: gerado com 'tailscale cert' no host) — veja o README."
+  echo "Pra evitar o aviso, coloque um certificado de verdade (NOME.crt + NOME.key,"
+  echo "ex.: gerado com 'tailscale cert') na pasta de dados e reinicie — veja o README."
+else
+  echo "Usando o certificado $(basename "$TLS_CERT")"
+  echo "  válido para: $(openssl x509 -noout -ext subjectAltName -in "$TLS_CERT" 2>/dev/null | tail -n +2 | sed 's/DNS://g; s/^ *//')"
+  echo "  expira em:   $(openssl x509 -noout -enddate -in "$TLS_CERT" | cut -d= -f2)"
+  if ! openssl x509 -noout -checkend 0 -in "$TLS_CERT" > /dev/null; then
+    echo "AVISO: esse certificado já expirou. Gere de novo (ex.: 'tailscale cert') e reinicie."
+  elif ! openssl x509 -noout -checkend 1209600 -in "$TLS_CERT" > /dev/null; then
+    echo "AVISO: esse certificado expira em menos de 14 dias. Gere de novo e reinicie."
+  fi
 fi
 
 # TURN embutido (coturn): quando a conexão direta entre dois navegadores falha, o

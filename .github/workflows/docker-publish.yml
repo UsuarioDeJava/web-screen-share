@@ -75,6 +75,20 @@ jobs:
           print('STUN/TURN respondeu na porta 3000, tipo 0x%04x' % struct.unpack('!H', resp[:2])[0])
           EOF
 
+          # Certificado próprio (ex.: do Tailscale) deixado na pasta de dados.
+          mkdir -p smoke-data
+          openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
+            -keyout smoke-data/nas.example.ts.net.key -out smoke-data/nas.example.ts.net.crt \
+            -subj "/CN=nas.example.ts.net" -addext "subjectAltName=DNS:nas.example.ts.net"
+          docker run -d --name wss-cert -p 3001:3000 -v "$PWD/smoke-data:/data" web-screen-share:smoke-test
+          for i in $(seq 1 20); do
+            if docker logs wss-cert 2>&1 | grep -q "TURN embutido ativo"; then break; fi
+            sleep 1
+          done
+          docker logs wss-cert
+          docker logs wss-cert 2>&1 | grep -q "Usando o certificado nas.example.ts.net.crt"
+          echo | openssl s_client -connect localhost:3001 2>/dev/null | openssl x509 -noout -subject | grep -q "nas.example.ts.net"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

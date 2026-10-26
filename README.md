@@ -80,8 +80,8 @@ HTTPS**: se você
 não montar um certificado de verdade, ela gera um autoassinado sozinha na primeira vez
 (guardado no volume `/data`, não é regenerado nos reinícios seguintes). O navegador vai
 mostrar um aviso de segurança na primeira visita — é esperado, clique em
-avançar/continuar. Se quiser evitar esse aviso, monte um certificado de verdade (ex.:
-gerado com `tailscale cert`, veja a seção abaixo) nas variáveis `TLS_CERT`/`TLS_KEY`.
+avançar/continuar. Pra evitar esse aviso, use um certificado de verdade, como o do
+Tailscale (veja [Certificado do Tailscale no container](#certificado-do-tailscale-no-container)).
 
 #### No CasaOS, pela loja própria (recomendado: atualiza com um clique)
 
@@ -126,9 +126,39 @@ Instalar um app personalizado** (ou **Custom Install**) e cole o conteúdo de
 3000 — mas aí as atualizações precisam ser feitas na mão (`docker compose pull && docker
 compose up -d`, ou reinstalando).
 
-Pra usar um certificado próprio (sem aviso de segurança), descomente no
-`docker-compose.yml` as linhas que montam os arquivos `.crt`/`.key` e as variáveis
-`TLS_CERT`/`TLS_KEY`, apontando pros caminhos dentro do container.
+#### Certificado do Tailscale no container
+
+Com um certificado de verdade o navegador não mostra aviso de segurança. O container
+procura sozinho, na pasta de dados dele, um par de arquivos `NOME.crt` + `NOME.key`
+(o formato que o `tailscale cert` gera) e usa esse no lugar do autoassinado. No
+CasaOS (instalado pela loja), a pasta de dados é **`/DATA/AppData/web-screen-share/data`**.
+
+1. O certificado precisa ser **do NAS** (a máquina onde o container roda), pro nome
+   dele no Tailscale (`nome-do-nas.sua-tailnet.ts.net`, que aparece no `tailscale
+   status` ou no painel do Tailscale). Um certificado gerado no seu PC vale pro nome
+   do PC e não serve. No terminal do NAS, dá pra gerar já direto na pasta certa:
+
+   ```bash
+   sudo tailscale cert \
+     --cert-file /DATA/AppData/web-screen-share/data/nas.crt \
+     --key-file /DATA/AppData/web-screen-share/data/nas.key \
+     nome-do-nas.sua-tailnet.ts.net
+   ```
+
+   Ou copie pra essa pasta um par `.crt` + `.key` que você já tenha (com o mesmo nome
+   antes da extensão).
+2. Reinicie o app. No log aparece `Usando o certificado ...`, pra qual nome ele vale e
+   quando expira. Se a chave não for desse certificado, o log avisa e o app continua
+   com o autoassinado.
+3. Acesse **pelo nome**, não pelo IP: `https://nome-do-nas.sua-tailnet.ts.net:3000/`.
+   O certificado só vale pra esse nome.
+
+Os certificados do Tailscale valem cerca de 90 dias. Antes de vencer, repita o passo 1
+e reinicie o app; o log avisa quando faltarem menos de 14 dias.
+
+Alternativa no `docker-compose.yml`: montar os arquivos em outro caminho e apontar as
+variáveis `TLS_CERT`/`TLS_KEY` pra eles (linhas comentadas no arquivo). Se definidas,
+elas têm prioridade.
 
 Se preferir compilar a imagem você mesmo em vez de baixar a pronta (precisa clonar
 este repositório primeiro), troque a linha `image:` do `docker-compose.yml` por
