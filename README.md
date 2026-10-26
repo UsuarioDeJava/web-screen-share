@@ -176,12 +176,20 @@ certificado do Tailscale.
 ### Servidor TURN (para conexões atrás de NAT/firewall mais restritivo)
 
 O WebRTC tenta primeiro conectar diretamente entre transmissor e visualizador. Quando
-isso não é possível (firewall, antivírus ou NAT mais fechado em um dos lados), é
-preciso um servidor **TURN** para retransmitir a mídia — sem ele, a conexão fica presa
-em "conectando" para sempre. Por padrão o projeto já usa um TURN público de testes
-([OpenRelay](https://www.metered.ca/tools/openrelay/)), suficiente para uso pessoal
-esporádico. Para algo mais confiável (ou privado), rode seu próprio
-[coturn](https://github.com/coturn/coturn) e configure:
+isso não é possível (firewall, antivírus, NAT mais fechado, ou o navegador escondendo o
+próprio IP de quem não está transmitindo), é preciso um servidor **TURN** para
+retransmitir a mídia; sem ele, a conexão fica presa em "conectando".
+
+**Na imagem Docker isso já vem pronto:** ela traz um [coturn](https://github.com/coturn/coturn)
+que atende na **mesma porta do site** (3000), então não precisa publicar porta nenhuma a
+mais. O servidor separa as conexões TURN das do site pelo primeiro pacote. Esse TURN só
+retransmite entre pessoas da própria sala (não serve de ponte pra sua rede local nem pra
+internet) e usa credenciais temporárias geradas pelo servidor. Quando ele é usado, o
+vídeo passa pelo NAS; o botão **(i)** do quadro mostra "via servidor TURN".
+
+Fora do Docker (`start.sh`/`start.bat`), o projeto usa por padrão um TURN público de
+testes ([OpenRelay](https://www.metered.ca/tools/openrelay/)). Pra algo mais confiável,
+rode seu próprio [coturn](https://github.com/coturn/coturn) e configure:
 
 ```bash
 TURN_URLS="turn:seu-servidor:3478,turn:seu-servidor:3478?transport=tcp" \
@@ -235,9 +243,7 @@ npm start
 - Se um quadro ficar preso em "Conectando…" ou alternando com "A conexão falhou.
   Tentando de novo…", a conexão direta (P2P) não está conseguindo se estabelecer
   entre aquelas duas pessoas — normalmente firewall/antivírus bloqueando UDP ou NAT
-  restritivo. O app já tenta usar o TURN de fallback (veja acima) e reconecta sozinho;
-  o botão **(i)** do quadro mostra se a conexão está saindo direta ou via TURN. Se
-  continuar preso, vale configurar um TURN próprio, já que o público tem banda
-  limitada e é compartilhado. Note que qualquer TURN faz o vídeo passar por um relay
-  de terceiros quando a conexão direta falha — para privacidade total, use um TURN
-  próprio em vez do público padrão.
+  restritivo. O app tenta o TURN (veja acima) e reconecta sozinho; o botão **(i)** do
+  quadro mostra se a conexão está saindo direta ou via TURN. Na imagem Docker o TURN é
+  o embutido; fora dela, o público padrão tem banda limitada e é de terceiros, então
+  pra uso frequente (ou privacidade) vale configurar um TURN próprio.

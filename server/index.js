@@ -1,14 +1,18 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const net = require('net');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const VERSION = process.env.APP_VERSION || 'dev';
+const LOCAL_TURN_SECRET = process.env.LOCAL_TURN_SECRET;
+const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -17,16 +21,18 @@ app.get('/version', (req, res) => {
   res.set('Cache-Control', 'no-store').json({ version: VERSION });
 });
 
-// Servidores ICE usados pelos clientes (transmissor e visualizadores) para o
-// WebRTC. STUN sozinho não é suficiente quando um dos lados está atrás de um
-// NAT/firewall restritivo (comum em redes domésticas com antivírus mais
-// agressivo): a conexão fica presa em "conectando" para sempre porque não há
-// como retransmitir a mídia. Um servidor TURN resolve isso fazendo o relay.
-// Por padrão usamos um TURN público de testes (OpenRelay); para uso sério,
-// defina TURN_URLS/TURN_USERNAME/TURN_CREDENTIAL com um TURN próprio.
-function buildIceServers() {
+// Quando a conexão direta entre dois navegadores não sai (NAT, firewall, ou o
+// navegador escondendo o próprio IP), a mídia precisa passar por um TURN. A imagem
+// Docker traz um (coturn) atendendo na mesma porta do site; fora dela dá pra usar
+// um próprio via TURN_URLS/TURN_USERNAME/TURN_CREDENTIAL. Sem nenhum dos dois, fica
+// o TURN público de testes (OpenRelay).
+function buildIceServers(req) {
   const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
-  const turnUrls = (process.env.TURN_URLS || 'turn:openrelay.metered.ca:80,turn:openrelay.metered.ca:443,turn:openrelay.metered.ca:443?transport=tcp')
+  if (LOCAL_TURN_SECRET) servers.push(localTurnServer(req));
+  const defaultTurn = LOCAL_TURN_SECRET
+    ? ''
+    : 'turn:openrelay.metered.ca:80,turn:openrelay.metered.ca:443,turn:openrelay.metered.ca:443?transport=tcp';
+  const turnUrls = (process.env.TURN_URLS || defaultTurn)
     .split(',')
     .map((u) => u.trim())
     .filter(Boolean);
@@ -40,8 +46,19 @@ function buildIceServers() {
   return servers;
 }
 
+// Credenciais temporárias no formato "TURN REST API" do coturn (--use-auth-secret):
+// usuário = validade em segundos Unix, senha = HMAC-SHA1(segredo, usuário). O
+// endereço é o mesmo host:porta que o navegador usou pra abrir a página.
+function localTurnServer(req) {
+  const username = `${Math.floor(Date.now() / 1000) + 30 * 24 * 3600}:web-screen-share`;
+  const credential = crypto.createHmac('sha1', LOCAL_TURN_SECRET).update(username).digest('base64');
+  const host = req.get('host');
+  const hostPort = /:\d+$/.test(host) ? host : `${host}:${req.secure ? 443 : 80}`;
+  return { urls: `turn:${hostPort}?transport=tcp`, username, credential };
+}
+
 app.get('/ice-servers', (req, res) => {
-  res.json(buildIceServers());
+  res.set('Cache-Control', 'no-store').json(buildIceServers(req));
 });
 
 // HTTPS via certificado do Tailscale (`tailscale cert`): necessário em redes
@@ -51,10 +68,55 @@ const TLS_CERT = process.env.TLS_CERT;
 const TLS_KEY = process.env.TLS_KEY;
 const useHttps = TLS_CERT && TLS_KEY && fs.existsSync(TLS_CERT) && fs.existsSync(TLS_KEY);
 
-const server = useHttps
+const webServer = useHttps
   ? https.createServer({ cert: fs.readFileSync(TLS_CERT), key: fs.readFileSync(TLS_KEY) }, app)
   : http.createServer(app);
-const io = new Server(server);
+const io = new Server(webServer);
+
+// Uma porta só pra tudo, pra não precisar publicar outra no Docker/CasaOS: conexões
+// que começam com uma mensagem STUN/TURN (magic cookie nos bytes 4-7) vão pro TURN
+// local; o resto (TLS ou HTTP) é o site.
+const STUN_MAGIC_COOKIE = 0x2112a442;
+
+function isStunMessage(chunk) {
+  return chunk.length >= 8 && chunk.readUInt32BE(4) === STUN_MAGIC_COOKIE;
+}
+
+function proxyToTurn(socket) {
+  const upstream = net.connect(LOCAL_TURN_PORT, '127.0.0.1');
+  const close = () => {
+    socket.destroy();
+    upstream.destroy();
+  };
+  upstream.on('error', close).on('close', close);
+  socket.on('close', close);
+  socket.pipe(upstream).pipe(socket);
+}
+
+const server = net.createServer((socket) => {
+  socket.on('error', () => socket.destroy());
+  socket.setTimeout(30000, () => socket.destroy());
+  socket.once('data', (chunk) => {
+    socket.setTimeout(0);
+    socket.pause();
+    socket.unshift(chunk);
+    if (LOCAL_TURN_SECRET && isStunMessage(chunk)) proxyToTurn(socket);
+    else webServer.emit('connection', socket);
+    process.nextTick(() => socket.resume());
+  });
+});
+
+function checkLocalTurn(attempt = 1) {
+  const probe = net.connect(LOCAL_TURN_PORT, '127.0.0.1');
+  probe.once('connect', () => {
+    probe.destroy();
+    console.log(`TURN embutido ativo na porta ${PORT} (TCP): usado quando a conexão direta falha.`);
+  });
+  probe.once('error', () => {
+    if (attempt < 10) setTimeout(() => checkLocalTurn(attempt + 1), 1000);
+    else console.log('AVISO: o TURN embutido (coturn) não respondeu; conexões que dependem dele vão falhar.');
+  });
+}
 
 const ROOM = 'sala';
 const MAX_NAME_LENGTH = 24;
@@ -151,13 +213,18 @@ io.on('connection', (socket) => {
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';
   console.log(`Web Screen Share, versão ${VERSION}`);
-  console.log(`Servidor rodando em ${scheme}://${HOST}:${PORT}${useHttps ? ' (HTTPS via certificado do Tailscale)' : ''}`);
-  console.log(`  - Neste PC: ${scheme}://localhost:${PORT}/`);
-  const lan = listLanAddresses();
-  if (lan.length > 0) {
-    console.log('  - De outros dispositivos na LAN/Tailscale, use um dos endereços abaixo:');
-    for (const addr of lan) {
-      console.log(`      ${scheme}://${addr}:${PORT}/`);
+  console.log(`Servidor rodando em ${scheme}://${HOST}:${PORT}`);
+  if (process.env.IN_CONTAINER) {
+    // Os IPs de dentro do container (172.17.x) não servem pra quem está fora.
+    console.log(`  - Acesse pelo IP ou nome do servidor, na porta publicada (ex.: ${scheme}://<ip-do-nas>:${PORT}/)`);
+  } else {
+    console.log(`  - Neste PC: ${scheme}://localhost:${PORT}/`);
+    const lan = listLanAddresses();
+    if (lan.length > 0) {
+      console.log('  - De outros dispositivos na LAN/Tailscale, use um dos endereços abaixo:');
+      for (const addr of lan) {
+        console.log(`      ${scheme}://${addr}:${PORT}/`);
+      }
     }
   }
   if (!useHttps) {
@@ -165,4 +232,5 @@ server.listen(PORT, HOST, () => {
     console.log('   outros PCs também transmitirem, veja no README como gerar um certificado');
     console.log('   com `tailscale cert`.)');
   }
+  if (LOCAL_TURN_SECRET) checkLocalTurn();
 });

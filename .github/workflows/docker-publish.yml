@@ -45,6 +45,36 @@ jobs:
         id: version
         run: echo "value=$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: web-screen-share:smoke-test
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.value }}
+
+      - name: Smoke test
+        run: |
+          docker run -d --name wss -p 3000:3000 web-screen-share:smoke-test
+          for i in $(seq 1 20); do
+            if docker logs wss 2>&1 | grep -q "TURN embutido ativo"; then break; fi
+            sleep 1
+          done
+          docker logs wss
+          docker logs wss 2>&1 | grep -q "TURN embutido ativo"
+          curl -skf https://localhost:3000/version | grep -q '${{ steps.version.outputs.value }}'
+          curl -skf https://localhost:3000/ice-servers | grep -q 'turn:localhost:3000?transport=tcp'
+          python3 - <<'EOF'
+          import os, socket, struct
+          req = struct.pack('!HHI12s', 0x0001, 0, 0x2112A442, os.urandom(12))
+          s = socket.create_connection(('127.0.0.1', 3000), timeout=5)
+          s.sendall(req)
+          resp = s.recv(1024)
+          assert len(resp) >= 20 and struct.unpack('!I', resp[4:8])[0] == 0x2112A442, resp
+          print('STUN/TURN respondeu na porta 3000, tipo 0x%04x' % struct.unpack('!H', resp[:2])[0])
+          EOF
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
