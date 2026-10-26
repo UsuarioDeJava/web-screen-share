@@ -106,6 +106,20 @@ const server = net.createServer((socket) => {
   });
 });
 
+function certificateHostnames() {
+  if (!useHttps) return [];
+  try {
+    const san = new crypto.X509Certificate(fs.readFileSync(TLS_CERT)).subjectAltName || '';
+    return san
+      .split(', ')
+      .filter((entry) => entry.startsWith('DNS:'))
+      .map((entry) => entry.slice(4))
+      .filter((name) => name !== 'localhost' && !name.startsWith('*'));
+  } catch {
+    return [];
+  }
+}
+
 function checkLocalTurn(attempt = 1) {
   const probe = net.connect(LOCAL_TURN_PORT, '127.0.0.1');
   probe.once('connect', () => {
@@ -214,9 +228,13 @@ server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';
   console.log(`Web Screen Share, versão ${VERSION}`);
   console.log(`Servidor rodando em ${scheme}://${HOST}:${PORT}`);
-  if (process.env.IN_CONTAINER) {
-    // Os IPs de dentro do container (172.17.x) não servem pra quem está fora.
-    console.log(`  - Acesse pelo IP ou nome do servidor, na porta publicada (ex.: ${scheme}://<ip-do-nas>:${PORT}/)`);
+  // Sem "<...>" nas mensagens: o visualizador de logs do CasaOS some com isso.
+  const certNames = certificateHostnames();
+  if (certNames.length > 0) {
+    console.log(`  - Acesse por ${scheme}://${certNames[0]}:${PORT}/ (o nome do certificado)`);
+  } else if (process.env.IN_CONTAINER) {
+    // Os IPs de dentro do container (172.x) não servem pra quem está fora.
+    console.log(`  - Acesse pelo IP ou nome do servidor, na porta publicada (ex.: ${scheme}://IP-DO-NAS:${PORT}/)`);
   } else {
     console.log(`  - Neste PC: ${scheme}://localhost:${PORT}/`);
     const lan = listLanAddresses();
