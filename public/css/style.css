@@ -182,6 +182,23 @@ button { cursor: pointer; }
 }
 .update-banner .btn { height: 32px; }
 
+.cert-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(232, 169, 58, 0.14);
+  color: #f3c97a;
+  font-size: 13px;
+  text-align: left;
+}
+.cert-warning.is-expired { background: rgba(236, 70, 70, 0.16); color: #ff9e9e; }
+.cert-banner {
+  flex: none;
+  padding: 10px 20px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ---------- layout da sala ---------- */
 
 .app {

@@ -62,8 +62,8 @@ else
   echo "  expira em:   $(openssl x509 -noout -enddate -in "$TLS_CERT" | cut -d= -f2)"
   if ! openssl x509 -noout -checkend 0 -in "$TLS_CERT" > /dev/null; then
     echo "AVISO: esse certificado já expirou. Gere de novo (ex.: 'tailscale cert') e reinicie."
-  elif ! openssl x509 -noout -checkend 1209600 -in "$TLS_CERT" > /dev/null; then
-    echo "AVISO: esse certificado expira em menos de 14 dias. Gere de novo e reinicie."
+  elif ! openssl x509 -noout -checkend 2592000 -in "$TLS_CERT" > /dev/null; then
+    echo "AVISO: esse certificado expira em menos de 30 dias. Gere de novo e reinicie."
   fi
 fi
 

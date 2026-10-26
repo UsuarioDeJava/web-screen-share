@@ -50,6 +50,8 @@
   const loginVersionEl = $('login-version');
   const sidebarVersionEl = $('sidebar-version');
   const updateBanner = $('update-banner');
+  const certWarningEls = [$('login-cert'), $('cert-banner')];
+  const CERT_WARNING_DAYS = 30;
 
   const socket = io();
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
@@ -142,9 +144,30 @@
     sidebarVersionEl.textContent = label;
   }
 
-  fetch('/version', { cache: 'no-store' })
+  function showCertificateWarning(cert) {
+    if (!cert) return;
+    const expires = new Date(cert.expiresAt);
+    const days = Math.ceil((expires.getTime() - Date.now()) / 86400000);
+    if (days > CERT_WARNING_DAYS) return;
+    const date = expires.toLocaleDateString('pt-BR');
+    const name = cert.names[0] ? ` (${cert.names[0]})` : '';
+    const when = days <= 0
+      ? `venceu em ${date}`
+      : `vence ${days === 1 ? 'amanhã' : `em ${days} dias`}, em ${date}`;
+    const text = `O certificado HTTPS deste servidor${name} ${when}. Pra renovar, rode de novo o "tailscale cert" no NAS e reinicie o app.`;
+    for (const el of certWarningEls) {
+      el.textContent = text;
+      el.classList.toggle('is-expired', days <= 0);
+      el.hidden = false;
+    }
+  }
+
+  fetch('/status', { cache: 'no-store' })
     .then((res) => res.json())
-    .then(({ version }) => setPageVersion(version))
+    .then(({ version, certificate }) => {
+      setPageVersion(version);
+      showCertificateWarning(certificate);
+    })
     .catch(() => {});
 
   $('btn-reload').addEventListener('click', () => window.location.reload());

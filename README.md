@@ -154,7 +154,8 @@ CasaOS (instalado pela loja), a pasta de dados é **`/DATA/AppData/web-screen-sh
    O certificado só vale pra esse nome.
 
 Os certificados do Tailscale valem cerca de 90 dias. Antes de vencer, repita o passo 1
-e reinicie o app; o log avisa quando faltarem menos de 14 dias.
+e reinicie o app. Quando faltarem 30 dias ou menos (ou se já tiver vencido), a própria
+página avisa todo mundo que abrir, na tela de entrada e no topo da sala, e o log também.
 
 Alternativa no `docker-compose.yml`: montar os arquivos em outro caminho e apontar as
 variáveis `TLS_CERT`/`TLS_KEY` pra eles (linhas comentadas no arquivo). Se definidas,

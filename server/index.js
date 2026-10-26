@@ -68,6 +68,34 @@ const TLS_CERT = process.env.TLS_CERT;
 const TLS_KEY = process.env.TLS_KEY;
 const useHttps = TLS_CERT && TLS_KEY && fs.existsSync(TLS_CERT) && fs.existsSync(TLS_KEY);
 
+// Dados do certificado em uso: o nome vai pro log de início e a validade pra página,
+// que avisa quando estiver perto de vencer (log quase ninguém olha).
+function loadCertificate() {
+  if (!useHttps) return null;
+  try {
+    const cert = new crypto.X509Certificate(fs.readFileSync(TLS_CERT));
+    const names = (cert.subjectAltName || '')
+      .split(', ')
+      .filter((entry) => entry.startsWith('DNS:'))
+      .map((entry) => entry.slice(4))
+      .filter((name) => name !== 'localhost' && !name.startsWith('*'));
+    return { names, expiresAt: new Date(cert.validTo).toISOString(), selfSigned: cert.issuer === cert.subject };
+  } catch {
+    return null;
+  }
+}
+
+const certificate = loadCertificate();
+
+app.get('/status', (req, res) => {
+  res.set('Cache-Control', 'no-store').json({
+    version: VERSION,
+    certificate: certificate && !certificate.selfSigned
+      ? { names: certificate.names, expiresAt: certificate.expiresAt }
+      : null,
+  });
+});
+
 const webServer = useHttps
   ? https.createServer({ cert: fs.readFileSync(TLS_CERT), key: fs.readFileSync(TLS_KEY) }, app)
   : http.createServer(app);
@@ -105,20 +133,6 @@ const server = net.createServer((socket) => {
     process.nextTick(() => socket.resume());
   });
 });
-
-function certificateHostnames() {
-  if (!useHttps) return [];
-  try {
-    const san = new crypto.X509Certificate(fs.readFileSync(TLS_CERT)).subjectAltName || '';
-    return san
-      .split(', ')
-      .filter((entry) => entry.startsWith('DNS:'))
-      .map((entry) => entry.slice(4))
-      .filter((name) => name !== 'localhost' && !name.startsWith('*'));
-  } catch {
-    return [];
-  }
-}
 
 function checkLocalTurn(attempt = 1) {
   const probe = net.connect(LOCAL_TURN_PORT, '127.0.0.1');
@@ -229,7 +243,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Web Screen Share, versão ${VERSION}`);
   console.log(`Servidor rodando em ${scheme}://${HOST}:${PORT}`);
   // Sem "<...>" nas mensagens: o visualizador de logs do CasaOS some com isso.
-  const certNames = certificateHostnames();
+  const certNames = certificate ? certificate.names : [];
   if (certNames.length > 0) {
     console.log(`  - Acesse por ${scheme}://${certNames[0]}:${PORT}/ (o nome do certificado)`);
   } else if (process.env.IN_CONTAINER) {

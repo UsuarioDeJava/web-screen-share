@@ -18,6 +18,7 @@
       <input id="nick" name="nick" maxlength="24" placeholder="Seu nick" aria-label="Seu nick" autofocus />
       <button type="submit" id="login-btn" class="btn btn-primary">Entrar</button>
       <p id="login-error" class="login-error" role="alert"></p>
+      <p id="login-cert" class="cert-warning" role="alert" hidden></p>
       <p class="login-hint">Sem senha: o nick só vale enquanto você estiver na sala.</p>
       <p id="login-version" class="app-version"></p>
     </form>
@@ -57,6 +58,8 @@
           <button id="btn-share" class="btn btn-primary" type="button"></button>
         </div>
       </header>
+
+      <div id="cert-banner" class="cert-warning cert-banner" role="alert" hidden></div>
 
       <div id="update-banner" class="update-banner" role="status" hidden>
         <span>Uma versão nova foi instalada no servidor. Recarregue a página pra usar.</span>
