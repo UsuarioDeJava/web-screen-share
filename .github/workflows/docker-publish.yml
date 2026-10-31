@@ -57,8 +57,11 @@ jobs:
       - name: Smoke test
         run: |
           docker run -d --name wss -p 3000:3000 -p 3000:3478/udp web-screen-share:smoke-test
+          # O coturn e o MediaMTX sobem em paralelo: espera o resultado dos dois.
           for i in $(seq 1 30); do
-            if docker logs wss 2>&1 | grep -q "Transmissão pelo OBS\|AVISO: o servidor de mídia"; then break; fi
+            logs="$(docker logs wss 2>&1)"
+            if echo "$logs" | grep -q "TURN embutido ativo\|AVISO: o TURN embutido" &&
+              echo "$logs" | grep -q "Transmissão pelo OBS\|AVISO: o servidor de mídia"; then break; fi
             sleep 1
           done
           docker logs wss
