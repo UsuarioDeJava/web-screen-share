@@ -14,6 +14,11 @@ const HOST = '0.0.0.0';
 const VERSION = process.env.APP_VERSION || 'dev';
 const LOCAL_TURN_SECRET = process.env.LOCAL_TURN_SECRET;
 const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
+// Porta em que o app está publicado no servidor (o lado "Host" do mapeamento). Só
+// precisa ser definida quando a página é aberta por um proxy reverso (Caddy, nginx…)
+// numa porta diferente: o TURN não passa pelo proxy e precisa ir direto nesta porta.
+const PUBLIC_PORT = /^\d+$/.test(process.env.PUBLIC_PORT || '') ? process.env.PUBLIC_PORT : null;
+const DISPLAY_PORT = PUBLIC_PORT || PORT;
 const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;
 const MEDIAMTX_API_URL = process.env.MEDIAMTX_API_URL;
 
@@ -57,14 +62,39 @@ function turnCredentials() {
   return { username, credential };
 }
 
+const splitHostPort = (value) => {
+  const match = /^(.*):(\d+)$/.exec(value || '');
+  return match ? { hostname: match[1], port: match[2] } : { hostname: value || '', port: null };
+};
+
+// Atrás de um proxy reverso o pedido chega com X-Forwarded-For (e o endereço original
+// em X-Forwarded-Host), e a porta do endereço é a do proxy, não a deste servidor.
+const viaProxy = (req) => Boolean(req.get('x-forwarded-for') || req.get('x-forwarded-host'));
+
 // O TURN fica no mesmo host que abriu a página: por TCP na mesma porta do site e por
 // UDP na porta UDP publicada (por padrão o mesmo número, ex.: 3000/udp).
 function turnAddress(req) {
-  const host = req.get('host') || '';
-  const match = /^(.*):(\d+)$/.exec(host);
-  const hostname = match ? match[1] : host;
-  const port = match ? match[2] : String(req.secure ? 443 : 80);
+  const host = splitHostPort(req.get('host'));
+  const forwarded = req.get('x-forwarded-host');
+  // O proxy pode trocar o Host pelo endereço interno; o nome que o navegador usou vem
+  // no X-Forwarded-Host.
+  const { hostname } = forwarded ? splitHostPort(forwarded.split(',')[0].trim()) : host;
+  const port = PUBLIC_PORT || host.port || String(req.secure ? 443 : 80);
   return { hostname, tcpPort: port, udpPort: process.env.TURN_UDP_PORT || port };
+}
+
+// Aberto por proxy sem PUBLIC_PORT: o TURN vai pra uma porta que provavelmente é a do
+// proxy, que não repassa TURN. Avisa na página e no log (uma vez).
+let proxyWarned = false;
+function proxyWithoutPublicPort(req) {
+  if (!LOCAL_TURN_SECRET || PUBLIC_PORT || !viaProxy(req)) return null;
+  const { tcpPort } = turnAddress(req);
+  if (!proxyWarned) {
+    proxyWarned = true;
+    console.log(`AVISO: a página foi aberta por um proxy reverso, e o TURN não passa por ele (está indo pra porta ${tcpPort}).`);
+    console.log('  Defina a variável PUBLIC_PORT com a porta em que este app está publicado no servidor (veja o README).');
+  }
+  return { port: tcpPort };
 }
 
 function localTurnServer(req) {
@@ -119,6 +149,7 @@ app.get('/status', (req, res) => {
       ? { names: certificate.names, expiresAt: certificate.expiresAt }
       : null,
     obs: Boolean(obs),
+    proxy: proxyWithoutPublicPort(req),
   });
 });
 
@@ -164,7 +195,7 @@ function checkLocalTurn(attempt = 1) {
   const probe = net.connect(LOCAL_TURN_PORT, '127.0.0.1');
   probe.once('connect', () => {
     probe.destroy();
-    console.log(`TURN embutido ativo na porta ${PORT} (TCP): usado quando a conexão direta falha.`);
+    console.log(`TURN embutido ativo na porta ${DISPLAY_PORT} (TCP e UDP): usado quando a conexão direta falha.`);
   });
   probe.once('error', () => {
     if (attempt < 10) setTimeout(() => checkLocalTurn(attempt + 1), 1000);
@@ -294,10 +325,10 @@ server.listen(PORT, HOST, () => {
   // Sem "<...>" nas mensagens: o visualizador de logs do CasaOS some com isso.
   const certNames = certificate ? certificate.names : [];
   if (certNames.length > 0) {
-    console.log(`  - Acesse por ${scheme}://${certNames[0]}:${PORT}/ (o nome do certificado)`);
+    console.log(`  - Acesse por ${scheme}://${certNames[0]}:${DISPLAY_PORT}/ (o nome do certificado)`);
   } else if (process.env.IN_CONTAINER) {
     // Os IPs de dentro do container (172.x) não servem pra quem está fora.
-    console.log(`  - Acesse pelo IP ou nome do servidor, na porta publicada (ex.: ${scheme}://IP-DO-NAS:${PORT}/)`);
+    console.log(`  - Acesse pelo IP ou nome do servidor, na porta publicada (ex.: ${scheme}://IP-DO-NAS:${DISPLAY_PORT}/)`);
   } else {
     console.log(`  - Neste PC: ${scheme}://localhost:${PORT}/`);
     const lan = listLanAddresses();
@@ -313,13 +344,14 @@ server.listen(PORT, HOST, () => {
     console.log('   outros PCs também transmitirem, veja no README como gerar um certificado');
     console.log('   com `tailscale cert`.)');
   }
+  if (PUBLIC_PORT) console.log(`  (PUBLIC_PORT=${PUBLIC_PORT}: o TURN vai direto nessa porta, mesmo com a página aberta por um proxy.)`);
   if (LOCAL_TURN_SECRET) checkLocalTurn();
   if (obs) checkObs();
 });
 
 async function checkObs(attempt = 1) {
   if (await obs.ready()) {
-    const host = certificate && certificate.names[0] ? `${certificate.names[0]}:${PORT}` : `IP-DO-NAS:${PORT}`;
+    const host = `${certificate && certificate.names[0] ? certificate.names[0] : 'IP-DO-NAS'}:${DISPLAY_PORT}`;
     console.log(`Transmissão pelo OBS ativa: no OBS, Serviço "WHIP", servidor https://${host}/obs/SEU-NICK`);
   } else if (attempt < 10) {
     setTimeout(() => checkObs(attempt + 1), 1000);

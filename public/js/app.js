@@ -60,6 +60,7 @@
   const obsNickEl = $('obs-nick');
   const obsCheckEl = $('obs-check');
   const obsCertEl = $('obs-cert');
+  const proxyBanner = $('proxy-banner');
 
   const socket = io();
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
@@ -178,8 +179,20 @@
       setPageVersion(status.version);
       showCertificateWarning(status.certificate);
       btnObs.hidden = !status.obs;
+      if (status.proxy) {
+        proxyBanner.textContent = proxyWarningText(status.proxy.port);
+        proxyBanner.hidden = false;
+      }
     })
     .catch(() => {});
+
+  // Aberta por um proxy reverso (ex.: Caddy numa porta "+30000") sem PUBLIC_PORT: o
+  // TURN do servidor não atravessa o proxy.
+  function proxyWarningText(port) {
+    return `Esta página foi aberta por um proxy (porta ${port}), e o vídeo que passa pelo servidor (TURN) não atravessa o proxy: `
+      + 'quem depende dele pra assistir e as transmissões pelo OBS podem não conectar. '
+      + 'Pra corrigir, defina a variável PUBLIC_PORT do app com a porta em que ele está publicado direto no servidor, sem o proxy, e reinicie (veja o README).';
+  }
 
   $('btn-reload').addEventListener('click', () => window.location.reload());
 
@@ -753,6 +766,12 @@
     }
     if (!server) {
       obsCheckEl.hidden = true;
+      return;
+    }
+    if (serverStatus.proxy) {
+      obsCheckEl.hidden = false;
+      obsCheckEl.className = 'obs-check is-bad';
+      obsCheckEl.textContent = proxyWarningText(serverStatus.proxy.port);
       return;
     }
     const port = (url.match(/:(\d+)\?/) || [])[1] || '3000';

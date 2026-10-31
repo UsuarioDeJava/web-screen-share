@@ -69,6 +69,9 @@ jobs:
           docker logs wss 2>&1 | grep -q "Transmissão pelo OBS ativa"
           curl -skf https://localhost:3000/version | grep -q '${{ steps.version.outputs.value }}'
           curl -skf https://localhost:3000/ice-servers | grep -q 'turn:localhost:3000?transport=tcp'
+          # Aberto por um proxy reverso sem PUBLIC_PORT: a página recebe o aviso.
+          curl -skf https://localhost:3000/status | grep -q '"proxy":null'
+          curl -skf -H 'X-Forwarded-For: 10.0.0.1' https://localhost:3000/status | grep -q '"proxy":{"port":"3000"}'
           python3 - <<'EOF'
           import os, socket, struct
           req = struct.pack('!HHI12s', 0x0001, 0, 0x2112A442, os.urandom(12))
@@ -123,7 +126,7 @@ jobs:
           printf "subjectAltName=DNS:nas.example.ts.net\n" > smoke-ext.cnf
           openssl x509 -req -in smoke.csr -CA smoke-ca.crt -CAkey smoke-ca.key -CAcreateserial -days 20 \
             -extfile smoke-ext.cnf -out smoke-data/nas.example.ts.net.crt
-          docker run -d --name wss-cert -p 3001:3000 -v "$PWD/smoke-data:/data" web-screen-share:smoke-test
+          docker run -d --name wss-cert -p 3001:3000 -e PUBLIC_PORT=3001 -v "$PWD/smoke-data:/data" web-screen-share:smoke-test
           for i in $(seq 1 20); do
             if docker logs wss-cert 2>&1 | grep -q "TURN embutido ativo"; then break; fi
             sleep 1
@@ -131,6 +134,13 @@ jobs:
           docker logs wss-cert
           docker logs wss-cert 2>&1 | grep -q "Usando o certificado nas.example.ts.net.crt"
           docker logs wss-cert 2>&1 | grep -q "expira em menos de 30 dias"
+          # Com PUBLIC_PORT, o TURN vai direto na porta publicada mesmo vindo de um proxy
+          # (aqui, um Caddy fictício em nas.example.ts.net:33001).
+          docker logs wss-cert 2>&1 | grep -q "PUBLIC_PORT=3001"
+          proxied="-H Host:nas.example.ts.net:33001 -H X-Forwarded-For:10.0.0.1"
+          curl -skf $proxied https://localhost:3001/ice-servers | tee /dev/stderr |
+            grep -q '"turn:nas.example.ts.net:3001?transport=udp","turn:nas.example.ts.net:3001?transport=tcp"'
+          curl -skf $proxied https://localhost:3001/status | grep -q '"proxy":null'
           echo | openssl s_client -connect localhost:3001 2>/dev/null | openssl x509 -noout -subject | grep -q "nas.example.ts.net"
           curl -skf https://localhost:3001/status | python3 -c '
           import datetime, json, subprocess, sys

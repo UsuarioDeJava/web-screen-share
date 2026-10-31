@@ -21,6 +21,9 @@ services:
       # - /caminho/no/host/seu-dominio.key:/certs/cert.key:ro
     environment:
       - PORT=3000
+      # Só se a página for aberta por um proxy reverso (Caddy, nginx…) numa porta
+      # diferente: a porta publicada acima (lado do host), pra onde o TURN vai direto.
+      # - PUBLIC_PORT=3000
       # - TLS_CERT=/certs/cert.crt
       # - TLS_KEY=/certs/cert.key
       # - TURN_URLS=

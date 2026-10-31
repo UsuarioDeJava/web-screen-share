@@ -11,11 +11,22 @@ services:
       - target: 3478
         published: "3000"
         protocol: udp
+    environment:
+      PUBLIC_PORT: ""
     volumes:
       - type: bind
         source: /DATA/AppData/$AppID/data
         target: /data
     x-casaos:
+      envs:
+        - container: PUBLIC_PORT
+          description:
+            en_US: >-
+              Only if you open the app through a reverse proxy on another port: the
+              host port the app is published on (e.g. 3000), so TURN goes there directly
+            pt_BR: >-
+              Só se você abre o app por um proxy reverso em outra porta: a porta em que
+              o app está publicado no servidor (ex.: 3000), pro TURN ir direto nela
       ports:
         - container: "3000"
           description:

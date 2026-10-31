@@ -129,6 +129,23 @@ Instalar um app personalizado** (ou **Custom Install**) e cole o conteúdo de
 3000 — mas aí as atualizações precisam ser feitas na mão (`docker compose pull && docker
 compose up -d`, ou reinstalando).
 
+#### Trocando a porta, ou abrindo por um proxy (Caddy, nginx…)
+
+A porta não depende de rebuild nem de variável: quem escolhe é o lado **Host** do
+mapeamento. No CasaOS, em **Configurações** do app > **Portas**, troque o número do
+**Host** nas duas linhas (a TCP, que vai pro container `3000`, e a UDP, que vai pro
+`3478`), sempre com **o mesmo número** nas duas, e ajuste a porta do **Web UI**. O lado
+**Container** fica como está. O app se ajusta sozinho à porta usada pra abrir a página.
+
+Se você abre a página por um **proxy reverso** numa porta diferente (ex.: um Caddy que
+publica `https://nas...:33100` na frente do app em `:3100`), o site e o OBS funcionam
+pelo proxy, mas o TURN não: ele não é HTTP e não atravessa o proxy. Nesse caso defina
+a variável **`PUBLIC_PORT`** com a porta em que o app está publicado direto no servidor
+(no exemplo, `3100`), e o TURN passa a ir direto nela, por TCP e UDP. No CasaOS: em
+**Configurações** do app > **Variáveis de ambiente**, adicione `PUBLIC_PORT` = `3100` e
+salve. Sem isso, quem abre a página pelo proxy vê um aviso no topo da sala, e quem
+depende do TURN pra assistir (e o OBS) pode não conectar.
+
 #### Certificado do Tailscale no container
 
 Com um certificado de verdade o navegador não mostra aviso de segurança. O container
