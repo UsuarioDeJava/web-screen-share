@@ -56,13 +56,14 @@ jobs:
 
       - name: Smoke test
         run: |
-          docker run -d --name wss -p 3000:3000 web-screen-share:smoke-test
-          for i in $(seq 1 20); do
-            if docker logs wss 2>&1 | grep -q "TURN embutido ativo"; then break; fi
+          docker run -d --name wss -p 3000:3000 -p 3000:3478/udp web-screen-share:smoke-test
+          for i in $(seq 1 30); do
+            if docker logs wss 2>&1 | grep -q "Transmissão pelo OBS\|AVISO: o servidor de mídia"; then break; fi
             sleep 1
           done
           docker logs wss
           docker logs wss 2>&1 | grep -q "TURN embutido ativo"
+          docker logs wss 2>&1 | grep -q "Transmissão pelo OBS ativa"
           curl -skf https://localhost:3000/version | grep -q '${{ steps.version.outputs.value }}'
           curl -skf https://localhost:3000/ice-servers | grep -q 'turn:localhost:3000?transport=tcp'
           python3 - <<'EOF'
@@ -74,6 +75,42 @@ jobs:
           assert len(resp) >= 20 and struct.unpack('!I', resp[4:8])[0] == 0x2112A442, resp
           print('STUN/TURN respondeu na porta 3000, tipo 0x%04x' % struct.unpack('!H', resp[:2])[0])
           EOF
+
+          # Transmissão pelo OBS: TURN em UDP na porta 3000 e o WHIP repassado pro MediaMTX.
+          curl -skf https://localhost:3000/status | grep -q '"obs":true'
+          python3 - <<'EOF'
+          import os, socket, struct
+          req = struct.pack('!HHI12s', 0x0001, 0, 0x2112A442, os.urandom(12))
+          s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+          s.settimeout(5)
+          s.sendto(req, ('127.0.0.1', 3000))
+          resp, _ = s.recvfrom(1024)
+          assert len(resp) >= 20 and struct.unpack('!I', resp[4:8])[0] == 0x2112A442, resp
+          print('STUN/TURN respondeu na porta 3000/UDP, tipo 0x%04x' % struct.unpack('!H', resp[:2])[0])
+          EOF
+          python3 - > offer.sdp <<'EOF'
+          import os
+          fp = ':'.join('%02X' % b for b in os.urandom(32))
+          print('\r\n'.join([
+            'v=0', 'o=rtc 1 0 IN IP4 127.0.0.1', 's=-', 't=0 0',
+            'a=group:BUNDLE 0 1', 'a=msid-semantic:WMS *', 'a=fingerprint:sha-256 ' + fp,
+            'a=ice-ufrag:smok', 'a=ice-pwd:smoketestsmoketestsmoke', 'a=setup:actpass',
+            'm=audio 9 UDP/TLS/RTP/SAVPF 111', 'c=IN IP4 0.0.0.0', 'a=mid:0', 'a=sendonly',
+            'a=rtcp-mux', 'a=rtpmap:111 opus/48000/2',
+            'm=video 9 UDP/TLS/RTP/SAVPF 96', 'c=IN IP4 0.0.0.0', 'a=mid:1', 'a=sendonly',
+            'a=rtcp-mux', 'a=rtpmap:96 H264/90000',
+            'a=fmtp:96 profile-level-id=42e01f;packetization-mode=1;level-asymmetry-allowed=1',
+          ]) + '\r\n', end='')
+          EOF
+          curl -sk -D whip-headers.txt -o answer.sdp -X POST -H 'Content-Type: application/sdp' \
+            -H 'Authorization: Bearer qualquer-coisa' --data-binary @offer.sdp https://localhost:3000/obs/Smoke
+          cat whip-headers.txt
+          grep -q '^HTTP/1.1 201' whip-headers.txt
+          grep -q '^Link: <turn:localhost:3000?transport=udp>; rel="ice-server"; username="' whip-headers.txt
+          grep -q ' 127.0.0.1 8189 typ host' answer.sdp
+          location="$(grep -i '^Location:' whip-headers.txt | cut -d' ' -f2 | tr -d '\r')"
+          echo "$location" | grep -Eq '^/mtx/obs_536d6f6b65/whip/[0-9a-f-]{36}$'
+          test "$(curl -sk -o /dev/null -w '%{http_code}' -X DELETE "https://localhost:3000$location")" = 200
 
           # Certificado próprio (assinado por uma CA, como o do Tailscale) deixado na
           # pasta de dados, faltando 20 dias pra vencer.

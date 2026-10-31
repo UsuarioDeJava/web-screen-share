@@ -9,6 +9,9 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+      # Transmissão pelo OBS: o vídeo chega pelo TURN embutido em UDP (o OBS não
+      # sabe usar TURN por TCP). Mesmo número da porta do site, só que UDP.
+      - "3000:3478/udp"
     volumes:
       - web-screen-share-data:/data
       # Pra usar um certificado de verdade (ex.: gerado com `tailscale cert` no

@@ -7,12 +7,15 @@ const https = require('https');
 const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
+const { setupObs } = require('./obs');
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const VERSION = process.env.APP_VERSION || 'dev';
 const LOCAL_TURN_SECRET = process.env.LOCAL_TURN_SECRET;
 const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
+const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;
+const MEDIAMTX_API_URL = process.env.MEDIAMTX_API_URL;
 
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -47,14 +50,36 @@ function buildIceServers(req) {
 }
 
 // Credenciais temporárias no formato "TURN REST API" do coturn (--use-auth-secret):
-// usuário = validade em segundos Unix, senha = HMAC-SHA1(segredo, usuário). O
-// endereço é o mesmo host:porta que o navegador usou pra abrir a página.
-function localTurnServer(req) {
+// usuário = validade em segundos Unix, senha = HMAC-SHA1(segredo, usuário).
+function turnCredentials() {
   const username = `${Math.floor(Date.now() / 1000) + 30 * 24 * 3600}:web-screen-share`;
   const credential = crypto.createHmac('sha1', LOCAL_TURN_SECRET).update(username).digest('base64');
-  const host = req.get('host');
-  const hostPort = /:\d+$/.test(host) ? host : `${host}:${req.secure ? 443 : 80}`;
-  return { urls: `turn:${hostPort}?transport=tcp`, username, credential };
+  return { username, credential };
+}
+
+// O TURN fica no mesmo host que abriu a página: por TCP na mesma porta do site e por
+// UDP na porta UDP publicada (por padrão o mesmo número, ex.: 3000/udp).
+function turnAddress(req) {
+  const host = req.get('host') || '';
+  const match = /^(.*):(\d+)$/.exec(host);
+  const hostname = match ? match[1] : host;
+  const port = match ? match[2] : String(req.secure ? 443 : 80);
+  return { hostname, tcpPort: port, udpPort: process.env.TURN_UDP_PORT || port };
+}
+
+function localTurnServer(req) {
+  const { hostname, tcpPort, udpPort } = turnAddress(req);
+  return {
+    urls: [`turn:${hostname}:${udpPort}?transport=udp`, `turn:${hostname}:${tcpPort}?transport=tcp`],
+    ...turnCredentials(),
+  };
+}
+
+// Formato do cabeçalho Link de ICE server do WHIP, que o OBS lê.
+function turnLink(req) {
+  const { hostname, udpPort } = turnAddress(req);
+  const { username, credential } = turnCredentials();
+  return `<turn:${hostname}:${udpPort}?transport=udp>; rel="ice-server"; username="${username}"; credential="${credential}"`;
 }
 
 app.get('/ice-servers', (req, res) => {
@@ -93,6 +118,7 @@ app.get('/status', (req, res) => {
     certificate: certificate && !certificate.selfSigned
       ? { names: certificate.names, expiresAt: certificate.expiresAt }
       : null,
+    obs: Boolean(obs),
   });
 });
 
@@ -164,7 +190,29 @@ function uniqueName(name) {
   }
 }
 
-const publicUser = ({ id, name, sharing }) => ({ id, name, sharing });
+const publicUser = ({ id, name, sharing, kind, stream }) =>
+  (kind ? { id, name, sharing, kind, stream } : { id, name, sharing });
+
+// Transmissões do OBS aparecem na sala como participantes que já entram transmitindo.
+const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
+  ? setupObs({
+    app,
+    webrtcUrl: MEDIAMTX_WEBRTC_URL,
+    apiUrl: MEDIAMTX_API_URL,
+    cleanName,
+    turnLink,
+    onStreamsChanged(added, removed) {
+      for (const stream of added) {
+        console.log(`OBS: ${stream.name} começou a transmitir`);
+        io.to(ROOM).emit('user:joined', publicUser(stream));
+      }
+      for (const stream of removed) {
+        console.log(`OBS: ${stream.name} parou de transmitir`);
+        io.to(ROOM).emit('user:left', { id: stream.id });
+      }
+    },
+  })
+  : null;
 
 // IP de onde o cliente chega até este servidor (ex.: o do Tailscale). Vai junto dos
 // sinais pro outro lado alcançá-lo mesmo quando o navegador esconde o próprio IP.
@@ -218,7 +266,8 @@ io.on('connection', (socket) => {
     console.log(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
-    ack({ me: publicUser(user), users: [...users.values()].map(publicUser), version: VERSION });
+    const everyone = [...users.values(), ...(obs ? obs.list() : [])];
+    ack({ me: publicUser(user), users: everyone.map(publicUser), version: VERSION });
   });
 
   socket.on('share', (sharing) => {
@@ -265,4 +314,16 @@ server.listen(PORT, HOST, () => {
     console.log('   com `tailscale cert`.)');
   }
   if (LOCAL_TURN_SECRET) checkLocalTurn();
+  if (obs) checkObs();
 });
+
+async function checkObs(attempt = 1) {
+  if (await obs.ready()) {
+    const host = certificate && certificate.names[0] ? `${certificate.names[0]}:${PORT}` : `IP-DO-NAS:${PORT}`;
+    console.log(`Transmissão pelo OBS ativa: no OBS, Serviço "WHIP", servidor https://${host}/obs/SEU-NICK`);
+  } else if (attempt < 10) {
+    setTimeout(() => checkObs(attempt + 1), 1000);
+  } else {
+    console.log('AVISO: o servidor de mídia do OBS (MediaMTX) não respondeu; transmitir pelo OBS não vai funcionar.');
+  }
+}

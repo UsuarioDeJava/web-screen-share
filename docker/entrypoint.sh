@@ -68,11 +68,12 @@ else
 fi
 
 # TURN embutido (coturn): quando a conexão direta entre dois navegadores falha, o
-# vídeo passa por aqui. Ele só escuta em 127.0.0.1 (o Node repassa as conexões TURN
-# que chegam na porta do site) e só retransmite entre alocações deste próprio
-# servidor, sem servir de ponte pra rede local nem pra internet. O aviso do coturn
-# sobre allow-loopback-peers não se aplica: o único destino liberado é 127.0.0.1, e
-# ali não há serviço UDP além das próprias alocações (o Node só usa TCP).
+# vídeo passa por aqui, e é também por onde o OBS manda a transmissão. Por TCP ele é
+# alcançado pela porta do site (o Node repassa as conexões TURN); por UDP, pela porta
+# 3478 do container (publicada como 3000/udp). Só retransmite pra 127.0.0.1, sem
+# servir de ponte pra rede local nem pra internet. O aviso do coturn sobre
+# allow-loopback-peers não se aplica: em 127.0.0.1 só há as próprias alocações e o
+# MediaMTX (o Node só usa TCP).
 if [ ! -s "$DATA_DIR/turn-secret" ]; then
   (umask 077 && openssl rand -hex 32 > "$DATA_DIR/turn-secret")
 fi
@@ -81,12 +82,10 @@ export LOCAL_TURN_PORT="${LOCAL_TURN_PORT:-3478}"
 
 TURN_CONF="$(mktemp)"
 cat > "$TURN_CONF" <<EOF
-listening-ip=127.0.0.1
 listening-port=$LOCAL_TURN_PORT
 relay-ip=127.0.0.1
 min-port=49152
 max-port=65535
-no-udp
 no-tls
 no-dtls
 no-cli
@@ -104,6 +103,36 @@ log-file=/tmp/turnserver.log
 pidfile=/tmp/turnserver.pid
 EOF
 turnserver -c "$TURN_CONF" >> /tmp/turnserver.log 2>&1 &
+
+# MediaMTX: recebe a transmissão do OBS (WHIP) e repassa pra quem assiste (WHEP).
+# Só escuta em 127.0.0.1: o HTTP passa pelo Node e a mídia chega pelo TURN, então ele
+# anuncia apenas 127.0.0.1:8189 como endereço. Os outros protocolos ficam desligados.
+MTX_CONF="$(mktemp)"
+cat > "$MTX_CONF" <<EOF
+logLevel: warn
+logDestinations: [stdout]
+api: true
+apiAddress: 127.0.0.1:9997
+metrics: false
+pprof: false
+playback: false
+rtsp: false
+rtmp: false
+hls: false
+srt: false
+moq: false
+webrtc: true
+webrtcAddress: 127.0.0.1:8889
+webrtcLocalUDPAddress: 127.0.0.1:8189
+webrtcLocalTCPAddress: ""
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: [127.0.0.1]
+paths:
+  all_others:
+EOF
+mediamtx "$MTX_CONF" &
+export MEDIAMTX_WEBRTC_URL=http://127.0.0.1:8889
+export MEDIAMTX_API_URL=http://127.0.0.1:9997
 
 export IN_CONTAINER=1
 exec node server/index.js

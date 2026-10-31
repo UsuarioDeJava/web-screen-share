@@ -55,6 +55,7 @@
         </div>
         <div class="topbar-actions">
           <span id="share-hint" class="share-hint" hidden></span>
+          <button id="btn-obs" class="btn" type="button" title="Transmitir pelo OBS Studio" hidden></button>
           <button id="btn-share" class="btn btn-primary" type="button"></button>
         </div>
       </header>
@@ -78,6 +79,34 @@
       </div>
     </main>
   </div>
+
+  <dialog id="obs-dialog" class="dialog" aria-labelledby="obs-title">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="obs-title">Transmitir pelo OBS</h3>
+        <button class="icon-btn" type="submit" title="Fechar" aria-label="Fechar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </button>
+      </div>
+      <p class="dialog-sub">Pelo OBS Studio dá pra transmitir com som mesmo de navegadores que não compartilham áudio (como Firefox e Zen), ou mandar uma cena montada no OBS.</p>
+      <ol class="obs-steps">
+        <li>No OBS Studio (versão 30 ou mais nova), abra <b>Configurações → Transmissão</b>.</li>
+        <li>Em <b>Serviço</b>, escolha <b>WHIP</b>.</li>
+        <li>
+          Em <b>Servidor</b>, cole:
+          <span class="copy-field">
+            <input id="obs-url" readonly aria-label="Endereço do servidor pro OBS" />
+            <button id="obs-copy" class="btn" type="button">Copiar</button>
+          </span>
+        </li>
+        <li>O <b>Bearer Token</b> pode ficar em branco (qualquer coisa serve).</li>
+        <li>Clique em <b>Iniciar transmissão</b>. Você aparece na sala como <b id="obs-nick"></b>, com a etiqueta OBS.</li>
+      </ol>
+      <p class="dialog-tip">Em <b>Saída</b>, use um codificador H.264, uns 6000 Kbps e intervalo de quadro-chave de 1 s: quem entra no meio começa a ver mais rápido. O nick vem do endereço: troque o final dele pra transmitir com outro nome.</p>
+      <p id="obs-check" class="obs-check" hidden></p>
+      <p id="obs-cert" class="cert-warning" hidden>Este servidor está com um certificado autoassinado, e o OBS recusa conectar assim. Coloque o certificado do Tailscale na pasta de dados do app (veja o README) e reinicie.</p>
+    </form>
+  </dialog>
 
   <div id="toast" class="toast" role="status" hidden></div>
 

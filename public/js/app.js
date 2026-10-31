@@ -14,6 +14,7 @@
     info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    broadcast: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
   };
 
   const CONNECTION_LABELS = {
@@ -52,6 +53,13 @@
   const updateBanner = $('update-banner');
   const certWarningEls = [$('login-cert'), $('cert-banner')];
   const CERT_WARNING_DAYS = 30;
+  const btnObs = $('btn-obs');
+  const obsDialog = $('obs-dialog');
+  const obsUrlInput = $('obs-url');
+  const obsCopyBtn = $('obs-copy');
+  const obsNickEl = $('obs-nick');
+  const obsCheckEl = $('obs-check');
+  const obsCertEl = $('obs-cert');
 
   const socket = io();
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
@@ -79,6 +87,7 @@
   let signalQueue = Promise.resolve();
   let toastTimer = null;
   let pageVersion = null; // versão do servidor quando esta página foi carregada
+  let serverStatus = {};
 
   // ---------- helpers de DOM ----------
 
@@ -164,9 +173,11 @@
 
   fetch('/status', { cache: 'no-store' })
     .then((res) => res.json())
-    .then(({ version, certificate }) => {
-      setPageVersion(version);
-      showCertificateWarning(certificate);
+    .then((status) => {
+      serverStatus = status;
+      setPageVersion(status.version);
+      showCertificateWarning(status.certificate);
+      btnObs.hidden = !status.obs;
     })
     .catch(() => {});
 
@@ -265,6 +276,8 @@
   socket.on('user:joined', (user) => {
     if (!me) return;
     users.set(user.id, user);
+    // Quem entra pelo OBS já chega transmitindo.
+    if (user.sharing) addStreamTile(user);
     renderUsers();
   });
 
@@ -302,6 +315,7 @@
       const li = el('li', u.sharing ? 'user is-live' : 'user');
       li.append(avatar(u.name), el('span', 'user-name', u.name));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
+      if (u.kind === 'obs') li.append(el('span', 'tag tag-obs', 'OBS'));
       if (u.sharing) li.append(el('span', 'live-badge', 'AO VIVO'));
       if (u.sharing && u.id !== myId) {
         li.tabIndex = 0;
@@ -362,7 +376,7 @@
 
   new ResizeObserver(layoutGrid).observe(gridEl);
 
-  function createTile(name, label) {
+  function createTile(name, label, kind) {
     const tile = el('div', 'tile');
     const media = el('div', 'tile-media');
     const video = el('video');
@@ -373,7 +387,9 @@
     media.append(video, status);
     const bar = el('div', 'tile-bar');
     const who = el('div', 'tile-who');
-    who.append(avatar(name), el('span', 'tile-name', label), el('span', 'live-badge', 'AO VIVO'));
+    who.append(avatar(name), el('span', 'tile-name', label));
+    if (kind === 'obs') who.append(el('span', 'tag tag-obs', 'OBS'));
+    who.append(el('span', 'live-badge', 'AO VIVO'));
     bar.append(who);
     tile.append(media, bar);
     return { tile, media, video, status, bar };
@@ -607,17 +623,7 @@
           send(broadcasterId, { stream: broadcasterId, sid: data.sid, type: 'candidate', candidate: e.candidate });
         }
       };
-      pc.onconnectionstatechange = () => {
-        if (s.pc !== pc) return;
-        if (pc.connectionState === 'failed') {
-          setStatus(s, 'A conexão falhou. Tentando de novo…', true);
-          scheduleRetry(s);
-        } else if (pc.connectionState === 'disconnected') {
-          setStatus(s, 'Conexão instável…', true);
-        } else if (pc.connectionState === 'connected' && !s.video.paused) {
-          setStatus(s, '');
-        }
-      };
+      pc.onconnectionstatechange = () => onIncomingState(s, pc);
 
       await pc.setRemoteDescription(data.sdp);
       await flushPending(s);
@@ -629,21 +635,181 @@
     }
   }
 
+  function onIncomingState(s, pc) {
+    if (s.pc !== pc) return;
+    if (pc.connectionState === 'failed') {
+      setStatus(s, 'A conexão falhou. Tentando de novo…', true);
+      scheduleRetry(s);
+    } else if (pc.connectionState === 'disconnected') {
+      setStatus(s, 'Conexão instável…', true);
+    } else if (pc.connectionState === 'connected' && !s.video.paused) {
+      setStatus(s, '');
+    }
+  }
+
+  // ---------- assistir uma transmissão do OBS (WHEP) ----------
+
+  // Sem trickle: manda a oferta já com os candidatos (o caminho é sempre pelo TURN
+  // do servidor, que responde rápido), com um limite pra não travar se demorar.
+  function iceGatheringDone(pc, timeoutMs) {
+    if (pc.iceGatheringState === 'complete') return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs);
+      pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState !== 'complete') return;
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+
+  async function startWhep(s) {
+    const attempt = s.attempt;
+    const current = () => s.attempt === attempt && s.watching && streams.get(s.id) === s;
+    const iceServers = await iceServersPromise;
+    if (!current()) return;
+    const pc = new RTCPeerConnection({ iceServers });
+    s.pc = pc;
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+    const media = new MediaStream();
+    pc.ontrack = (e) => {
+      if (s.pc !== pc) return;
+      media.addTrack(e.track);
+      if (s.video.srcObject !== media) {
+        s.video.srcObject = media;
+        playVideo(s);
+      }
+    };
+    pc.onconnectionstatechange = () => onIncomingState(s, pc);
+    try {
+      await pc.setLocalDescription(await pc.createOffer());
+      await iceGatheringDone(pc, 3000);
+      if (!current()) return;
+      const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/whep`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: pc.localDescription.sdp,
+      });
+      const location = res.status === 201 && res.headers.get('Location');
+      if (!current()) {
+        if (location) fetch(location, { method: 'DELETE', keepalive: true }).catch(() => {});
+        return;
+      }
+      if (!location) throw new Error(`WHEP respondeu ${res.status}`);
+      s.whepUrl = location;
+      await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+      s.hasAudio = media.getAudioTracks().length > 0;
+      renderAudio(s);
+    } catch (err) {
+      if (!current()) return;
+      console.warn('Falha ao assistir a transmissão do OBS', err);
+      setStatus(s, 'Não deu pra conectar. Tentando de novo…', true);
+      scheduleRetry(s);
+    }
+  }
+
+  // ---------- transmitir pelo OBS ----------
+
+  btnObs.replaceChildren(icon('broadcast'), 'OBS');
+
+  btnObs.addEventListener('click', () => {
+    if (!me) return;
+    obsUrlInput.value = `${window.location.origin}/obs/${encodeURIComponent(me.name)}`;
+    obsNickEl.textContent = me.name;
+    obsCopyBtn.textContent = 'Copiar';
+    // O OBS confere o certificado e recusa o autoassinado.
+    obsCertEl.hidden = window.location.protocol !== 'https:' || Boolean(serverStatus.certificate);
+    obsDialog.showModal();
+    checkObsPort();
+  });
+
+  obsCopyBtn.addEventListener('click', async () => {
+    obsUrlInput.select();
+    try {
+      await navigator.clipboard.writeText(obsUrlInput.value);
+    } catch {
+      document.execCommand('copy');
+    }
+    obsCopyBtn.textContent = 'Copiado!';
+  });
+
+  obsDialog.addEventListener('click', (e) => {
+    if (e.target === obsDialog) obsDialog.close(); // clique fora do cartão
+  });
+
+  // O OBS manda o vídeo pelo TURN em UDP (não sabe usar TURN por TCP). Testa daqui se
+  // essa porta está publicada, que é o passo que mais fica pra trás no CasaOS.
+  async function checkObsPort() {
+    const servers = await iceServersPromise;
+    let server = null;
+    let url = null;
+    for (const candidate of servers) {
+      url = [].concat(candidate.urls).find((u) => /^turn:.*transport=udp/.test(u));
+      if (url) {
+        server = candidate;
+        break;
+      }
+    }
+    if (!server) {
+      obsCheckEl.hidden = true;
+      return;
+    }
+    const port = (url.match(/:(\d+)\?/) || [])[1] || '3000';
+    obsCheckEl.hidden = false;
+    obsCheckEl.className = 'obs-check';
+    obsCheckEl.textContent = `Testando a porta ${port}/UDP do servidor…`;
+    let pc;
+    let ok = false;
+    try {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: url, username: server.username, credential: server.credential }],
+        iceTransportPolicy: 'relay',
+      });
+      pc.createDataChannel('teste');
+      const relay = new Promise((resolve) => {
+        setTimeout(() => resolve(false), 5000);
+        pc.onicecandidate = (e) => {
+          if (!e.candidate) resolve(false);
+          else if (/ typ relay/.test(e.candidate.candidate)) resolve(true);
+        };
+      });
+      await pc.setLocalDescription(await pc.createOffer());
+      ok = await relay;
+    } catch {
+      ok = false;
+    } finally {
+      if (pc) pc.close();
+    }
+    if (!obsDialog.open) return;
+    obsCheckEl.className = ok ? 'obs-check is-ok' : 'obs-check is-bad';
+    obsCheckEl.textContent = ok
+      ? `Porta ${port}/UDP do servidor respondendo: é por ela que o OBS manda o vídeo.`
+      : `A porta ${port}/UDP do servidor não respondeu daqui, e o OBS precisa dela pra mandar o vídeo. No CasaOS, edite o app e adicione a porta ${port} → 3478 com protocolo UDP (veja o README).`;
+  }
+
   // ---------- assistir ----------
 
   function addStreamTile(user) {
     if (streams.has(user.id)) return;
-    const base = createTile(user.name, user.name);
+    const isObs = user.kind === 'obs';
+    // A própria transmissão do OBS começa muda: o som voltaria pro OBS pelo áudio do PC.
+    const isMine = isObs && me && user.name === me.name;
+    const base = createTile(user.name, isMine ? 'Você' : user.name, user.kind);
     const s = {
       ...base,
       id: user.id,
+      kind: user.kind || null,
+      stream: user.stream || null,
+      whepUrl: null,
+      attempt: 0,
       pc: null,
       sid: null,
       pending: [],
       watching: true,
       quality: DEFAULT_QUALITY,
       volume: 1,
-      muted: false,
+      muted: isMine,
       hasAudio: true,
       retryTimer: null,
       statsTimer: null,
@@ -651,19 +817,23 @@
     };
 
     const tools = el('div', 'tile-tools');
-    const qualitySelect = el('select');
-    qualitySelect.title = 'Qualidade (só pra você)';
-    qualitySelect.setAttribute('aria-label', 'Qualidade');
-    for (const [key, preset] of Object.entries(PRESETS)) {
-      const opt = el('option', null, preset.label);
-      opt.value = key;
-      opt.selected = key === s.quality;
-      qualitySelect.append(opt);
+    // A qualidade vem do próprio OBS (um vídeo só, igual pra todo mundo).
+    const qualitySelect = isObs ? null : el('select');
+    if (qualitySelect) {
+      qualitySelect.title = 'Qualidade (só pra você)';
+      qualitySelect.setAttribute('aria-label', 'Qualidade');
+      for (const [key, preset] of Object.entries(PRESETS)) {
+        const opt = el('option', null, preset.label);
+        opt.value = key;
+        opt.selected = key === s.quality;
+        qualitySelect.append(opt);
+      }
+      tools.append(qualitySelect);
     }
     const btnStats = iconButton('info', 'Estatísticas da conexão');
     const btnFull = iconButton('maximize', 'Tela cheia');
     const btnClose = iconButton('close', 'Parar de assistir');
-    tools.append(qualitySelect, btnStats, btnFull, btnClose);
+    tools.append(btnStats, btnFull, btnClose);
 
     const stats = el('pre', 'tile-stats');
     stats.hidden = true;
@@ -672,7 +842,7 @@
     const btnWatch = el('button', 'btn btn-primary');
     btnWatch.type = 'button';
     btnWatch.append(icon('eye'), 'Assistir');
-    paused.append(el('span', null, `${user.name} está transmitindo`), btnWatch);
+    paused.append(el('span', null, `${user.name} está transmitindo${isObs ? ' pelo OBS' : ''}`), btnWatch);
     base.media.append(tools, stats, paused);
 
     const audio = el('div', 'tile-audio');
@@ -708,10 +878,12 @@
         renderAudio(s);
       });
     }
-    qualitySelect.addEventListener('change', () => {
-      s.quality = qualitySelect.value;
-      if (s.pc) send(s.id, { stream: s.id, type: 'quality', quality: s.quality });
-    });
+    if (qualitySelect) {
+      qualitySelect.addEventListener('change', () => {
+        s.quality = qualitySelect.value;
+        if (s.pc) send(s.id, { stream: s.id, type: 'quality', quality: s.quality });
+      });
+    }
     btnStats.addEventListener('click', () => toggleStats(s));
     btnFull.addEventListener('click', () => toggleFullscreen(s));
     base.video.addEventListener('dblclick', () => toggleFullscreen(s));
@@ -743,12 +915,13 @@
     s.paused.hidden = true;
     s.tile.classList.remove('is-paused');
     setStatus(s, 'Conectando…', true);
-    send(s.id, { stream: s.id, type: 'watch', quality: s.quality });
+    if (s.kind === 'obs') startWhep(s);
+    else send(s.id, { stream: s.id, type: 'watch', quality: s.quality });
   }
 
   function stopWatching(s) {
     s.watching = false;
-    send(s.id, { stream: s.id, type: 'unwatch' });
+    if (s.kind !== 'obs') send(s.id, { stream: s.id, type: 'unwatch' });
     closeIncoming(s);
     stopStats(s);
     setStatus(s, '');
@@ -760,6 +933,11 @@
   function closeIncoming(s) {
     clearTimeout(s.retryTimer);
     s.retryTimer = null;
+    s.attempt += 1;
+    if (s.whepUrl) {
+      fetch(s.whepUrl, { method: 'DELETE', keepalive: true }).catch(() => {});
+      s.whepUrl = null;
+    }
     if (s.pc) {
       s.pc.close();
       s.pc = null;

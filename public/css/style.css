@@ -453,6 +453,14 @@ button { cursor: pointer; }
 .tile-viewers { display: inline-flex; align-items: center; gap: 4px; }
 .tile-viewers svg { width: 16px; height: 16px; }
 .tag { padding: 2px 6px; border-radius: 4px; background: var(--panel-hover); font-size: 11px; }
+.tag-obs {
+  flex: none;
+  background: rgba(91, 108, 255, 0.2);
+  color: #b9c0ff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
 
 .tile-status {
   position: absolute;
@@ -566,6 +574,56 @@ button { cursor: pointer; }
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   transform: translateX(-50%);
 }
+
+/* ---------- janela do OBS ---------- */
+
+.dialog {
+  width: min(520px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.dialog-card { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px 20px; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-head h3 { margin: 0; font-size: 17px; }
+.dialog-sub, .dialog-tip { margin: 0; color: var(--muted); font-size: 13px; }
+.dialog-tip b, .obs-steps b { color: var(--text); }
+
+.obs-steps { display: flex; flex-direction: column; gap: 8px; margin: 0; padding-left: 22px; color: var(--muted); }
+.obs-steps li::marker { color: var(--faint); font-weight: 700; }
+
+.copy-field { display: flex; gap: 8px; margin-top: 6px; }
+.copy-field input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.copy-field input:focus { outline: none; border-color: var(--accent); }
+.copy-field .btn { height: 36px; flex: none; background: var(--panel-hover); }
+.copy-field .btn:hover { background: #393c46; }
+
+.obs-check {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel-hover);
+  color: var(--muted);
+  font-size: 13px;
+}
+.obs-check.is-ok { background: rgba(63, 191, 116, 0.14); color: #8fe0b0; }
+.obs-check.is-bad { background: rgba(232, 169, 58, 0.14); color: #f3c97a; }
 
 /* ---------- celular ---------- */
 

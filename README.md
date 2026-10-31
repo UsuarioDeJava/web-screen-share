@@ -18,6 +18,9 @@ local ou via Tailscale, sem instalar nada além do Node.js (ou via Docker).
   apresenta um pro outro.
 - Várias pessoas podem transmitir ao mesmo tempo. Cada transmissão vira um quadro na
   tela, com som, volume e qualidade controlados individualmente por quem assiste.
+- Na imagem Docker também dá pra transmitir pelo **OBS Studio** (WHIP): a transmissão
+  entra na sala como mais uma pessoa ao vivo, com a etiqueta **OBS** (veja
+  [Transmitindo pelo OBS Studio](#transmitindo-pelo-obs-studio)).
 
 ## Requisitos
 
@@ -212,8 +215,9 @@ próprio IP de quem não está transmitindo), é preciso um servidor **TURN** pa
 retransmitir a mídia; sem ele, a conexão fica presa em "conectando".
 
 **Na imagem Docker isso já vem pronto:** ela traz um [coturn](https://github.com/coturn/coturn)
-que atende na **mesma porta do site** (3000), então não precisa publicar porta nenhuma a
-mais. O servidor separa as conexões TURN das do site pelo primeiro pacote. Esse TURN só
+que atende na **mesma porta do site** (3000), então pros navegadores não precisa publicar
+porta nenhuma a mais. O servidor separa as conexões TURN das do site pelo primeiro
+pacote. (A porta 3000/UDP só é necessária pra [transmitir pelo OBS](#transmitindo-pelo-obs-studio).) Esse TURN só
 retransmite entre pessoas da própria sala (não serve de ponte pra sua rede local nem pra
 internet) e usa credenciais temporárias geradas pelo servidor. Quando ele é usado, o
 vídeo passa pelo NAS; o botão **(i)** do quadro mostra "via servidor TURN".
@@ -228,6 +232,46 @@ TURN_USERNAME=usuario \
 TURN_CREDENTIAL=senha \
 npm start
 ```
+
+### Transmitindo pelo OBS Studio
+
+Na imagem Docker, além de compartilhar a tela pelo navegador, dá pra transmitir pelo
+[OBS Studio](https://obsproject.com/) 30 ou mais novo. Serve pra quem usa um navegador
+que não compartilha o áudio (Firefox, Zen…) ou pra mandar uma cena montada no OBS. A
+transmissão aparece na sala como mais uma pessoa ao vivo, com a etiqueta **OBS**, e
+todo mundo assiste normalmente (com som e volume próprios).
+
+No OBS, em **Configurações > Transmissão**:
+
+- **Serviço:** `WHIP`
+- **Servidor:** `https://<endereço-do-servidor>:3000/obs/SEU-NICK` (o final do endereço
+  é o nome com que você aparece na sala)
+- **Bearer Token:** em branco, ou qualquer coisa (não é conferido: como a própria sala,
+  entra quem alcança o servidor)
+
+Depois é só **Iniciar transmissão**. O botão **OBS** no topo da sala mostra esse
+endereço já com o seu nick, pronto pra copiar, e testa se a porta UDP está liberada. Em
+**Configurações > Saída**, um codificador H.264, uns 6000 Kbps e intervalo de
+quadro-chave de 1 s funcionam bem (o intervalo curto faz quem entra no meio começar a
+ver mais rápido).
+
+Duas coisas precisam estar certas no servidor:
+
+- **Certificado de verdade.** O OBS não aceita o certificado autoassinado; use o do
+  Tailscale (veja [Certificado do Tailscale no container](#certificado-do-tailscale-no-container))
+  e o endereço com o nome dele (`https://nas.seu-tailnet.ts.net:3000/obs/...`).
+- **Porta 3000/UDP publicada** apontando pra porta 3478/UDP do container. O OBS manda o
+  vídeo pelo TURN embutido, e ele só sabe usar TURN por UDP. O `docker-compose.yml` e a
+  loja já publicam essa porta em instalações novas. **Se o app já estava instalado**
+  (o "Verificar e atualizar" do CasaOS troca a imagem, mas não mexe nas portas): no
+  CasaOS, abra as **Configurações** do app, em **Portas** clique em **+ Adicionar**,
+  preencha **Host** `3000`, **Container** `3478`, **Protocolo** `UDP` e salve. Se o site
+  usa outra porta no host, use esse mesmo número na porta UDP.
+
+Por dentro: o servidor repassa a transmissão pra um [MediaMTX](https://github.com/bluenviron/mediamtx)
+embutido no container, e quem assiste puxa o vídeo dele (WHEP), pelo mesmo TURN. Ou
+seja, diferente do compartilhamento pelo navegador, o OBS envia uma cópia só, pro
+servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 
 ## Uso
 
@@ -252,7 +296,10 @@ npm start
      - **Tela cheia** (ou dois cliques no vídeo).
      - **X — parar de assistir**: desliga aquela transmissão pra você (economiza
        banda); o quadro fica com um botão **Assistir** pra voltar.
-5. **Sair** (ícone no canto inferior esquerdo) volta pra tela de nick.
+5. Na imagem Docker, o botão **OBS** no topo mostra como transmitir pelo OBS Studio
+   (veja [Transmitindo pelo OBS Studio](#transmitindo-pelo-obs-studio)). Transmissões
+   do OBS não têm o seletor de qualidade: a qualidade é a configurada no próprio OBS.
+6. **Sair** (ícone no canto inferior esquerdo) volta pra tela de nick.
 
 ## Observações
 
@@ -264,7 +311,8 @@ npm start
   some e aparece um aviso), mas assistem normalmente.
 - Captura de áudio do sistema junto com a tela depende do navegador/SO (no Windows,
   o Chrome geralmente permite ao compartilhar a tela inteira; no Linux o suporte é
-  mais limitado). Se não for possível, a transmissão segue apenas com vídeo.
+  mais limitado; Firefox e derivados, como o Zen, não capturam). Se não for possível,
+  a transmissão segue apenas com vídeo; pra ter áudio nesses casos, transmita pelo OBS.
 - Para acesso fora da rede local, use [Tailscale](https://tailscale.com/) (ou outra
   VPN) e acesse pelo IP dela — não é necessário abrir portas no roteador.
 - Cada pessoa que transmite envia uma cópia do vídeo pra cada pessoa que está
