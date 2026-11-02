@@ -47,6 +47,9 @@
   const gridInner = $('grid-inner');
   const emptyEl = $('empty');
   const emptyHint = $('empty-hint');
+  const emptyTitle = $('empty-title');
+  const defaultEmptyTitle = emptyTitle.textContent;
+  const defaultEmptyHint = emptyHint.innerHTML;
   const toastEl = $('toast');
   const loginVersionEl = $('login-version');
   const sidebarVersionEl = $('sidebar-version');
@@ -254,6 +257,7 @@
       for (const u of users.values()) {
         if (u.sharing && u.id !== me.id) addStreamTile(u);
       }
+      renderUsers(); // agora com os quadros criados (botões de assistir/ir pra tela)
     });
   }
 
@@ -321,27 +325,71 @@
     layoutGrid();
   }
 
+  // Uma linha por pessoa. A transmissão do OBS de quem está na sala (mesmo nick) entra
+  // na linha dessa pessoa; a de quem só está no OBS, sem a página aberta, fica sozinha.
+  function roomEntries() {
+    const myId = me && me.id;
+    const entries = [];
+    const byName = new Map();
+    for (const u of users.values()) {
+      if (u.kind === 'obs') continue;
+      const entry = { user: u, live: Boolean(u.sharing), obs: false, streamIds: u.sharing && u.id !== myId ? [u.id] : [] };
+      entries.push(entry);
+      if (!byName.has(u.name)) byName.set(u.name, entry);
+    }
+    for (const u of users.values()) {
+      if (u.kind !== 'obs') continue;
+      const entry = byName.get(u.name);
+      if (entry) {
+        entry.live = true;
+        entry.obs = true;
+        entry.streamIds.push(u.id);
+      } else {
+        entries.push({ user: u, live: true, obs: true, streamIds: [u.id] });
+      }
+    }
+    return entries;
+  }
+
   function renderUsers() {
     const myId = me && me.id;
-    const list = [...users.values()].sort((a, b) =>
-      (b.id === myId) - (a.id === myId) || b.sharing - a.sharing || a.name.localeCompare(b.name));
+    const list = roomEntries().sort((a, b) =>
+      (b.user.id === myId) - (a.user.id === myId) || b.live - a.live || a.user.name.localeCompare(b.user.name));
     userCountEl.textContent = list.length;
-    userListEl.replaceChildren(...list.map((u) => {
-      const li = el('li', u.sharing ? 'user is-live' : 'user');
+    userListEl.replaceChildren(...list.map((entry) => {
+      const u = entry.user;
+      const li = el('li', entry.live ? 'user is-live' : 'user');
       li.append(avatar(u.name), el('span', 'user-name', u.name));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
-      if (u.kind === 'obs') li.append(el('span', 'tag tag-obs', 'OBS'));
-      if (u.sharing) li.append(el('span', 'live-badge', 'AO VIVO'));
-      if (u.sharing && u.id !== myId) {
+      if (entry.obs) li.append(el('span', 'tag tag-obs', 'OBS'));
+      const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
+      const watched = tiles.find((s) => s.watching);
+      const unwatched = tiles.filter((s) => !s.watching);
+      const resume = () => unwatched.forEach(resumeWatching);
+      if (unwatched.length) {
+        const btn = el('button', 'watch-btn');
+        btn.type = 'button';
+        btn.title = `Assistir a tela de ${u.name}`;
+        btn.setAttribute('aria-label', btn.title);
+        btn.append(icon('eye'), 'Assistir');
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          resume();
+        });
+        li.append(btn);
+      } else if (entry.live) {
+        li.append(el('span', 'live-badge', 'AO VIVO'));
+      }
+      if (tiles.length) {
         li.tabIndex = 0;
-        li.title = `Ir para a tela de ${u.name}`;
-        const focus = () => focusTile(u.id);
-        li.addEventListener('click', focus);
-        li.addEventListener('keydown', (e) => { if (e.key === 'Enter') focus(); });
+        li.title = watched ? `Ir para a tela de ${u.name}` : `Assistir a tela de ${u.name}`;
+        const go = () => (watched ? focusTile(watched.id) : resume());
+        li.addEventListener('click', go);
+        li.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
       }
       return li;
     }));
-    const live = list.filter((u) => u.sharing).length;
+    const live = list.filter((entry) => entry.live).length;
     liveCountEl.textContent = live ? `${live} ao vivo` : '';
   }
 
@@ -352,7 +400,6 @@
       shareHint.textContent = window.isSecureContext
         ? 'Este navegador não permite compartilhar a tela, só assistir.'
         : 'Compartilhar a tela exige HTTPS (ou localhost). Você ainda pode assistir.';
-      emptyHint.textContent = 'Assim que alguém começar a transmitir, a tela aparece aqui.';
       return;
     }
     btnShare.replaceChildren(icon(localStream ? 'stop' : 'share'), localStream ? 'Parar transmissão' : 'Compartilhar tela');
@@ -371,9 +418,23 @@
 
   // Escolhe o número de colunas que deixa os tiles (16:9 + barra) o maior
   // possível sem precisar rolar; se não couber nem no tamanho mínimo, rola.
-  function layoutGrid() {
-    const count = gridInner.children.length;
+  function renderEmpty(count) {
     emptyEl.hidden = count > 0;
+    if (count) return;
+    if ([...streams.values()].some((s) => !s.watching)) {
+      emptyTitle.textContent = 'Você não está assistindo nenhuma transmissão';
+      emptyHint.textContent = 'Clique em Assistir na lista de pessoas pra voltar a ver.';
+    } else {
+      emptyTitle.textContent = defaultEmptyTitle;
+      if (canShare) emptyHint.innerHTML = defaultEmptyHint;
+      else emptyHint.textContent = 'Assim que alguém começar a transmitir, a tela aparece aqui.';
+    }
+  }
+
+  function layoutGrid() {
+    // Quadros de quem você parou de assistir ficam escondidos e não ocupam espaço.
+    const count = [...gridInner.children].filter((tile) => !tile.hidden).length;
+    renderEmpty(count);
     if (!count) return;
     const width = gridEl.clientWidth;
     const height = gridEl.clientHeight;
@@ -1080,13 +1141,7 @@
 
     const stats = el('pre', 'tile-stats');
     stats.hidden = true;
-    const paused = el('div', 'tile-paused');
-    paused.hidden = true;
-    const btnWatch = el('button', 'btn btn-primary');
-    btnWatch.type = 'button';
-    btnWatch.append(icon('eye'), 'Assistir');
-    paused.append(el('span', null, `${user.name} está transmitindo${isObs ? ' pelo OBS' : ''}`), btnWatch);
-    base.media.append(tools, stats, paused);
+    base.media.append(tools, stats);
 
     const audio = el('div', 'tile-audio');
     const btnMute = iconButton('volume', 'Silenciar');
@@ -1101,7 +1156,7 @@
       audio.append(slider);
     }
     base.bar.append(audio);
-    Object.assign(s, { qualitySelect, btnStats, stats, paused, audio, btnMute, slider });
+    Object.assign(s, { qualitySelect, btnStats, stats, audio, btnMute, slider });
 
     btnMute.addEventListener('click', () => {
       s.muted = !s.muted;
@@ -1131,7 +1186,6 @@
     btnFull.addEventListener('click', () => toggleFullscreen(s));
     base.video.addEventListener('dblclick', () => toggleFullscreen(s));
     btnClose.addEventListener('click', () => stopWatching(s));
-    btnWatch.addEventListener('click', () => requestWatch(s));
     base.video.addEventListener('playing', () => setStatus(s, ''));
 
     streams.set(user.id, s);
@@ -1155,22 +1209,32 @@
   function requestWatch(s) {
     closeIncoming(s);
     s.watching = true;
-    s.paused.hidden = true;
-    s.tile.classList.remove('is-paused');
     setStatus(s, 'Conectando…', true);
     if (s.kind === 'obs') startWhep(s);
     else send(s.id, { stream: s.id, type: 'watch', quality: s.quality });
   }
 
+  // Parar de assistir tira o quadro da tela (pra sobrar espaço pras outras
+  // transmissões); pra voltar, é o botão Assistir na lista de pessoas.
   function stopWatching(s) {
     s.watching = false;
     if (s.kind !== 'obs') send(s.id, { stream: s.id, type: 'unwatch' });
     closeIncoming(s);
     stopStats(s);
     setStatus(s, '');
-    s.paused.hidden = false;
-    s.tile.classList.add('is-paused');
     if (document.fullscreenElement === s.tile) exitFullscreen();
+    s.tile.hidden = true;
+    layoutGrid();
+    renderUsers();
+  }
+
+  function resumeWatching(s) {
+    if (streams.get(s.id) !== s) return;
+    s.tile.hidden = false;
+    requestWatch(s);
+    layoutGrid();
+    renderUsers();
+    focusTile(s.id);
   }
 
   function closeIncoming(s) {

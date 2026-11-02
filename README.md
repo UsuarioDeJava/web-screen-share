@@ -266,7 +266,9 @@ No OBS, em **Configurações > Transmissão**:
 - **Bearer Token:** em branco, ou qualquer coisa (não é conferido: como a própria sala,
   entra quem alcança o servidor)
 
-Depois é só **Iniciar transmissão**. O botão **OBS** no topo da sala mostra esse
+Depois é só **Iniciar transmissão**. Se você estiver na sala com o mesmo nick, a
+transmissão aparece na sua própria linha da lista (com a etiqueta OBS), sem criar outra
+pessoa. O botão **OBS** no topo da sala mostra esse
 endereço já com o seu nick, pronto pra copiar, e testa se a porta UDP está liberada. Em
 **Configurações > Saída**, um codificador H.264, uns 6000 Kbps e intervalo de
 quadro-chave de 1 s funcionam bem (o intervalo curto faz quem entra no meio começar a
@@ -327,7 +329,8 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        automático; os botões de cima e o cursor somem com o mouse parado. No celular,
        um toque mostra tudo por alguns segundos.
      - **X — parar de assistir**: desliga aquela transmissão pra você (economiza
-       banda); o quadro fica com um botão **Assistir** pra voltar.
+       banda) e tira o quadro da tela, sobrando espaço pras outras. Pra voltar, é o
+       botão **Assistir** que aparece no nome da pessoa, na lista lateral.
 5. Na imagem Docker, o botão **OBS** no topo mostra como transmitir pelo OBS Studio
    (veja [Transmitindo pelo OBS Studio](#transmitindo-pelo-obs-studio)). Transmissões
    do OBS não têm o seletor de qualidade: a qualidade é a configurada no próprio OBS.
