@@ -61,6 +61,8 @@
   const obsCheckEl = $('obs-check');
   const obsCertEl = $('obs-cert');
   const proxyBanner = $('proxy-banner');
+  const diagDialog = $('diag-dialog');
+  const diagOutput = $('diag-output');
 
   const socket = io();
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
@@ -662,6 +664,10 @@
 
   // ---------- assistir uma transmissão do OBS (WHEP) ----------
 
+  const NO_H264_TEXT = 'Este navegador não decodifica H.264, o formato de vídeo do OBS. '
+    + 'No Firefox (e no Zen), ative o plugin OpenH264 em about:addons > Plugins e reinicie o navegador; '
+    + 'ou assista pelo Chrome ou pelo Edge.';
+
   // Sem trickle: manda a oferta já com os candidatos (o caminho é sempre pelo TURN
   // do servidor, que responde rápido), com um limite pra não travar se demorar.
   function iceGatheringDone(pc, timeoutMs) {
@@ -709,7 +715,17 @@
         if (location) fetch(location, { method: 'DELETE', keepalive: true }).catch(() => {});
         return;
       }
-      if (!location) throw new Error(`WHEP respondeu ${res.status}`);
+      if (!location) {
+        const reason = await res.text().catch(() => '');
+        // O OBS manda H.264; navegador sem esse decodificador nunca vai conseguir, então
+        // explica em vez de ficar tentando de novo.
+        if (res.status === 400 && /codecs not supported/i.test(reason)) {
+          closeIncoming(s);
+          setStatus(s, NO_H264_TEXT, false);
+          return;
+        }
+        throw new Error(`WHEP respondeu ${res.status}`);
+      }
       s.whepUrl = location;
       await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
       s.hasAudio = media.getAudioTracks().length > 0;
@@ -806,6 +822,214 @@
       ? `Porta ${port}/UDP do servidor respondendo: é por ela que o OBS manda o vídeo.`
       : `A porta ${port}/UDP do servidor não respondeu daqui, e o OBS precisa dela pra mandar o vídeo. No CasaOS, edite o app e adicione a porta ${port} → 3478 com protocolo UDP (veja o README).`;
   }
+
+  // ---------- diagnóstico de conexão ----------
+
+  // Quem não consegue assistir roda isto e manda o resultado: mostra se o TURN do
+  // servidor responde por UDP e por TCP, se uma conexão completa por ele fecha neste
+  // navegador, se ele decodifica H.264 (o codec do OBS) e se conecta numa transmissão
+  // do OBS que estiver no ar.
+
+  const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+  function turnServers(servers) {
+    const list = [];
+    for (const server of servers) {
+      for (const url of [].concat(server.urls)) {
+        if (/^turns?:/.test(url)) list.push({ url, server });
+      }
+    }
+    return list;
+  }
+
+  async function gatherRelay(iceServer, timeoutMs) {
+    const started = performance.now();
+    const pc = new RTCPeerConnection({ iceServers: [iceServer], iceTransportPolicy: 'relay' });
+    try {
+      pc.createDataChannel('diag');
+      const found = new Promise((resolve) => {
+        setTimeout(() => resolve(null), timeoutMs);
+        pc.onicecandidate = (e) => {
+          if (!e.candidate) resolve(null);
+          else if (/ typ relay/.test(e.candidate.candidate)) resolve(e.candidate.candidate);
+        };
+      });
+      await pc.setLocalDescription(await pc.createOffer());
+      const candidate = await found;
+      const parts = candidate ? candidate.split(' ') : [];
+      return { ok: Boolean(candidate), address: candidate ? `${parts[4]}:${parts[5]}` : null, ms: Math.round(performance.now() - started) };
+    } finally {
+      pc.close();
+    }
+  }
+
+  async function selectedRoute(pc) {
+    const report = await pc.getStats();
+    let pair = null;
+    report.forEach((r) => {
+      if (r.type === 'transport' && r.selectedCandidatePairId) pair = report.get(r.selectedCandidatePairId);
+    });
+    if (!pair) report.forEach((r) => { if (r.type === 'candidate-pair' && (r.selected || (r.nominated && r.state === 'succeeded'))) pair = r; });
+    const local = pair && report.get(pair.localCandidateId);
+    const remote = pair && report.get(pair.remoteCandidateId);
+    const describe = (c) => c && `${c.candidateType} ${c.address || c.ip}:${c.port}${c.relayProtocol ? ` via ${c.relayProtocol}` : ''}`;
+    return local ? `${describe(local)} → ${describe(remote)}` : 'sem par escolhido';
+  }
+
+  // Duas conexões neste mesmo navegador, só por TURN: é o caminho de quem assiste sem
+  // transmitir e o único caminho até o servidor do OBS.
+  async function testRelayPair(iceServers, timeoutMs) {
+    const cfg = { iceServers, iceTransportPolicy: 'relay' };
+    const a = new RTCPeerConnection(cfg);
+    const b = new RTCPeerConnection(cfg);
+    try {
+      // Candidatos trocados um a um, como na sala (em lote, duas conexões no mesmo
+      // navegador às vezes não fecham pelo TURN, o que daria um falso negativo).
+      const toA = [];
+      const toB = [];
+      const deliver = (pc, queue, candidate) => {
+        if (pc.remoteDescription) pc.addIceCandidate(candidate).catch(() => {});
+        else queue.push(candidate);
+      };
+      a.onicecandidate = (e) => { if (e.candidate) deliver(b, toB, e.candidate); };
+      b.onicecandidate = (e) => { if (e.candidate) deliver(a, toA, e.candidate); };
+      const channel = a.createDataChannel('diag');
+      const opened = new Promise((resolve) => {
+        setTimeout(() => resolve(false), timeoutMs);
+        channel.onopen = () => resolve(true);
+      });
+      await a.setLocalDescription(await a.createOffer());
+      await b.setRemoteDescription(a.localDescription);
+      for (const c of toB.splice(0)) await b.addIceCandidate(c).catch(() => {});
+      await b.setLocalDescription(await b.createAnswer());
+      await a.setRemoteDescription(b.localDescription);
+      for (const c of toA.splice(0)) await a.addIceCandidate(c).catch(() => {});
+      const ok = await opened;
+      return { ok, route: ok ? await selectedRoute(a) : `estado: ${a.iceConnectionState}` };
+    } finally {
+      a.close();
+      b.close();
+    }
+  }
+
+  async function testWhep(stream, iceServers, timeoutMs) {
+    const pc = new RTCPeerConnection({ iceServers });
+    let location = null;
+    try {
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+      await pc.setLocalDescription(await pc.createOffer());
+      await iceGatheringDone(pc, 3000);
+      const res = await fetch(`/mtx/${encodeURIComponent(stream)}/whep`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: pc.localDescription.sdp,
+      });
+      const body = await res.text();
+      if (res.status !== 201) return { ok: false, detail: `servidor respondeu ${res.status}: ${body.slice(0, 160)}` };
+      location = res.headers.get('Location');
+      const video = /m=video [1-9]/.test(body) ? (body.match(/a=rtpmap:\d+ ([A-Za-z0-9]+)\/90000/) || [])[1] : null;
+      await pc.setRemoteDescription({ type: 'answer', sdp: body });
+      if (!video) return { ok: false, detail: 'o servidor não aceitou nenhum codec de vídeo deste navegador' };
+      const connected = await new Promise((resolve) => {
+        const check = () => {
+          if (pc.connectionState === 'connected') resolve(true);
+          else if (pc.connectionState === 'failed') resolve(false);
+        };
+        pc.addEventListener('connectionstatechange', check);
+        setTimeout(() => resolve(pc.connectionState === 'connected'), timeoutMs);
+      });
+      if (!connected) return { ok: false, detail: `não conectou (estado: ${pc.connectionState}, ICE: ${pc.iceConnectionState}); codec ${video}` };
+      await wait(2500);
+      let bytes = 0;
+      let frames = 0;
+      (await pc.getStats()).forEach((r) => {
+        if (r.type === 'inbound-rtp' && r.kind === 'video') {
+          bytes = r.bytesReceived || 0;
+          frames = r.framesDecoded || 0;
+        }
+      });
+      return {
+        ok: frames > 0,
+        detail: `conectou (${await selectedRoute(pc)}), codec ${video}, ${frames} quadros decodificados, ${Math.round(bytes / 1024)} KB recebidos`,
+      };
+    } finally {
+      pc.close();
+      if (location) fetch(location, { method: 'DELETE', keepalive: true }).catch(() => {});
+    }
+  }
+
+  let diagRunning = false;
+
+  async function runDiagnostics() {
+    if (diagRunning) return;
+    diagRunning = true;
+    const out = [];
+    const print = (line) => {
+      out.push(line);
+      diagOutput.textContent = out.join('\n');
+      diagOutput.scrollTop = diagOutput.scrollHeight;
+    };
+    const mark = (ok) => (ok ? '✓' : '✗');
+    try {
+      print(`Web Screen Share, ${pageVersion ? `versão ${pageVersion}` : 'versão desconhecida'}`);
+      print(`Navegador: ${navigator.userAgent}`);
+      print(`Endereço: ${window.location.origin}${serverStatus.proxy ? ` (aberto por proxy SEM PUBLIC_PORT: TURN indo pra porta ${serverStatus.proxy.port})` : ''}`);
+      const servers = await iceServersPromise;
+      const turns = turnServers(servers);
+      print(`TURN: ${turns.map((t) => t.url).join(', ') || 'nenhum'}`);
+      print('');
+      for (const { url, server } of turns) {
+        const r = await gatherRelay({ urls: url, username: server.username, credential: server.credential }, 6000);
+        const transport = /transport=tcp/.test(url) ? 'TCP' : 'UDP';
+        print(`${mark(r.ok)} TURN por ${transport}: ${r.ok ? `respondeu, endereço ${r.address} (${r.ms} ms)` : `não respondeu em ${Math.round(r.ms / 1000)} s`}`);
+      }
+      if (turns.length) {
+        const pair = await testRelayPair(servers, 10000);
+        print(`${mark(pair.ok)} Conexão completa pelo TURN: ${pair.ok ? `fechou (${pair.route})` : `não fechou (${pair.route})`}`);
+      }
+      const caps = window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities ? RTCRtpReceiver.getCapabilities('video') : null;
+      const codecs = caps ? [...new Set(caps.codecs.map((c) => c.mimeType.replace(/^video\//, '')).filter((c) => !/rtx|red|ulpfec|flexfec/i.test(c)))] : [];
+      const h264 = codecs.some((c) => /^h264$/i.test(c));
+      print(`${mark(h264)} Decodifica H.264 (o codec do OBS): ${h264 ? 'sim' : 'não'} (codecs: ${codecs.join(', ') || 'desconhecidos'})`);
+      if (!h264) print(`  ${NO_H264_TEXT}`);
+      const obsStream = [...users.values()].find((u) => u.kind === 'obs');
+      if (obsStream) {
+        const r = await testWhep(obsStream.stream, servers, 10000);
+        print(`${mark(r.ok)} Transmissão do OBS de ${obsStream.name}: ${r.detail}`);
+      } else {
+        print('- Transmissão do OBS: ninguém transmitindo pelo OBS agora, teste pulado');
+      }
+    } catch (err) {
+      print(`✗ O teste parou com erro: ${err && err.message ? err.message : err}`);
+    } finally {
+      print('');
+      print('Fim do teste.');
+      diagRunning = false;
+    }
+  }
+
+  $('btn-diag').addEventListener('click', () => {
+    diagDialog.showModal();
+    runDiagnostics();
+  });
+  $('diag-again').addEventListener('click', runDiagnostics);
+  $('diag-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(diagOutput.textContent);
+      showToast('Resultado copiado.');
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(diagOutput);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      showToast('Selecionei o resultado: copie com Ctrl+C.');
+    }
+  });
+  diagDialog.addEventListener('click', (e) => {
+    if (e.target === diagDialog) diagDialog.close();
+  });
 
   // ---------- assistir ----------
 
@@ -1157,6 +1381,8 @@
       `Rota: ${route}`,
     ];
     if (video) {
+      const codec = video.codecId && report.get(video.codecId);
+      if (codec && codec.mimeType) lines.push(`Codec: ${codec.mimeType.replace(/^video\//, '')}`);
       if (video.frameWidth) lines.push(`Resolução: ${video.frameWidth}×${video.frameHeight}`);
       if (video.framesPerSecond != null) lines.push(`Quadros: ${Math.round(video.framesPerSecond)} fps`);
       if (s.lastBytes && video.bytesReceived >= s.lastBytes.bytes && video.timestamp > s.lastBytes.ts) {

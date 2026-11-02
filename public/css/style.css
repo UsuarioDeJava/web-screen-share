@@ -167,7 +167,18 @@ button { cursor: pointer; }
 .login-hint { margin: 0; color: var(--faint); font-size: 12px; }
 
 .app-version { margin: 0; color: var(--faint); font-size: 11px; }
-.sidebar-version { flex: none; padding: 6px 16px 10px; }
+.sidebar-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 16px 10px; }
+.link-btn {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover { color: var(--text); }
 
 .update-banner {
   flex: none;
@@ -654,6 +665,22 @@ button { cursor: pointer; }
 .obs-check.is-ok { background: rgba(63, 191, 116, 0.14); color: #8fe0b0; }
 .obs-check.is-bad { background: rgba(232, 169, 58, 0.14); color: #f3c97a; }
 
+.diag-output {
+  min-height: 9em;
+  max-height: 50vh;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions .btn:not(.btn-primary) { background: var(--panel-hover); }
+
 /* ---------- celular ---------- */
 
 @media (max-width: 760px) {
@@ -671,7 +698,7 @@ button { cursor: pointer; }
 
   .sidebar-head,
   .sidebar-section,
-  .sidebar-version,
+  .sidebar-foot,
   .user-you,
   .me .avatar,
   .me-name { display: none; }

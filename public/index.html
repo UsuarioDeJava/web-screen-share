@@ -34,7 +34,10 @@
       </div>
       <div class="sidebar-section">Na sala — <span id="user-count">0</span></div>
       <ul id="user-list" class="user-list"></ul>
-      <div id="sidebar-version" class="app-version sidebar-version"></div>
+      <div class="sidebar-foot">
+        <div id="sidebar-version" class="app-version"></div>
+        <button id="btn-diag" class="link-btn" type="button">Testar conexão</button>
+      </div>
       <div class="me">
         <span id="me-avatar" class="avatar"></span>
         <div class="me-info">
@@ -106,6 +109,23 @@
       <p class="dialog-tip">Em <b>Saída</b>, use um codificador H.264, uns 6000 Kbps e intervalo de quadro-chave de 1 s: quem entra no meio começa a ver mais rápido. O nick vem do endereço: troque o final dele pra transmitir com outro nome.</p>
       <p id="obs-check" class="obs-check" hidden></p>
       <p id="obs-cert" class="cert-warning" hidden>Este servidor está com um certificado autoassinado, e o OBS recusa conectar assim. Coloque o certificado do Tailscale na pasta de dados do app (veja o README) e reinicie.</p>
+    </form>
+  </dialog>
+
+  <dialog id="diag-dialog" class="dialog" aria-labelledby="diag-title">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="diag-title">Testar conexão</h3>
+        <button class="icon-btn" type="submit" title="Fechar" aria-label="Fechar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </button>
+      </div>
+      <p class="dialog-sub">Testa, deste navegador, os caminhos que o vídeo usa: o servidor TURN (por UDP e por TCP), uma conexão completa por ele, o formato de vídeo do OBS e, se tiver alguém transmitindo pelo OBS, a conexão com essa transmissão. Se algo der errado, copie o resultado e mande pra quem cuida do servidor.</p>
+      <pre id="diag-output" class="diag-output"></pre>
+      <div class="dialog-actions">
+        <button id="diag-again" class="btn" type="button">Testar de novo</button>
+        <button id="diag-copy" class="btn btn-primary" type="button">Copiar resultado</button>
+      </div>
     </form>
   </dialog>
 

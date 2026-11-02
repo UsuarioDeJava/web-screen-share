@@ -285,6 +285,12 @@ Duas coisas precisam estar certas no servidor:
   preencha **Host** `3000`, **Container** `3478`, **Protocolo** `UDP` e salve. Se o site
   usa outra porta no host, use esse mesmo número na porta UDP.
 
+Quem assiste precisa de um navegador que decodifique **H.264**, o formato de vídeo
+que o OBS manda. Chrome, Edge e Safari decodificam. O Firefox (e derivados, como o Zen)
+depende do plugin OpenH264: se ele não estiver ativo, o quadro do OBS mostra um aviso
+explicando isso. Ative em `about:addons` > **Plugins** > **OpenH264** e reinicie o
+navegador, ou assista pelo Chrome/Edge.
+
 Por dentro: o servidor repassa a transmissão pra um [MediaMTX](https://github.com/bluenviron/mediamtx)
 embutido no container, e quem assiste puxa o vídeo dele (WHEP), pelo mesmo TURN. Ou
 seja, diferente do compartilhamento pelo navegador, o OBS envia uma cópia só, pro
@@ -326,6 +332,11 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    (veja [Transmitindo pelo OBS Studio](#transmitindo-pelo-obs-studio)). Transmissões
    do OBS não têm o seletor de qualidade: a qualidade é a configurada no próprio OBS.
 6. **Sair** (ícone no canto inferior esquerdo) volta pra tela de nick.
+7. **Testar conexão** (embaixo da lista de pessoas): quando alguém não consegue
+   assistir, isso testa, no navegador dessa pessoa, o TURN do servidor por UDP e por
+   TCP, uma conexão completa por ele, se o navegador decodifica H.264 (o formato do
+   OBS) e a conexão com uma transmissão do OBS que estiver no ar. O botão **Copiar
+   resultado** copia tudo pra mandar pra quem cuida do servidor.
 
 ## Observações
 
