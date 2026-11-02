@@ -310,8 +310,8 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        de bits que aquela pessoa te envia, útil com internet fraca.
      - **(i) Estatísticas**: estado da conexão, se ela é direta ou via TURN,
        resolução, fps, taxa e latência. Em transmissões do OBS, mostra também o trecho
-       do OBS até o servidor: pacotes perdidos (no último segundo e no total), quadros
-       com erro e a taxa chegando. Perda ali deixa a imagem "derretida" pra todo mundo
+       do OBS até o servidor: pacotes perdidos (no último segundo e no total), pedaços
+       de vídeo descartados por causa deles e a taxa chegando. Perda ali deixa a imagem "derretida" pra todo mundo
        até o próximo quadro-chave do OBS; se a imagem derrete sem perdas, o problema
        está no codificador de quem transmite (placa de vídeo sobrecarregada, por
        exemplo).

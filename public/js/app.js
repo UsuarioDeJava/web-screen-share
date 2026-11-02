@@ -1192,10 +1192,12 @@
     let lost = `${st.lost.toLocaleString('pt-BR')} no total (${pct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)`;
     if (prev && st.lost >= prev.lost) lost = `${st.lost - prev.lost} agora, ${lost}`;
     lines.push(`Perdas: ${lost}`);
+    // O MediaMTX conta cada pedaço de vídeo que teve de jogar fora (o resto de um quadro
+    // que perdeu um pacote), não quadros inteiros.
     if (prev && st.framesInError >= prev.framesInError) {
-      lines.push(`Quadros com erro: ${st.framesInError - prev.framesInError} agora, ${st.framesInError} no total`);
+      lines.push(`Descartados: ${st.framesInError - prev.framesInError} agora, ${st.framesInError} no total`);
     } else {
-      lines.push(`Quadros com erro: ${st.framesInError} no total`);
+      lines.push(`Descartados: ${st.framesInError} no total`);
     }
     if (prev && st.bytes >= prev.bytes && now > prev.at) {
       const mbps = ((st.bytes - prev.bytes) * 8) / ((now - prev.at) * 1000);
