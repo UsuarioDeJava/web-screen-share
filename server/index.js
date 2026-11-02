@@ -230,6 +230,7 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     app,
     webrtcUrl: MEDIAMTX_WEBRTC_URL,
     apiUrl: MEDIAMTX_API_URL,
+    apiAuth: process.env.MEDIAMTX_API_AUTH,
     cleanName,
     turnLink,
     onStreamsChanged(added, removed) {

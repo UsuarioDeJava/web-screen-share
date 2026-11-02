@@ -12,8 +12,11 @@ const POLL_INTERVAL_MS = 2000;
 const pathIdFor = (nick) => PATH_PREFIX + Buffer.from(nick, 'utf8').toString('hex');
 const nickFor = (pathId) => Buffer.from(pathId.slice(PATH_PREFIX.length), 'hex').toString('utf8');
 
-function setupObs({ app, webrtcUrl, apiUrl, cleanName, turnLink, onStreamsChanged }) {
+function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStreamsChanged }) {
   const sdpBody = express.text({ type: ['application/sdp', 'application/trickle-ice-sdpfrag'], limit: '512kb' });
+  // A API do MediaMTX exige usuário e senha (gerados pelo entrypoint a cada início).
+  const apiHeaders = apiAuth ? { Authorization: `Basic ${Buffer.from(apiAuth).toString('base64')}` } : {};
+  const api = (route) => fetch(apiUrl + route, { headers: apiHeaders });
 
   async function forward(req, res, target, extraHeaders = {}) {
     let upstream;
@@ -77,13 +80,13 @@ function setupObs({ app, webrtcUrl, apiUrl, cleanName, turnLink, onStreamsChange
     }
     res.set('Cache-Control', 'no-store');
     try {
-      const pathRes = await fetch(`${apiUrl}/v3/paths/get/${pathId}`);
+      const pathRes = await api(`/v3/paths/get/${pathId}`);
       const path = pathRes.ok ? await pathRes.json() : null;
       if (!path || !path.source || path.source.type !== 'webRTCSession') {
         res.status(404).json({ error: 'sem transmissão' });
         return;
       }
-      const sessionRes = await fetch(`${apiUrl}/v3/webrtcsessions/get/${encodeURIComponent(path.source.id)}`);
+      const sessionRes = await api(`/v3/webrtcsessions/get/${encodeURIComponent(path.source.id)}`);
       const session = sessionRes.ok ? await sessionRes.json() : null;
       if (!session) {
         res.status(404).json({ error: 'sem transmissão' });
@@ -105,7 +108,7 @@ function setupObs({ app, webrtcUrl, apiUrl, cleanName, turnLink, onStreamsChange
   async function poll() {
     let items;
     try {
-      const res = await fetch(`${apiUrl}/v3/paths/list?itemsPerPage=1000`);
+      const res = await api('/v3/paths/list?itemsPerPage=1000');
       items = (await res.json()).items || [];
     } catch {
       return; // MediaMTX ainda subindo ou reiniciando
@@ -134,7 +137,7 @@ function setupObs({ app, webrtcUrl, apiUrl, cleanName, turnLink, onStreamsChange
     list: () => [...streams.values()],
     ready: async () => {
       try {
-        return (await fetch(`${apiUrl}/v3/paths/list`)).ok;
+        return (await api('/v3/paths/list')).ok;
       } catch {
         return false;
       }

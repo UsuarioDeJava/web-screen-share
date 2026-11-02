@@ -70,10 +70,11 @@ fi
 # TURN embutido (coturn): quando a conexão direta entre dois navegadores falha, o
 # vídeo passa por aqui, e é também por onde o OBS manda a transmissão. Por TCP ele é
 # alcançado pela porta do site (o Node repassa as conexões TURN); por UDP, pela porta
-# 3478 do container (publicada como 3000/udp). Só retransmite pra 127.0.0.1, sem
-# servir de ponte pra rede local nem pra internet. O aviso do coturn sobre
-# allow-loopback-peers não se aplica: em 127.0.0.1 só há as próprias alocações e o
-# MediaMTX (o Node só usa TCP).
+# 3478 do container (publicada como 3000/udp). Só retransmite UDP e só pra
+# 127.0.0.1, sem servir de ponte pra rede local nem pra internet. O aviso do coturn
+# sobre allow-loopback-peers não se aplica: por UDP, em 127.0.0.1 só há as próprias
+# alocações e o MediaMTX. Retransmissão TCP (RFC 6062) fica desligada: com ela, quem
+# pega credenciais na página alcançaria os serviços TCP internos (API do MediaMTX).
 if [ ! -s "$DATA_DIR/turn-secret" ]; then
   (umask 077 && openssl rand -hex 32 > "$DATA_DIR/turn-secret")
 fi
@@ -89,6 +90,7 @@ max-port=65535
 no-tls
 no-dtls
 no-cli
+no-tcp-relay
 fingerprint
 use-auth-secret
 static-auth-secret=$LOCAL_TURN_SECRET
@@ -107,10 +109,28 @@ turnserver -c "$TURN_CONF" >> /tmp/turnserver.log 2>&1 &
 # MediaMTX: recebe a transmissão do OBS (WHIP) e repassa pra quem assiste (WHEP).
 # Só escuta em 127.0.0.1: o HTTP passa pelo Node e a mídia chega pelo TURN, então ele
 # anuncia apenas 127.0.0.1:8189 como endereço. Os outros protocolos ficam desligados.
+# A API (que muda a configuração e pode rodar comandos) exige uma senha gerada a
+# cada início, que só o Node conhece; publicar e assistir só nos caminhos obs_*.
+MTX_API_PASS="$(openssl rand -hex 24)"
 MTX_CONF="$(mktemp)"
 cat > "$MTX_CONF" <<EOF
 logLevel: warn
 logDestinations: [stdout]
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ["127.0.0.1"]
+    permissions:
+      - action: publish
+        path: ~^obs_
+      - action: read
+        path: ~^obs_
+  - user: web-screen-share
+    pass: $MTX_API_PASS
+    ips: ["127.0.0.1"]
+    permissions:
+      - action: api
 api: true
 apiAddress: 127.0.0.1:9997
 metrics: false
@@ -133,6 +153,7 @@ EOF
 mediamtx "$MTX_CONF" &
 export MEDIAMTX_WEBRTC_URL=http://127.0.0.1:8889
 export MEDIAMTX_API_URL=http://127.0.0.1:9997
+export MEDIAMTX_API_AUTH="web-screen-share:$MTX_API_PASS"
 
 export IN_CONTAINER=1
 exec node server/index.js
