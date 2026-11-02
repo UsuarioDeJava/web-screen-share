@@ -309,8 +309,17 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
      - **Qualidade** (Alta / Média / Baixa / Mínima): reduz resolução, quadros e taxa
        de bits que aquela pessoa te envia, útil com internet fraca.
      - **(i) Estatísticas**: estado da conexão, se ela é direta ou via TURN,
-       resolução, fps, taxa e latência.
-     - **Tela cheia** (ou dois cliques no vídeo).
+       resolução, fps, taxa e latência. Em transmissões do OBS, mostra também o trecho
+       do OBS até o servidor: pacotes perdidos (no último segundo e no total), quadros
+       com erro e a taxa chegando. Perda ali deixa a imagem "derretida" pra todo mundo
+       até o próximo quadro-chave do OBS; se a imagem derrete sem perdas, o problema
+       está no codificador de quem transmite (placa de vídeo sobrecarregada, por
+       exemplo).
+     - **Tela cheia** (ou dois cliques no vídeo). Em tela cheia o vídeo ocupa tudo: a
+       barra de baixo (nome, som e volume) fica escondida e aparece ao encostar o mouse
+       na borda de baixo da tela, como a barra de tarefas do Windows com ocultar
+       automático; os botões de cima e o cursor somem com o mouse parado. No celular,
+       um toque mostra tudo por alguns segundos.
      - **X — parar de assistir**: desliga aquela transmissão pra você (economiza
        banda); o quadro fica com um botão **Assistir** pra voltar.
 5. Na imagem Docker, o botão **OBS** no topo mostra como transmitir pelo OBS Studio

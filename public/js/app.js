@@ -1004,6 +1004,94 @@
     }
   }
 
+  // ---------- tela cheia ----------
+
+  const FS_EDGE_PX = 8; // encostar o mouse a até 8px da borda de baixo mostra a barra
+  const FS_IDLE_MS = 2500; // mouse parado: somem os botões de cima e o cursor
+  const FS_BAR_HIDE_MS = 600; // atraso pra esconder a barra depois que o mouse sai dela
+  const fs = { idleTimer: null, barTimer: null };
+
+  const fullscreenTile = () => {
+    const node = document.fullscreenElement;
+    return node && node.classList.contains('tile') ? node : null;
+  };
+
+  function fsActivity(tile) {
+    tile.classList.add('show-tools');
+    tile.classList.remove('is-idle');
+    clearTimeout(fs.idleTimer);
+    fs.idleTimer = setTimeout(() => {
+      if (fullscreenTile() !== tile) return;
+      if (tile.querySelector('.tile-tools:hover')) {
+        fsActivity(tile);
+        return;
+      }
+      tile.classList.remove('show-tools');
+      if (!tile.classList.contains('show-bar')) tile.classList.add('is-idle');
+    }, FS_IDLE_MS);
+  }
+
+  function fsCancelBarHide() {
+    clearTimeout(fs.barTimer);
+    fs.barTimer = null;
+  }
+
+  function fsScheduleBarHide(tile, ms) {
+    fsCancelBarHide();
+    fs.barTimer = setTimeout(() => {
+      fs.barTimer = null;
+      fsHideBar(tile);
+    }, ms);
+  }
+
+  function fsShowBar(tile, hideAfterMs) {
+    tile.classList.add('show-bar');
+    tile.classList.remove('is-idle');
+    if (hideAfterMs) fsScheduleBarHide(tile, hideAfterMs);
+    else fsCancelBarHide();
+  }
+
+  function fsHideBar(tile) {
+    if (fullscreenTile() !== tile || tile.querySelector('.tile-bar:hover')) return;
+    tile.classList.remove('show-bar');
+  }
+
+  document.addEventListener('fullscreenchange', () => {
+    clearTimeout(fs.idleTimer);
+    fsCancelBarHide();
+    for (const node of gridInner.querySelectorAll('.tile')) node.classList.remove('show-bar', 'show-tools', 'is-idle');
+    const tile = fullscreenTile();
+    if (!tile) return;
+    // Mostra tudo por um instante ao entrar, pra deixar claro onde as coisas estão.
+    fsShowBar(tile, 2000);
+    fsActivity(tile);
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    const tile = fullscreenTile();
+    if (!tile) return;
+    fsActivity(tile);
+    if (e.pointerType === 'touch') return;
+    const fromBottom = window.innerHeight - e.clientY;
+    const barHeight = tile.querySelector('.tile-bar').offsetHeight;
+    if (fromBottom <= FS_EDGE_PX) {
+      fsShowBar(tile);
+    } else if (fromBottom <= barHeight || e.buttons) {
+      // Em cima da barra, ou arrastando o volume: continua aberta.
+      if (tile.classList.contains('show-bar')) fsCancelBarHide();
+    } else if (tile.classList.contains('show-bar') && !fs.barTimer) {
+      fsScheduleBarHide(tile, FS_BAR_HIDE_MS);
+    }
+  });
+
+  // No celular/tablet não tem mouse: um toque mostra a barra e os botões por um tempo.
+  document.addEventListener('pointerdown', (e) => {
+    const tile = fullscreenTile();
+    if (!tile || e.pointerType !== 'touch') return;
+    fsShowBar(tile, 4000);
+    fsActivity(tile);
+  });
+
   function toggleFullscreen(s) {
     if (document.fullscreenElement) {
       exitFullscreen();
@@ -1024,6 +1112,7 @@
     s.stats.hidden = false;
     s.btnStats.classList.add('active');
     s.lastBytes = null;
+    s.lastObs = null;
     const tick = async () => {
       s.stats.textContent = await describeStats(s).catch(() => 'Estatísticas indisponíveis.');
     };
@@ -1079,7 +1168,40 @@
     if (pair && pair.currentRoundTripTime != null) {
       lines.push(`Latência: ${Math.round(pair.currentRoundTripTime * 1000)} ms`);
     }
+    if (s.kind === 'obs') lines.push(...(await describeObsSource(s)));
     return lines.join('\n');
+  }
+
+  // Trecho do OBS até o servidor. Pacote perdido ali vira imagem "derretida" pra todo
+  // mundo até o próximo quadro-chave do OBS, e não aparece nas estatísticas acima.
+  async function describeObsSource(s) {
+    let st;
+    try {
+      const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/stats`, { cache: 'no-store' });
+      if (!res.ok) return [];
+      st = await res.json();
+    } catch {
+      return [];
+    }
+    const now = performance.now();
+    const prev = s.lastObs;
+    s.lastObs = { ...st, at: now };
+    const lines = ['', 'Do OBS até o servidor:'];
+    const total = st.packets + st.lost;
+    const pct = total ? (st.lost * 100) / total : 0;
+    let lost = `${st.lost.toLocaleString('pt-BR')} no total (${pct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)`;
+    if (prev && st.lost >= prev.lost) lost = `${st.lost - prev.lost} agora, ${lost}`;
+    lines.push(`Perdas: ${lost}`);
+    if (prev && st.framesInError >= prev.framesInError) {
+      lines.push(`Quadros com erro: ${st.framesInError - prev.framesInError} agora, ${st.framesInError} no total`);
+    } else {
+      lines.push(`Quadros com erro: ${st.framesInError} no total`);
+    }
+    if (prev && st.bytes >= prev.bytes && now > prev.at) {
+      const mbps = ((st.bytes - prev.bytes) * 8) / ((now - prev.at) * 1000);
+      lines.push(`Chegando: ${mbps.toFixed(1)} Mbps`);
+    }
+    return lines;
   }
 
   renderShareButton();

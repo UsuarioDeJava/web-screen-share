@@ -67,6 +67,39 @@ function setupObs({ app, webrtcUrl, apiUrl, cleanName, turnLink, onStreamsChange
   app.patch('/mtx/:pathId/:kind(whip|whep)/:id', sdpBody, session);
   app.delete('/mtx/:pathId/:kind(whip|whep)/:id', session);
 
+  // Estatísticas do trecho OBS -> servidor, pro painel (i) de quem assiste. Por quem
+  // assiste essas perdas não aparecem: o servidor remonta o vídeo antes de repassar.
+  app.get('/mtx/:pathId/stats', async (req, res) => {
+    const { pathId } = req.params;
+    if (!PATH_ID.test(pathId)) {
+      res.status(404).end();
+      return;
+    }
+    res.set('Cache-Control', 'no-store');
+    try {
+      const pathRes = await fetch(`${apiUrl}/v3/paths/get/${pathId}`);
+      const path = pathRes.ok ? await pathRes.json() : null;
+      if (!path || !path.source || path.source.type !== 'webRTCSession') {
+        res.status(404).json({ error: 'sem transmissão' });
+        return;
+      }
+      const sessionRes = await fetch(`${apiUrl}/v3/webrtcsessions/get/${encodeURIComponent(path.source.id)}`);
+      const session = sessionRes.ok ? await sessionRes.json() : null;
+      if (!session) {
+        res.status(404).json({ error: 'sem transmissão' });
+        return;
+      }
+      res.json({
+        bytes: session.inboundBytes,
+        packets: session.inboundRTPPackets,
+        lost: session.inboundRTPPacketsLost,
+        framesInError: path.inboundFramesInError,
+      });
+    } catch {
+      res.status(502).json({ error: 'servidor de mídia indisponível' });
+    }
+  });
+
   const streams = new Map(); // pathId -> participante virtual da sala
 
   async function poll() {

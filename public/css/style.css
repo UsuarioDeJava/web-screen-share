@@ -554,12 +554,41 @@ button { cursor: pointer; }
   text-align: center;
 }
 
+/* Tela cheia: o vídeo ocupa tudo. A barra de baixo vira um overlay que aparece ao
+   encostar o mouse na borda de baixo (como a barra de tarefas do Windows com ocultar
+   automático); os botões de cima e o cursor somem quando o mouse fica parado. */
 .tile:fullscreen {
+  position: relative;
   width: 100%;
   max-width: none;
   border-radius: 0;
+  background: #000;
 }
-.tile:fullscreen .tile-media { flex: 1; aspect-ratio: auto; }
+.tile:fullscreen .tile-media { position: absolute; inset: 0; aspect-ratio: auto; }
+.tile:fullscreen.is-idle,
+.tile:fullscreen.is-idle video { cursor: none; }
+
+.tile:fullscreen .tile-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 56px;
+  padding: 0 16px 0 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 16, 19, 0.86);
+  backdrop-filter: blur(8px);
+  transform: translateY(100%);
+  opacity: 0;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.tile:fullscreen.show-bar .tile-bar,
+.tile:fullscreen .tile-bar:has(:focus-visible) { transform: none; opacity: 1; }
+
+.tile:fullscreen:not(.show-tools) .tile-tools { opacity: 0; pointer-events: none; }
+.tile:fullscreen.show-tools .tile-tools,
+.tile:fullscreen .tile-tools:has(:focus-visible) { opacity: 1; pointer-events: auto; }
 
 .toast {
   position: fixed;
