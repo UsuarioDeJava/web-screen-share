@@ -113,8 +113,9 @@ turnserver -c "$TURN_CONF" >> /tmp/turnserver.log 2>&1 &
 # cada início, que só o Node conhece; publicar e assistir só nos caminhos obs_*.
 MTX_API_PASS="$(openssl rand -hex 24)"
 MTX_CONF="$(mktemp)"
+# logLevel info: registra quando cada transmissão do OBS conecta e por que ela caiu.
 cat > "$MTX_CONF" <<EOF
-logLevel: warn
+logLevel: info
 logDestinations: [stdout]
 authMethod: internal
 authInternalUsers:

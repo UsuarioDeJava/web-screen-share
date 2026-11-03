@@ -18,7 +18,15 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
   const apiHeaders = apiAuth ? { Authorization: `Basic ${Buffer.from(apiAuth).toString('base64')}` } : {};
   const api = (route) => fetch(apiUrl + route, { headers: apiHeaders });
 
-  async function forward(req, res, target, extraHeaders = {}) {
+  function forward(req, res, target, extraHeaders = {}) {
+    forwardInner(req, res, target, extraHeaders).catch((err) => {
+      console.error(`Erro repassando ${req.method} ${target} pro MediaMTX:`, err.message || err);
+      if (!res.headersSent) res.status(502).type('text/plain').send('Servidor de mídia indisponível');
+      else res.end();
+    });
+  }
+
+  async function forwardInner(req, res, target, extraHeaders) {
     let upstream;
     try {
       upstream = await fetch(webrtcUrl + target, {
@@ -118,7 +126,7 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     const removed = [];
     for (const pathId of live) {
       if (streams.has(pathId)) continue;
-      const stream = { id: `obs:${pathId}`, name: cleanName(nickFor(pathId)) || 'OBS', sharing: true, kind: 'obs', stream: pathId };
+      const stream = { id: `obs:${pathId}`, name: cleanName(nickFor(pathId)) || 'OBS', sharing: true, kind: 'obs', stream: pathId, startedAt: Date.now() };
       streams.set(pathId, stream);
       added.push(stream);
     }

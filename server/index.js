@@ -22,6 +22,29 @@ const DISPLAY_PORT = PUBLIC_PORT || PORT;
 const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;
 const MEDIAMTX_API_URL = process.env.MEDIAMTX_API_URL;
 
+// Linhas de evento com data e hora (UTC, no mesmo formato do log do MediaMTX), pra
+// dar pra cruzar os dois quando algo cai.
+function logEvent(message) {
+  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19).replace(/-/g, '/');
+  console.log(`${stamp} ${message}`);
+}
+
+function formatDuration(ms) {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h} h ${m} min`;
+  if (m) return `${m} min ${s} s`;
+  return `${s} s`;
+}
+
+// Um erro inesperado numa requisição não pode derrubar o servidor inteiro (isso
+// reiniciaria o container e derrubaria todo mundo, OBS inclusive).
+process.on('unhandledRejection', (err) => {
+  logEvent(`ERRO inesperado (o servidor continua rodando): ${err && err.stack ? err.stack : err}`);
+});
+
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -235,11 +258,11 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     turnLink,
     onStreamsChanged(added, removed) {
       for (const stream of added) {
-        console.log(`OBS: ${stream.name} começou a transmitir`);
+        logEvent(`OBS: ${stream.name} começou a transmitir`);
         io.to(ROOM).emit('user:joined', publicUser(stream));
       }
       for (const stream of removed) {
-        console.log(`OBS: ${stream.name} parou de transmitir`);
+        logEvent(`OBS: ${stream.name} parou de transmitir (ficou no ar ${formatDuration(Date.now() - stream.startedAt)})`);
         io.to(ROOM).emit('user:left', { id: stream.id });
       }
     },
@@ -295,7 +318,7 @@ io.on('connection', (socket) => {
 
     const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId };
     users.set(socket.id, user);
-    console.log(`${user.name} entrou na sala (${clientAddress(socket)})`);
+    logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
