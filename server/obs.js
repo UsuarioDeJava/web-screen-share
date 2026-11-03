@@ -87,6 +87,12 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
       return;
     }
     res.set('Cache-Control', 'no-store');
+    // Só pergunta ao MediaMTX por transmissões no ar: senão ele registra um ERR no log
+    // a cada consulta de quem ficou com o painel (i) aberto depois que ela acabou.
+    if (!streams.has(pathId)) {
+      res.status(404).json({ error: 'sem transmissão' });
+      return;
+    }
     try {
       const pathRes = await api(`/v3/paths/get/${pathId}`);
       const path = pathRes.ok ? await pathRes.json() : null;
