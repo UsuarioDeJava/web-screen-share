@@ -308,7 +308,7 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    quantas pessoas estão assistindo. Clique em **Parar transmissão** (ou no botão
    nativo do navegador) pra encerrar.
 3. Quando alguém começa a transmitir, o quadro dessa pessoa aparece pra todo mundo e
-   já começa a tocar. A lista lateral mostra quem está na sala e quem está ao vivo
+   já começa a tocar. A lista de pessoas mostra quem está na sala e quem está ao vivo
    (clique num nome ao vivo pra ir até o quadro dele).
 4. Em cada quadro, quem assiste controla só pra si mesmo, sem afetar os outros:
    - **Som e volume**: botão do alto-falante pra mutar/desmutar e barra de volume ao
@@ -330,12 +330,20 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        um toque mostra tudo por alguns segundos.
      - **X — parar de assistir**: desliga aquela transmissão pra você (economiza
        banda) e tira o quadro da tela, sobrando espaço pras outras. Pra voltar, é o
-       botão **Assistir** que aparece no nome da pessoa, na lista lateral.
+       botão **Assistir** que aparece no nome da pessoa, na lista de pessoas (o
+       botão de pessoas no topo ganha um pontinho vermelho enquanto houver alguma
+       transmissão que você parou de assistir).
 5. Na imagem Docker, o botão **OBS** no topo mostra como transmitir pelo OBS Studio
    (veja [Transmitindo pelo OBS Studio](#transmitindo-pelo-obs-studio)). Transmissões
    do OBS não têm o seletor de qualidade: a qualidade é a configurada no próprio OBS.
-6. **Sair** (ícone no canto inferior esquerdo) volta pra tela de nick.
-7. **Testar conexão** (embaixo da lista de pessoas): quando alguém não consegue
+6. **Lista de pessoas**: no computador ela não ocupa espaço, pra sobrar mais tela
+   pras transmissões. Ela aparece por cima ao encostar o mouse na borda esquerda da
+   janela (e some quando o mouse sai), ou pelo botão com o número de pessoas no topo,
+   que deixa ela aberta até clicar fora, apertar Esc ou clicar em «. No celular ela
+   fica numa faixa no topo. Se a conexão com o servidor cair, o aviso "Reconectando…"
+   aparece também no topo.
+7. **Sair** (ícone no rodapé da lista de pessoas) volta pra tela de nick.
+8. **Testar conexão** (no rodapé da lista de pessoas): quando alguém não consegue
    assistir, isso testa, no navegador dessa pessoa, o TURN do servidor por UDP e por
    TCP, uma conexão completa por ele, se o navegador decodifica H.264 (o formato do
    OBS) e a conexão com uma transmissão do OBS que estiver no ar. O botão **Copiar

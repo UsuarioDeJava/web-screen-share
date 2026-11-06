@@ -25,12 +25,15 @@
   </section>
 
   <div id="app" class="app" hidden>
-    <aside class="sidebar">
+    <aside id="sidebar" class="sidebar">
       <div class="sidebar-head">
         <span class="brand-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         </span>
         Sala
+        <button id="btn-sidebar-close" class="icon-btn sidebar-close" type="button" title="Esconder a lista" aria-label="Esconder a lista de pessoas">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/></svg></span>
+        </button>
       </div>
       <div class="sidebar-section">Na sala — <span id="user-count">0</span></div>
       <ul id="user-list" class="user-list"></ul>
@@ -53,8 +56,13 @@
     <main class="main">
       <header class="topbar">
         <div class="topbar-title">
+          <button id="btn-people" class="people-btn" type="button" title="Pessoas na sala" aria-label="Mostrar as pessoas na sala" aria-controls="sidebar" aria-expanded="false">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+            <span id="people-count">0</span>
+          </button>
           <h2>Transmissões</h2>
           <span id="live-count" class="live-count"></span>
+          <span id="topbar-conn" class="topbar-conn" hidden><span class="dot err"></span>Reconectando…</span>
         </div>
         <div class="topbar-actions">
           <span id="share-hint" class="share-hint" hidden></span>

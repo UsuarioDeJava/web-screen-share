@@ -64,6 +64,10 @@
   const obsCheckEl = $('obs-check');
   const obsCertEl = $('obs-cert');
   const proxyBanner = $('proxy-banner');
+  const sidebarEl = $('sidebar');
+  const btnPeople = $('btn-people');
+  const peopleCountEl = $('people-count');
+  const topbarConn = $('topbar-conn');
   const diagDialog = $('diag-dialog');
   const diagOutput = $('diag-output');
 
@@ -280,6 +284,8 @@
   function setConnection(ok) {
     connDot.className = ok ? 'dot ok' : 'dot err';
     connText.textContent = ok ? 'Conectado' : 'Reconectando…';
+    // A lista de pessoas fica escondida no computador: o aviso aparece no topo também.
+    topbarConn.hidden = ok;
   }
 
   socket.on('connect', () => {
@@ -391,6 +397,12 @@
     }));
     const live = list.filter((entry) => entry.live).length;
     liveCountEl.textContent = live ? `${live} ao vivo` : '';
+    peopleCountEl.textContent = list.length;
+    const unwatched = [...streams.values()].some((s) => !s.watching);
+    btnPeople.classList.toggle('has-unwatched', unwatched);
+    btnPeople.title = unwatched
+      ? 'Pessoas na sala (tem transmissão que você parou de assistir)'
+      : 'Pessoas na sala';
   }
 
   function renderShareButton() {
@@ -423,7 +435,7 @@
     if (count) return;
     if ([...streams.values()].some((s) => !s.watching)) {
       emptyTitle.textContent = 'Você não está assistindo nenhuma transmissão';
-      emptyHint.textContent = 'Clique em Assistir na lista de pessoas pra voltar a ver.';
+      emptyHint.textContent = 'Abra a lista de pessoas e clique em Assistir pra voltar a ver.';
     } else {
       emptyTitle.textContent = defaultEmptyTitle;
       if (canShare) emptyHint.innerHTML = defaultEmptyHint;
@@ -1226,6 +1238,10 @@
     s.tile.hidden = true;
     layoutGrid();
     renderUsers();
+    if (!stopHintShown && desktopLayout.matches) {
+      stopHintShown = true;
+      showToast('Pra voltar a assistir, abra a lista de pessoas (botão no topo ou borda esquerda) e clique em Assistir.');
+    }
   }
 
   function resumeWatching(s) {
@@ -1291,6 +1307,63 @@
       s.slider.style.setProperty('--fill', `${value}%`);
     }
   }
+
+  // ---------- lista de pessoas por cima (computador) ----------
+
+  // No computador a lista não ocupa espaço: aparece por cima das transmissões quando o
+  // mouse encosta na borda esquerda e some quando ele sai; o botão do topo abre e
+  // deixa aberta até clicar fora, apertar Esc ou no botão de novo.
+  const desktopLayout = window.matchMedia('(min-width: 761px)');
+  const SIDEBAR_EDGE_PX = 8;
+  const SIDEBAR_HIDE_MS = 400;
+  let sidebarPinned = false;
+  let sidebarTimer = null;
+  let stopHintShown = false;
+
+  function setSidebar(open, pinned = false) {
+    clearTimeout(sidebarTimer);
+    sidebarTimer = null;
+    sidebarPinned = open && pinned;
+    appEl.classList.toggle('show-sidebar', open);
+    btnPeople.setAttribute('aria-expanded', String(open));
+  }
+
+  btnPeople.addEventListener('click', () => {
+    setSidebar(!(appEl.classList.contains('show-sidebar') && sidebarPinned), true);
+  });
+  $('btn-sidebar-close').addEventListener('click', () => setSidebar(false));
+
+  document.addEventListener('pointermove', (e) => {
+    if (!desktopLayout.matches || appEl.hidden || document.fullscreenElement || e.pointerType === 'touch') return;
+    const open = appEl.classList.contains('show-sidebar');
+    if (e.clientX <= SIDEBAR_EDGE_PX) {
+      if (!open) setSidebar(true);
+      else if (!sidebarPinned) {
+        clearTimeout(sidebarTimer);
+        sidebarTimer = null;
+      }
+    } else if (open && !sidebarPinned) {
+      if (e.clientX <= sidebarEl.offsetWidth || e.buttons) {
+        clearTimeout(sidebarTimer);
+        sidebarTimer = null;
+      } else if (!sidebarTimer) {
+        sidebarTimer = setTimeout(() => {
+          sidebarTimer = null;
+          if (!sidebarPinned && !sidebarEl.matches(':hover')) setSidebar(false);
+        }, SIDEBAR_HIDE_MS);
+      }
+    }
+  });
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!sidebarPinned || sidebarEl.contains(e.target) || btnPeople.contains(e.target)) return;
+    if (e.target.closest && e.target.closest('dialog')) return;
+    setSidebar(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && appEl.classList.contains('show-sidebar') && !document.querySelector('dialog[open]')) setSidebar(false);
+  });
 
   // ---------- tela cheia ----------
 
