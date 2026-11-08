@@ -1238,10 +1238,6 @@
     s.tile.hidden = true;
     layoutGrid();
     renderUsers();
-    if (!stopHintShown && desktopLayout.matches) {
-      stopHintShown = true;
-      showToast('Pra voltar a assistir, abra a lista de pessoas (botão no topo ou borda esquerda) e clique em Assistir.');
-    }
   }
 
   function resumeWatching(s) {
@@ -1318,7 +1314,6 @@
   const SIDEBAR_HIDE_MS = 400;
   let sidebarPinned = false;
   let sidebarTimer = null;
-  let stopHintShown = false;
 
   function setSidebar(open, pinned = false) {
     clearTimeout(sidebarTimer);
