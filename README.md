@@ -327,7 +327,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        barra de baixo (nome, som e volume) fica escondida e aparece ao encostar o mouse
        na borda de baixo da tela, como a barra de tarefas do Windows com ocultar
        automático; os botões de cima e o cursor somem com o mouse parado. No celular,
-       um toque mostra tudo por alguns segundos.
+       um toque mostra tudo por alguns segundos. Quando o mouse sai da janela (por
+       exemplo, indo pra outro monitor) ou você clica em outro programa, tudo que
+       aparece por cima do vídeo some na hora, inclusive a lista de pessoas.
      - **X — parar de assistir**: desliga aquela transmissão pra você (economiza
        banda) e tira o quadro da tela, sobrando espaço pras outras. Pra voltar, é o
        botão **Assistir** que aparece no nome da pessoa, na lista de pessoas (o

@@ -1192,6 +1192,7 @@
       qualitySelect.addEventListener('change', () => {
         s.quality = qualitySelect.value;
         if (s.pc) send(s.id, { stream: s.id, type: 'quality', quality: s.quality });
+        qualitySelect.blur(); // senão o foco prende os botões de cima na tela
       });
     }
     btnStats.addEventListener('click', () => toggleStats(s));
@@ -1439,6 +1440,30 @@
       fsScheduleBarHide(tile, FS_BAR_HIDE_MS);
     }
   });
+
+  // O mouse saiu da janela (ex.: foi pra outro monitor) ou o foco foi pra outro
+  // programa: esconde tudo que aparece por cima do vídeo. Sem isso, passar pela borda
+  // de baixo a caminho do monitor de baixo abria a barra e ela ficava aberta, porque
+  // a página não recebe mais o movimento do mouse.
+  function hideOverlays() {
+    const tile = fullscreenTile();
+    if (tile) {
+      clearTimeout(fs.idleTimer);
+      fsCancelBarHide();
+      tile.classList.remove('show-bar', 'show-tools');
+      tile.classList.add('is-idle');
+    }
+    if (appEl.classList.contains('show-sidebar')) setSidebar(false);
+    // Um botão clicado continua com foco e mantém os controles do quadro visíveis.
+    // Menu de qualidade aberto fica de fora: tirar o foco fecharia o menu.
+    const active = document.activeElement;
+    if (active && active.tagName !== 'SELECT' && active.closest && active.closest('.tile-tools, .tile-bar')) active.blur();
+  }
+
+  document.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget) hideOverlays();
+  });
+  window.addEventListener('blur', hideOverlays);
 
   // No celular/tablet não tem mouse: um toque mostra a barra e os botões por um tempo.
   document.addEventListener('pointerdown', (e) => {

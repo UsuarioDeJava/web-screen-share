@@ -530,7 +530,7 @@ button { cursor: pointer; }
   transition: opacity 0.15s;
 }
 .tile:hover .tile-tools,
-.tile:focus-within .tile-tools { opacity: 1; }
+.tile:has(:focus-visible) .tile-tools { opacity: 1; }
 @media (hover: none) { .tile-tools { opacity: 1; } }
 
 .tile-tools .icon-btn { width: 30px; height: 30px; color: #d6d8df; }
