@@ -307,9 +307,12 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO** e um contador de
    quantas pessoas estão assistindo. Clique em **Parar transmissão** (ou no botão
    nativo do navegador) pra encerrar.
-3. Quando alguém começa a transmitir, o quadro dessa pessoa aparece pra todo mundo e
-   já começa a tocar. A lista de pessoas mostra quem está na sala e quem está ao vivo
-   (clique num nome ao vivo pra ir até o quadro dele).
+3. Quando alguém começa a transmitir, nada abre sozinho: a pessoa ganha o botão
+   **Assistir** na lista de pessoas (e o botão de pessoas no topo, um pontinho
+   vermelho). Clique em **Assistir** pra abrir o quadro. O que você está assistindo
+   volta sozinho se a sua conexão cair e voltar (ou o app for atualizado), e também
+   se a transmissão cair e voltar em até 1 minuto (ex.: o OBS reconectando). Com o
+   quadro aberto, clicar no nome da pessoa na lista leva até ele.
 4. Em cada quadro, quem assiste controla só pra si mesmo, sem afetar os outros:
    - **Som e volume**: botão do alto-falante pra mutar/desmutar e barra de volume ao
      lado (no iPhone/iPad só o mute funciona, o iOS não deixa sites mudarem o volume).

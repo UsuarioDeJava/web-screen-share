@@ -265,6 +265,15 @@
     });
   }
 
+  // Nada começa a tocar sozinho: transmissão nova aparece só como "Assistir" na lista.
+  // Guarda o que você está assistindo (por nome, que sobrevive a reconexões) pra retomar
+  // sozinho quando a SUA conexão cai e volta, ou quando a transmissão cai e volta logo
+  // (ex.: o OBS reconectando). Valor: null = assistindo; número = quando a transmissão
+  // acabou enquanto você assistia.
+  const watchKeys = new Map();
+  const RESUME_WINDOW_MS = 60000;
+  const streamKey = (user) => `${user.kind === 'obs' ? 'obs' : 'web'}:${user.name}`;
+
   function leaveRoomLocally() {
     me = null;
     for (const id of [...outgoing.keys()]) closeOutgoing(id);
@@ -274,6 +283,7 @@
   }
 
   btnLeave.addEventListener('click', () => {
+    watchKeys.clear();
     stopSharing();
     socket.emit('leave');
     wantedName = null;
@@ -311,14 +321,14 @@
     const before = users.get(user.id);
     users.set(user.id, user);
     if (user.sharing && !(before && before.sharing)) addStreamTile(user);
-    if (!user.sharing && before && before.sharing) removeStreamTile(user.id);
+    if (!user.sharing && before && before.sharing) removeStreamTile(user.id, { ended: true });
     renderUsers();
   });
 
   socket.on('user:left', ({ id }) => {
     if (!me || id === me.id) return;
     users.delete(id);
-    removeStreamTile(id);
+    removeStreamTile(id, { ended: true });
     closeOutgoing(id);
     renderUsers();
   });
@@ -435,7 +445,7 @@
     if (count) return;
     if ([...streams.values()].some((s) => !s.watching)) {
       emptyTitle.textContent = 'Você não está assistindo nenhuma transmissão';
-      emptyHint.textContent = 'Abra a lista de pessoas e clique em Assistir pra voltar a ver.';
+      emptyHint.textContent = 'Tem transmissão no ar: abra a lista de pessoas e clique em Assistir.';
     } else {
       emptyTitle.textContent = defaultEmptyTitle;
       if (canShare) emptyHint.innerHTML = defaultEmptyHint;
@@ -1112,9 +1122,15 @@
     // A própria transmissão do OBS começa muda: o som voltaria pro OBS pelo áudio do PC.
     const isMine = isObs && me && user.name === me.name;
     const base = createTile(user.name, isMine ? 'Você' : user.name, user.kind);
+    const key = streamKey(user);
+    const since = watchKeys.get(key);
+    const resume = watchKeys.has(key) && (since === null || Date.now() - since < RESUME_WINDOW_MS);
+    if (resume) watchKeys.set(key, null);
+    else watchKeys.delete(key);
     const s = {
       ...base,
       id: user.id,
+      key,
       kind: user.kind || null,
       stream: user.stream || null,
       whepUrl: null,
@@ -1122,7 +1138,7 @@
       pc: null,
       sid: null,
       pending: [],
-      watching: true,
+      watching: resume,
       quality: DEFAULT_QUALITY,
       volume: 1,
       muted: isMine,
@@ -1204,13 +1220,17 @@
     streams.set(user.id, s);
     gridInner.append(s.tile);
     renderAudio(s);
-    requestWatch(s);
+    if (resume) requestWatch(s);
+    else s.tile.hidden = true; // fica disponível na lista, com o botão Assistir
     layoutGrid();
   }
 
-  function removeStreamTile(id) {
+  // ended: a transmissão acabou (ou quem transmite caiu). Sem isso, é a sua conexão que
+  // caiu, e o que você assistia continua marcado pra retomar quando voltar.
+  function removeStreamTile(id, { ended = false } = {}) {
     const s = streams.get(id);
     if (!s) return;
+    if (ended && s.watching) watchKeys.set(s.key, Date.now());
     streams.delete(id);
     closeIncoming(s);
     stopStats(s);
@@ -1231,6 +1251,7 @@
   // transmissões); pra voltar, é o botão Assistir na lista de pessoas.
   function stopWatching(s) {
     s.watching = false;
+    watchKeys.delete(s.key);
     if (s.kind !== 'obs') send(s.id, { stream: s.id, type: 'unwatch' });
     closeIncoming(s);
     stopStats(s);
@@ -1243,6 +1264,7 @@
 
   function resumeWatching(s) {
     if (streams.get(s.id) !== s) return;
+    watchKeys.set(s.key, null);
     s.tile.hidden = false;
     requestWatch(s);
     layoutGrid();
