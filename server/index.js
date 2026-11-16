@@ -48,6 +48,38 @@ process.on('unhandledRejection', (err) => {
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Fotos de perfil (PNG, JPG, WebP ou GIF animado), guardadas na memória pelo hash do
+// conteúdo enquanto alguém usa: o endereço nunca muda pra mesma foto, então o navegador
+// guarda em cache. Quem entra manda a foto de novo (ela fica salva no navegador).
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const avatars = new Map(); // hash -> { buf, type, refs }
+
+function avatarType(buf) {
+  if (buf.length < 12) return null;
+  if (buf.slice(0, 6).toString('latin1') === 'GIF87a' || buf.slice(0, 6).toString('latin1') === 'GIF89a') return 'image/gif';
+  if (buf[0] === 0x89 && buf.slice(1, 4).toString('latin1') === 'PNG') return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  return null;
+}
+
+function releaseAvatar(hash) {
+  const entry = hash && avatars.get(hash);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs <= 0) avatars.delete(hash);
+}
+
+app.get('/avatar/:hash', (req, res) => {
+  const entry = avatars.get(req.params.hash);
+  if (!entry) {
+    res.status(404).end();
+    return;
+  }
+  res.set({ 'Content-Type': entry.type, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+  res.send(entry.buf);
+});
+
 app.get('/version', (req, res) => {
   res.set('Cache-Control', 'no-store').json({ version: VERSION });
 });
@@ -179,7 +211,8 @@ app.get('/status', (req, res) => {
 const webServer = useHttps
   ? https.createServer({ cert: fs.readFileSync(TLS_CERT), key: fs.readFileSync(TLS_KEY) }, app)
   : http.createServer(app);
-const io = new Server(webServer);
+// Mensagens de até 3 MB: a foto de perfil (até 2 MB) vai pelo socket.
+const io = new Server(webServer, { maxHttpBufferSize: 3e6 });
 
 // Uma porta só pra tudo, pra não precisar publicar outra no Docker/CasaOS: conexões
 // que começam com uma mensagem STUN/TURN (magic cookie nos bytes 4-7) vão pro TURN
@@ -246,12 +279,19 @@ function uniqueName(name) {
 
 // since: quando a transmissão começou (hora do servidor), pro tempo ao vivo nos quadros.
 // voice: quem está no chat de voz, com o microfone/fone ligado ou não.
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice }) => {
+// hue/avatar: a cor e a foto que a pessoa escolheu. cursors: as transmissões dela em
+// que o mouse de quem assiste aparece na tela (no app), pra quem assiste ver igual.
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, avatar, cursors }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (sharing) user.since = since || startedAt || null;
   if (voice) user.voice = voice;
+  if (Number.isInteger(hue)) user.hue = hue;
+  if (avatar) user.avatar = `/avatar/${avatar}`;
+  if (cursors && cursors.length) user.cursors = cursors;
   return user;
 };
+
+const cleanHue = (raw) => (Number.isInteger(raw) && raw >= 0 && raw < 360 ? raw : null);
 
 const voiceState = (raw) => ({ muted: Boolean(raw && raw.muted), deafened: Boolean(raw && raw.deafened) });
 
@@ -384,6 +424,8 @@ function revokeControlFor(id) {
 
 function removeUser(socket) {
   revokeControlFor(socket.id);
+  const user = users.get(socket.id);
+  if (user) releaseAvatar(user.avatar);
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
@@ -424,6 +466,8 @@ io.on('connection', (socket) => {
     }
 
     const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId };
+    const hue = cleanHue(payload.hue);
+    if (hue !== null) user.hue = hue;
     users.set(socket.id, user);
     logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
@@ -446,6 +490,52 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
+  // Perfil: a cor escolhida (null volta pra cor automática do nick).
+  socket.on('profile', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || !allow(socket, 'profile', 20, 10000)) return;
+    const hue = cleanHue(msg.hue);
+    if (hue === null) delete user.hue;
+    else user.hue = hue;
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
+  // Foto de perfil: os bytes da imagem (ou null pra tirar).
+  socket.on('avatar', (data, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const user = users.get(socket.id);
+    if (!user) return reply({ error: 'Você não está na sala.' });
+    if (!allow(socket, 'avatar', 6, 60000)) return reply({ error: 'Calma aí: muitas trocas de foto seguidas.' });
+    let hash = null;
+    if (data != null) {
+      const buf = Buffer.isBuffer(data) ? data : data instanceof ArrayBuffer ? Buffer.from(data) : null;
+      if (!buf || !buf.length) return reply({ error: 'Não deu pra ler a foto.' });
+      if (buf.length > AVATAR_MAX_BYTES) return reply({ error: 'A foto passa de 2 MB.' });
+      const type = avatarType(buf);
+      if (!type) return reply({ error: 'Use uma foto PNG, JPG, WebP ou GIF.' });
+      hash = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
+      const entry = avatars.get(hash);
+      if (entry) entry.refs += 1;
+      else avatars.set(hash, { buf, type, refs: 1 });
+    }
+    releaseAvatar(user.avatar);
+    if (hash) user.avatar = hash;
+    else delete user.avatar;
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+    reply({ ok: true, avatar: hash ? `/avatar/${hash}` : null });
+  });
+
+  // Quem transmite pelo app avisa em quais transmissões dela o mouse de quem assiste
+  // aparece (a camada na tela ligada, com "mostrar o mouse de quem assiste").
+  socket.on('cursors', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || !Array.isArray(msg.streams) || !allow(socket, 'cursors', 20, 10000)) return;
+    const streams = [...new Set(msg.streams)].filter((id) => typeof id === 'string' && ownsStream(user, id)).slice(0, 4);
+    if (JSON.stringify(streams) === JSON.stringify(user.cursors || [])) return;
+    user.cursors = streams;
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
   socket.on('chat:send', (raw, ack) => {
     const reply = typeof ack === 'function' ? ack : () => {};
     const user = users.get(socket.id);
@@ -455,6 +545,7 @@ io.on('connection', (socket) => {
     if (!allow(socket, 'chat', 5, 5000)) return reply({ error: 'Calma aí: muitas mensagens seguidas.' });
     lastChatId = Math.max(lastChatId + 1, Date.now());
     const message = { id: lastChatId, name: user.name, text, at: Date.now() };
+    if (Number.isInteger(user.hue)) message.hue = user.hue; // a cor fica no histórico
     chatHistory.push(message);
     if (chatHistory.length > CHAT_HISTORY) chatHistory.shift();
     saveChatSoon();

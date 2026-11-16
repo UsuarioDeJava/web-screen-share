@@ -40,6 +40,7 @@
       <div class="sidebar-foot">
         <div id="sidebar-version" class="app-version"></div>
         <span class="sidebar-links">
+          <button id="btn-profile" class="link-btn" type="button">Perfil</button>
           <button id="btn-keys" class="link-btn" type="button">Atalhos</button>
           <button id="btn-diag" class="link-btn" type="button">Testar conexão</button>
           <button id="btn-server" class="link-btn" type="button" hidden>Trocar servidor</button>
@@ -242,6 +243,40 @@
         <p class="dialog-sub"><b>Deixar alguém controlar o meu mouse e teclado</b>: pelo botão <b>🎮</b> ao lado da pessoa, na lista da sala, ou aqui. A pessoa ganha o botão <b>Controlar</b> no seu quadro e mexe no seu PC pela transmissão. Uma pessoa por vez. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> tira o controle na hora, de qualquer programa; a tecla do Windows fica bloqueada.</p>
         <p id="control-note" class="obs-check" hidden></p>
         <ul id="control-list" class="control-list"></ul>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="profile-dialog" class="dialog" aria-labelledby="profile-title">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="profile-title">Seu perfil</h3>
+        <button class="icon-btn" type="submit" title="Fechar" aria-label="Fechar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </button>
+      </div>
+      <div class="profile-preview">
+        <span id="profile-avatar" class="avatar profile-avatar"></span>
+        <div class="profile-who">
+          <b id="profile-name"></b>
+          <small>Assim você aparece na lista, no chat e no mouse que quem transmite pelo app vê.</small>
+        </div>
+        <div id="profile-cursor" class="profile-cursor" aria-hidden="true"></div>
+      </div>
+      <div class="profile-block">
+        <div class="dialog-label">Foto</div>
+        <div class="profile-photo">
+          <button id="btn-photo" class="btn btn-primary" type="button">Escolher foto</button>
+          <button id="btn-photo-remove" class="btn" type="button" hidden>Tirar a foto</button>
+          <input id="photo-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+        </div>
+        <p class="dialog-tip">PNG, JPG, WebP ou GIF (animado, até 2 MB). Fica salva neste navegador, igual o nick: é só escolher uma vez.</p>
+        <p id="photo-error" class="obs-check is-bad" hidden></p>
+      </div>
+      <div class="profile-block">
+        <div class="dialog-label">Cor</div>
+        <div id="hue-swatches" class="hue-swatches"></div>
+        <input id="hue-slider" class="hue-slider" type="range" min="0" max="359" step="1" aria-label="Escolher a cor" />
       </div>
     </form>
   </dialog>

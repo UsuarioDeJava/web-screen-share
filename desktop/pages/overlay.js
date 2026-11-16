@@ -237,7 +237,47 @@ function removeCursor(id) {
   setTimeout(() => c.node.remove(), 300);
 }
 
-function cursor({ id, x, y, gone, letter, hue }) {
+// Foto de perfil no mouse: só do servidor da sala (o endereço que o app abriu).
+const SERVER_ORIGIN = (() => {
+  try {
+    return new URL(new URLSearchParams(window.location.search).get('server')).origin;
+  } catch {
+    return null;
+  }
+})();
+
+function safePhoto(url) {
+  if (typeof url !== 'string' || !SERVER_ORIGIN) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === SERVER_ORIGIN && /^\/avatar\/[0-9a-f]{32}$/.test(parsed.pathname) ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function paintBadge(c, letter, avatar) {
+  const photo = safePhoto(avatar);
+  if (photo === c.photo) return;
+  c.photo = photo;
+  if (!photo) {
+    c.badge.textContent = text(letter).slice(0, 2);
+    c.badge.style.backgroundImage = '';
+    c.badge.classList.remove('has-photo');
+    return;
+  }
+  // Troca a letrinha pela foto (GIF anima) quando ela terminar de carregar.
+  const img = new Image();
+  img.onload = () => {
+    if (c.photo !== photo) return;
+    c.badge.textContent = '';
+    c.badge.style.backgroundImage = `url("${photo}")`;
+    c.badge.classList.add('has-photo');
+  };
+  img.src = photo;
+}
+
+function cursor({ id, x, y, gone, letter, hue, avatar }) {
   if (typeof id !== 'string') return;
   if (gone) {
     removeCursor(id);
@@ -247,12 +287,19 @@ function cursor({ id, x, y, gone, letter, hue }) {
   if (!c) {
     const node = el('div', 'cursor');
     node.innerHTML = ARROW;
-    node.append(el('span', 'cursor-badge', text(letter).slice(0, 2)));
-    c = { node, hue: distinctHue(id, hue), timer: null };
+    const badge = el('span', 'cursor-badge', text(letter).slice(0, 2));
+    node.append(badge);
+    c = { node, badge, photo: null, hue: distinctHue(id, hue), wanted: hue, timer: null };
     node.style.setProperty('--c', color(c.hue));
     cursors.set(id, c);
     cursorsEl.append(node);
+  } else if (hue !== c.wanted) {
+    // A pessoa trocou de cor no perfil.
+    c.wanted = hue;
+    c.hue = distinctHue(id, hue);
+    c.node.style.setProperty('--c', color(c.hue));
   }
+  paintBadge(c, letter, avatar);
   c.node.style.left = `${unit(x) * 100}%`;
   c.node.style.top = `${unit(y) * 100}%`;
   clearTimeout(c.timer);

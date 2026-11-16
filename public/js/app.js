@@ -170,21 +170,75 @@
     return btn;
   }
 
-  // Cor de cada pessoa (avatar, nome no chat, marcação na tela), sempre a mesma pro nick.
-  function nameHue(name) {
+  // Cor de cada pessoa (avatar, nome no chat, marcação na tela, mouse): a que ela
+  // escolheu no perfil ou, sem escolha, uma fixa pelo nick. A foto de perfil (se tiver)
+  // entra no lugar da letrinha. Os perfis dos outros chegam com a lista da sala.
+  const profileHues = new Map(); // nick -> cor escolhida
+  const profileAvatars = new Map(); // nick -> endereço da foto no servidor
+  const AVATAR_PATH = /^\/avatar\/[0-9a-f]{32}$/;
+  let myHue = null; // a cor que você escolheu (null: automática), salva neste navegador
+  try {
+    const saved = parseInt(localStorage.getItem('wss-hue'), 10);
+    if (saved >= 0 && saved < 360) myHue = saved;
+  } catch {}
+
+  function autoHue(name) {
     let hash = 0;
     for (const ch of name) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
     return hash % 360;
   }
 
+  // fallback: a cor guardada junto (ex.: numa mensagem antiga do chat), pra quem não
+  // está na sala agora.
+  function nameHue(name, fallback) {
+    const chosen = profileHues.get(name);
+    if (chosen !== undefined) return chosen;
+    return Number.isInteger(fallback) ? fallback : autoHue(name);
+  }
+
   function paintAvatar(node, name) {
-    node.textContent = [...name][0] || '?';
+    const photo = profileAvatars.get(name);
+    node.dataset.name = name;
+    node.textContent = photo ? '' : [...name][0] || '?';
     node.style.setProperty('--avatar', `hsl(${nameHue(name)} 45% 42%)`);
+    node.style.backgroundImage = photo ? `url("${photo}")` : '';
+    node.classList.toggle('has-photo', Boolean(photo));
     return node;
   }
 
   function avatar(name) {
     return paintAvatar(el('span', 'avatar'), name);
+  }
+
+  // Nome colorido (chat): guarda de quem é, pra mudar de cor junto com o perfil.
+  function paintName(node, msg, lightness) {
+    node.dataset.hueName = msg.name;
+    node.dataset.hueSl = lightness;
+    if (Number.isInteger(msg.hue)) node.dataset.hue = String(msg.hue);
+    node.style.setProperty('--name', `hsl(${nameHue(msg.name, msg.hue)} ${lightness})`);
+  }
+
+  // Remonta os perfis pela lista da sala; se algo mudou, repinta o que já está na tela.
+  function indexProfiles() {
+    const hues = new Map();
+    const photos = new Map();
+    for (const u of users.values()) {
+      if (u.kind === 'obs') continue; // o OBS usa o perfil de quem tem o mesmo nick
+      if (Number.isInteger(u.hue)) hues.set(u.name, u.hue);
+      if (typeof u.avatar === 'string' && AVATAR_PATH.test(u.avatar)) photos.set(u.name, u.avatar);
+    }
+    const same = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
+    if (same(hues, profileHues) && same(photos, profileAvatars)) return;
+    profileHues.clear();
+    for (const [k, v] of hues) profileHues.set(k, v);
+    profileAvatars.clear();
+    for (const [k, v] of photos) profileAvatars.set(k, v);
+    for (const node of document.querySelectorAll('.avatar[data-name]')) paintAvatar(node, node.dataset.name);
+    for (const node of document.querySelectorAll('[data-hue-name]')) {
+      const saved = node.dataset.hue === undefined ? undefined : Number(node.dataset.hue);
+      node.style.setProperty('--name', `hsl(${nameHue(node.dataset.hueName, saved)} ${node.dataset.hueSl})`);
+    }
+    if (me) onMyProfileChanged();
   }
 
   function exitFullscreen() {
@@ -287,7 +341,7 @@
   });
 
   function join() {
-    socket.emit('join', { name: wantedName, clientId }, (res) => {
+    socket.emit('join', { name: wantedName, clientId, hue: myHue }, (res) => {
       if (!res || res.error) {
         wantedName = null;
         stopSharing();
@@ -295,7 +349,6 @@
         return;
       }
       me = { id: res.me.id, name: res.me.name };
-      if (window.wssDesktop && window.wssDesktop.identity) window.wssDesktop.identity({ hue: nameHue(me.name) });
       // Permissões de controle não sobrevivem a uma queda (o servidor já cancelou): o
       // aviso do app some junto.
       if (window.wssDesktop && window.wssDesktop.controlState) window.wssDesktop.controlState({ on: false });
@@ -310,6 +363,9 @@
       updateBanner.hidden = !res.version || res.version === pageVersion;
       users.clear();
       for (const u of res.users) users.set(u.id, u);
+      indexProfiles();
+      sendDesktopIdentity();
+      cursorStreamsSent = '[]'; // o servidor começa sem saber (reconectou)
       // Reconexão no meio de uma transmissão: continua transmitindo.
       if (localStream) {
         users.get(me.id).sharing = true;
@@ -336,6 +392,7 @@
         if (prefs.endedAt == null && !live.has(key)) prefs.endedAt = Date.now();
       }
       renderUsers(); // agora com os quadros criados (botões de assistir/ir pra tela)
+      restoreProfilePhoto();
     });
   }
 
@@ -476,6 +533,7 @@
   }
 
   function renderUsers() {
+    indexProfiles();
     const myId = me && me.id;
     const list = roomEntries().sort((a, b) =>
       (b.user.id === myId) - (a.user.id === myId) || b.live - a.live || a.user.name.localeCompare(b.user.name));
@@ -534,6 +592,7 @@
     renderVoice();
     syncObsOverlay();
     if (controlDialog.open) renderControlPanel();
+    syncCursorStreams();
   }
 
   function renderShareButton() {
@@ -2376,7 +2435,7 @@
     if (!grouped) {
       const meta = el('div', 'chat-meta');
       const name = el('span', 'chat-name', msg.name);
-      name.style.setProperty('--name', `hsl(${nameHue(msg.name)} 75% 72%)`);
+      paintName(name, msg, '75% 72%');
       meta.append(avatar(msg.name), name, el('time', 'chat-time', chatTime(msg.at)));
       li.append(meta);
     }
@@ -2514,7 +2573,7 @@
     if (!fullscreenTile()) return;
     const li = el('li', 'fs-chat-line');
     const who = el('b', null, msg.name);
-    who.style.setProperty('--name', `hsl(${nameHue(msg.name)} 80% 72%)`);
+    paintName(who, msg, '80% 72%');
     li.append(who, msg.text);
     fsFeed.append(li);
     while (fsFeed.childElementCount > 5) fsFeed.firstElementChild.remove();
@@ -3252,6 +3311,260 @@
     });
   }
 
+  // ---------- perfil: cor e foto ----------
+
+  // A cor e a foto ficam salvas neste navegador (como o nick) e vão pro servidor a cada
+  // entrada na sala. A foto: PNG/JPG/WebP viram um quadrado de 256 px; GIF vai do jeito
+  // que está (animado), até 2 MB.
+  const profileDialog = $('profile-dialog');
+  const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+  const HUE_SWATCHES = [0, 20, 40, 55, 80, 120, 155, 180, 200, 220, 250, 275, 300, 330];
+  let hueSendTimer = null;
+
+  // A setinha com a fotinha (ou a letrinha) na cor da pessoa: a mesma da tela de quem
+  // transmite.
+  const CURSOR_ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2.5 19.5 13l-7 1.2-3.6 6.3z"/></svg>';
+
+  function cursorNode() {
+    const node = el('div', 'mouse-cursor');
+    node.innerHTML = CURSOR_ARROW;
+    node.append(el('span', 'cursor-badge'));
+    return node;
+  }
+
+  function paintCursor(node, name) {
+    const photo = profileAvatars.get(name);
+    const badge = node.querySelector('.cursor-badge');
+    node.style.setProperty('--c', `hsl(${nameHue(name)} 95% 64%)`);
+    badge.textContent = photo ? '' : [...name][0] || '?';
+    badge.style.backgroundImage = photo ? `url("${photo}")` : '';
+    badge.classList.toggle('has-photo', Boolean(photo));
+  }
+
+  // A foto fica no IndexedDB (cabe um GIF de 2 MB, o localStorage não aguenta bem).
+  const photoStore = {
+    db: null,
+    open() {
+      if (!this.db) {
+        this.db = new Promise((resolve, reject) => {
+          const req = indexedDB.open('wss-profile', 1);
+          req.onupgradeneeded = () => req.result.createObjectStore('files');
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+      return this.db;
+    },
+    async get() {
+      try {
+        const db = await this.open();
+        return await new Promise((resolve) => {
+          const req = db.transaction('files').objectStore('files').get('avatar');
+          req.onsuccess = () => resolve(req.result instanceof Blob ? req.result : null);
+          req.onerror = () => resolve(null);
+        });
+      } catch {
+        return null;
+      }
+    },
+    async set(blob) {
+      try {
+        const db = await this.open();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('files', 'readwrite');
+          if (blob) tx.objectStore('files').put(blob, 'avatar');
+          else tx.objectStore('files').delete('avatar');
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+
+  async function preparePhoto(file) {
+    const gif = file.type === 'image/gif' || (!file.type && /\.gif$/i.test(file.name));
+    if (gif) {
+      if (file.size > PHOTO_MAX_BYTES) throw new Error('Esse GIF passa de 2 MB. Escolha um menor.');
+      return file; // do jeito que veio, animado
+    }
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) && !/\.(png|jpe?g|webp)$/i.test(file.name)) {
+      throw new Error('Use uma foto PNG, JPG, WebP ou GIF.');
+    }
+    let bitmap;
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch {
+      throw new Error('Não deu pra abrir essa imagem.');
+    }
+    const side = Math.min(bitmap.width, bitmap.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    canvas.getContext('2d').drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 256, 256);
+    if (bitmap.close) bitmap.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.9));
+    if (!blob) throw new Error('Não deu pra preparar a foto.');
+    return blob;
+  }
+
+  // Manda a foto (ou null pra tirar) pro servidor.
+  async function sendPhoto(blob) {
+    if (!me) return { error: 'Entre na sala primeiro.' };
+    const data = blob ? await blob.arrayBuffer() : null;
+    const res = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 20000);
+      socket.emit('avatar', data, (reply) => {
+        clearTimeout(timer);
+        resolve(reply || { error: 'Não deu pra mandar a foto.' });
+      });
+    });
+    if (res.ok && me && users.has(me.id)) {
+      const self = users.get(me.id);
+      if (res.avatar) self.avatar = res.avatar;
+      else delete self.avatar;
+      renderUsers();
+    }
+    return res;
+  }
+
+  // Entrou na sala: a foto salva vai junto, sem precisar escolher de novo.
+  async function restoreProfilePhoto() {
+    const blob = await photoStore.get();
+    if (!blob || !me) return;
+    const res = await sendPhoto(blob);
+    if (res.error) showToast(`Foto de perfil: ${res.error}`);
+  }
+
+  function setMyHue(hue, send) {
+    myHue = Number.isInteger(hue) ? hue : null;
+    try {
+      if (myHue === null) localStorage.removeItem('wss-hue');
+      else localStorage.setItem('wss-hue', String(myHue));
+    } catch {}
+    if (me && users.has(me.id)) {
+      const self = users.get(me.id);
+      if (myHue === null) delete self.hue;
+      else self.hue = myHue;
+    }
+    clearTimeout(hueSendTimer);
+    if (send === 'now') socket.emit('profile', { hue: myHue });
+    else hueSendTimer = setTimeout(() => socket.emit('profile', { hue: myHue }), 300);
+    renderUsers();
+    renderProfileDialog();
+  }
+
+  function sendDesktopIdentity() {
+    if (me && desktop && typeof desktop.identity === 'function') desktop.identity({ hue: nameHue(me.name) });
+  }
+
+  // A sua cor ou foto mudou: a cor dos rabiscos no app, o seu mouse e a janela do perfil.
+  function onMyProfileChanged() {
+    sendDesktopIdentity();
+    renderMyCursors();
+    renderProfileDialog();
+  }
+
+  function renderProfileDialog() {
+    if (!profileDialog.open || !me) return;
+    paintAvatar($('profile-avatar'), me.name);
+    const name = $('profile-name');
+    name.textContent = me.name;
+    name.style.setProperty('--name', `hsl(${nameHue(me.name)} 75% 72%)`);
+    paintCursor($('profile-cursor').firstElementChild, me.name);
+    const slider = $('hue-slider');
+    slider.value = String(nameHue(me.name));
+    slider.style.setProperty('--sw', `hsl(${nameHue(me.name)} 45% 42%)`);
+    for (const btn of $('hue-swatches').children) {
+      const on = btn.dataset.hue === (myHue === null ? 'auto' : String(myHue));
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    }
+    $('hue-swatches').firstElementChild.style.setProperty('--sw', `hsl(${autoHue(me.name)} 45% 42%)`);
+    $('btn-photo-remove').hidden = !profileAvatars.has(me.name);
+  }
+
+  function openProfile() {
+    if (!me) return;
+    $('photo-error').hidden = true;
+    if (!profileDialog.open) profileDialog.showModal();
+    renderProfileDialog();
+  }
+
+  {
+    const swatches = $('hue-swatches');
+    const auto = el('button', 'hue-swatch hue-auto', 'Automática');
+    auto.type = 'button';
+    auto.dataset.hue = 'auto';
+    auto.title = 'A cor que o seu nick já tinha';
+    auto.addEventListener('click', () => setMyHue(null, 'now'));
+    swatches.append(auto);
+    for (const hue of HUE_SWATCHES) {
+      const btn = el('button', 'hue-swatch');
+      btn.type = 'button';
+      btn.dataset.hue = String(hue);
+      btn.style.setProperty('--sw', `hsl(${hue} 45% 42%)`);
+      btn.setAttribute('aria-label', `Cor ${hue}`);
+      btn.addEventListener('click', () => setMyHue(hue, 'now'));
+      swatches.append(btn);
+    }
+    $('profile-cursor').append(cursorNode());
+  }
+  $('hue-slider').addEventListener('input', (e) => setMyHue(Number(e.target.value)));
+  $('hue-slider').addEventListener('change', (e) => setMyHue(Number(e.target.value), 'now'));
+  $('btn-photo').addEventListener('click', () => $('photo-input').click());
+  $('photo-input').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const error = $('photo-error');
+    const btn = $('btn-photo');
+    error.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'Enviando…';
+    try {
+      const blob = await preparePhoto(file);
+      const res = await sendPhoto(blob);
+      if (res.error) throw new Error(res.error);
+      if (!(await photoStore.set(blob))) showToast('A foto entrou, mas este navegador não deixou salvar: na próxima vez, escolha de novo.');
+    } catch (err) {
+      error.textContent = err.message || 'Não deu pra usar essa foto.';
+      error.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Escolher foto';
+      renderProfileDialog();
+    }
+  });
+  $('btn-photo-remove').addEventListener('click', async () => {
+    const res = await sendPhoto(null);
+    if (res.error) {
+      $('photo-error').textContent = res.error;
+      $('photo-error').hidden = false;
+      return;
+    }
+    await photoStore.set(null);
+    renderProfileDialog();
+  });
+  profileDialog.addEventListener('click', (e) => {
+    if (e.target === profileDialog) profileDialog.close();
+  });
+  meAvatarEl.setAttribute('role', 'button');
+  meAvatarEl.tabIndex = 0;
+  meAvatarEl.title = 'Seu perfil: foto e cor';
+  meAvatarEl.addEventListener('click', openProfile);
+  meAvatarEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openProfile();
+    }
+  });
+  meNameEl.title = 'Seu perfil: foto e cor';
+  meNameEl.addEventListener('click', openProfile);
+  $('btn-profile').addEventListener('click', openProfile);
+
   // ---------- mouse de quem assiste e controle remoto ----------
 
   const controlDialog = $('control-dialog');
@@ -3301,8 +3614,13 @@
       else if (!timer) timer = setTimeout(flush, wait);
     };
     s.media.addEventListener('pointermove', (e) => {
-      if (!shareCursor || e.pointerType === 'touch' || controlling === s.id || !s.watching) return;
-      const point = videoPoint(s.video, e.clientX, e.clientY);
+      const active = shareCursor && e.pointerType !== 'touch' && controlling !== s.id && s.watching;
+      const point = active ? videoPoint(s.video, e.clientX, e.clientY) : null;
+      // Quem transmite vê o seu mouse (o app dela mostra): aqui ele fica igual. Em cima
+      // dos botões do quadro, volta o mouse normal.
+      const mirror = point && cursorsShownOn(s.id) && !e.target.closest('.tile-tools, .tile-audio, .tile-stats, button, select, input');
+      mirrorCursor(s, mirror ? e : null);
+      if (!active) return;
       if (point) {
         inside = true;
         queue({ x: round4(point.x), y: round4(point.y) });
@@ -3312,15 +3630,70 @@
       }
     });
     s.media.addEventListener('pointerleave', () => {
+      mirrorCursor(s, null);
       if (!inside) return;
       inside = false;
       queue({ gone: true });
     });
   }
 
+  // O app de quem transmite está mostrando o mouse de quem assiste nessa transmissão?
+  function cursorsShownOn(streamId) {
+    for (const u of users.values()) {
+      if (Array.isArray(u.cursors) && u.cursors.includes(streamId)) return true;
+    }
+    return false;
+  }
+
+  function mirrorCursor(s, e) {
+    if (!e || !me) {
+      if (s.myCursor) s.myCursor.hidden = true;
+      s.media.classList.remove('mirror-cursor');
+      return;
+    }
+    if (!s.myCursor) {
+      s.myCursor = cursorNode();
+      paintCursor(s.myCursor, me.name);
+      s.media.append(s.myCursor);
+    }
+    const rect = s.media.getBoundingClientRect();
+    s.myCursor.style.left = `${e.clientX - rect.left}px`;
+    s.myCursor.style.top = `${e.clientY - rect.top}px`;
+    s.myCursor.hidden = false;
+    s.media.classList.add('mirror-cursor');
+  }
+
+  function renderMyCursors() {
+    if (!me) return;
+    for (const s of streams.values()) {
+      if (s.myCursor) paintCursor(s.myCursor, me.name);
+    }
+  }
+
+  // Transmitindo pelo app: avisa a sala em quais transmissões suas o mouse de quem assiste
+  // aparece na sua tela (pra quem assiste ver o próprio mouse igual).
+  let cursorStreamsSent = '[]';
+  function syncCursorStreams() {
+    if (!desktop || !me) return;
+    const list = [];
+    if (showCursors) {
+      if (desktopOverlay && localStream) list.push(me.id);
+      const obsId = obsOverlay ? myObsStreamId() : null;
+      if (obsId) list.push(obsId);
+    }
+    const key = JSON.stringify(list);
+    if (key === cursorStreamsSent) return;
+    cursorStreamsSent = key;
+    socket.emit('cursors', { streams: list });
+  }
+
   socket.on('cursor', ({ stream, id, name, x, y, gone }) => {
     if (!showCursors || typeof name !== 'string') return;
-    toDesktopOverlay(stream, { type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name) });
+    const photo = profileAvatars.get(name);
+    toDesktopOverlay(stream, {
+      type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name),
+      avatar: photo ? new URL(photo, window.location.href).href : null,
+    });
   });
 
   // ---- quem transmite: dar e tirar o controle
@@ -3423,6 +3796,7 @@
   // A sua transmissão passou a dar (ou deixou de dar) pra controlar: redesenha a lista.
   function checkControlTargets() {
     if (me && myControlStream() !== controlTargetsShown) renderUsers();
+    syncCursorStreams();
   }
 
   if (desktop && typeof desktop.caps === 'function') {
@@ -3435,6 +3809,7 @@
   $('show-cursors').addEventListener('change', (e) => {
     showCursors = e.target.checked;
     try { localStorage.setItem('wss-show-cursors', showCursors ? '1' : '0'); } catch {}
+    syncCursorStreams();
   });
   controlDialog.addEventListener('click', (e) => {
     if (e.target === controlDialog) controlDialog.close();

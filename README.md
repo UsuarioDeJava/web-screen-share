@@ -400,6 +400,13 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     pro quadro debaixo do mouse (ou o em tela cheia, o fixado ou o único na tela):
     **M** som, **F** tela cheia, **P** fixar, **S** print, **1** a **6** reações,
     **C** chat, **V** voz/microfone.
+13. **Perfil** (clique na sua fotinha, no rodapé da lista, ou em **Perfil**): escolha
+    a sua **cor** (umas prontas, a barrinha pra qualquer outra, ou **Automática**, a do
+    nick) e uma **foto** (PNG, JPG, WebP ou GIF animado até 2 MB; as fotos paradas
+    viram um quadradinho de 256 px). A cor e a foto aparecem pra todo mundo na lista,
+    no chat, nos quadros, nos rabiscos e no mouse, e ficam salvas no navegador como o
+    nick: na próxima vez elas já entram junto. As fotos ficam só na memória do servidor
+    enquanto a pessoa está na sala.
 
 ## App de desktop (Windows)
 
@@ -436,10 +443,12 @@ que o navegador não faz:
   rouba o foco: o jogo continua na frente quando você sai do modo.
 - **Mouse de quem assiste**: transmitindo pelo app (ou pelo OBS, com as marcações na
   tela ligadas), quando alguém passa o mouse por cima da sua transmissão, aparece na
-  sua tela uma setinha na cor da pessoa, com a letrinha do nick (como o avatar da
-  sala), sem nome; cada pessoa com uma cor diferente. O botão da setinha, embaixo da
-  lista de pessoas, abre o painel **Mouse e controle**: ali quem assiste desliga o
-  próprio mouse, e quem transmite desliga o de todo mundo.
+  sua tela uma setinha na cor da pessoa, com a foto de perfil dela (ou a letrinha do
+  nick), sem nome; cada pessoa com uma cor diferente. Pra quem assiste (no app ou no
+  navegador), o próprio mouse em cima da sua transmissão vira essa mesma setinha, então
+  a pessoa vê exatamente o que você está vendo. O botão da setinha, embaixo da lista
+  de pessoas, abre o painel **Mouse e controle**: ali quem assiste desliga o próprio
+  mouse, e quem transmite desliga o de todo mundo.
 - **Controle remoto** (desligado por padrão): enquanto você transmite, cada pessoa da
   lista da sala ganha um botão 🎮; clique nele e confirme em **Permitir?** (uma pessoa
   por vez; dá também pelo painel **Mouse e controle**). A pessoa ganha o botão 🎮 em

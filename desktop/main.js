@@ -381,7 +381,8 @@ function openOverlay(display, owner) {
   overlay.once('ready-to-show', () => {
     if (overlay) overlay.showInactive();
   });
-  overlay.loadFile(path.join(PAGES, 'overlay.html'));
+  // O endereço do servidor: as fotos de perfil no mouse só podem vir dele.
+  overlay.loadFile(path.join(PAGES, 'overlay.html'), { query: { server: config.server || '' } });
   return true;
 }
 
