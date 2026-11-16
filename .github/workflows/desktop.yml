@@ -1,0 +1,94 @@
+name: Build desktop app
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - desktop/**
+      - .github/workflows/desktop.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+            files: desktop/dist/*.exe
+          - os: ubuntu-latest
+            target: --linux
+            files: desktop/dist/*.AppImage
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npx electron-builder ${{ matrix.target }} --publish never
+
+      # O app empacotado abre e carrega a tela de configurar o servidor.
+      - name: Smoke test
+        if: runner.os == 'Linux'
+        run: |
+          command -v xvfb-run >/dev/null || (sudo apt-get update && sudo apt-get install -y xvfb)
+          WSS_USER_DATA="$(mktemp -d)" xvfb-run -a dist/linux-unpacked/web-screen-share-desktop --no-sandbox --self-test
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: App version
+        id: version
+        run: echo "value=$(node -p "require('./desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Download builds
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v${{ steps.version.outputs.value }}
+          name: App de desktop ${{ steps.version.outputs.value }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: artifacts/*
+          body: |
+            App de desktop do Web Screen Share: abre a sala do seu servidor e acrescenta o seletor de tela com o som do PC e as marcações (apontar, desenhar, reagir) aparecendo na sua tela de verdade enquanto você transmite.
+
+            **Windows**: baixe `Web-Screen-Share-Setup-${{ steps.version.outputs.value }}.exe` (instala e cria o atalho) ou `Web-Screen-Share-Portable-${{ steps.version.outputs.value }}.exe` (roda sem instalar). O app não é assinado: se aparecer "O Windows protegeu o computador", clique em **Mais informações** e depois em **Executar assim mesmo**.
+
+            **Linux**: `Web-Screen-Share-${{ steps.version.outputs.value }}.AppImage` (dê permissão de execução). No Linux não tem o som do PC nem as marcações na tela.
+
+            Na primeira vez, o app pede o endereço do servidor (o mesmo que vocês abrem no navegador).

@@ -1,0 +1,473 @@
+// App de desktop do Web Screen Share. Abre a sala do seu servidor (a mesma página do
+// navegador, então ela se atualiza junto com o servidor) e acrescenta o que o navegador
+// não faz sozinho:
+// - um seletor próprio de tela/janela, com o som do PC no Windows;
+// - uma camada transparente por cima da tela que você está transmitindo, que não pega
+//   cliques e fica de fora da captura: quando alguém aponta, desenha ou reage na sua
+//   transmissão, aparece ali, na sua tela de verdade.
+const { app, BrowserWindow, Menu, desktopCapturer, dialog, ipcMain, screen, session, shell } = require('electron');
+const fs = require('fs');
+const path = require('path');
+
+if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
+
+const PAGES = path.join(__dirname, 'pages');
+const ICON = path.join(PAGES, 'icon.png');
+const SELF_TEST = process.argv.includes('--self-test');
+// A camada por cima da tela só existe onde dá pra tirá-la da captura (senão quem
+// assiste veria as marcações duas vezes): Windows 10 2004 ou mais novo, e macOS.
+const OVERLAY_SUPPORTED = process.platform === 'win32' || process.platform === 'darwin' || process.env.WSS_FORCE_OVERLAY === '1';
+// Som do PC junto com a tela: o Chromium só sabe capturar no Windows.
+const SYSTEM_AUDIO = process.platform === 'win32';
+const PERMISSIONS = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write', 'notifications']);
+
+let config = { server: null, trusted: {}, bounds: null, maximized: false };
+let mainWindow = null;
+let overlay = null;
+let picker = null; // seletor de tela aberto: { win, finish }
+let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
+let picked = null; // última escolha do seletor: { kind, displayId }
+let serverLoadFailed = false; // a última tentativa de abrir o servidor falhou
+let failure = null; // { message, timer }: aviso de falha esperando a página de erro carregar
+const declined = new Set(); // certificados recusados nesta sessão
+
+// ---------- configuração ----------
+
+const configFile = () => path.join(app.getPath('userData'), 'config.json');
+
+function loadConfig() {
+  try {
+    config = { ...config, ...JSON.parse(fs.readFileSync(configFile(), 'utf8')) };
+  } catch {}
+  if (!config.trusted || typeof config.trusted !== 'object') config.trusted = {};
+  if (process.env.WSS_SERVER) config.server = normalizeServer(process.env.WSS_SERVER);
+}
+
+function saveConfig() {
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(configFile(), JSON.stringify(config, null, 2));
+  } catch (err) {
+    console.error('Não deu pra salvar a configuração:', err.message);
+  }
+}
+
+// "nas.tail1234.ts.net:3100" -> "https://nas.tail1234.ts.net:3100"
+function normalizeServer(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  if (!/^[a-z]+:\/\//i.test(text)) text = `https://${text}`;
+  try {
+    const url = new URL(text);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function isServerUrl(url) {
+  if (!config.server || !url) return false;
+  try {
+    return new URL(url).origin === config.server;
+  } catch {
+    return false;
+  }
+}
+
+// Mensagens só valem vindas da página do servidor aberta na janela principal.
+const fromServer = (event) => Boolean(mainWindow) && event.sender === mainWindow.webContents
+  && isServerUrl(event.senderFrame ? event.senderFrame.url : mainWindow.webContents.getURL());
+const fromSetup = (event) => Boolean(mainWindow) && event.sender === mainWindow.webContents
+  && mainWindow.webContents.getURL().startsWith('file:');
+
+// ---------- janela principal ----------
+
+function visibleBounds(bounds) {
+  if (!bounds) return null;
+  const fits = screen.getAllDisplays().some(({ workArea: a }) =>
+    bounds.x < a.x + a.width - 80 && bounds.x + bounds.width > a.x + 80 && bounds.y >= a.y - 10 && bounds.y < a.y + a.height - 80);
+  return fits ? bounds : null;
+}
+
+function showSetup(error) {
+  mainWindow.loadFile(path.join(PAGES, 'setup.html'), { query: { server: config.server || '', error: error || '' } });
+}
+
+function showFailure() {
+  if (!failure || !mainWindow) return;
+  const { message } = failure;
+  failure = null;
+  showSetup(message);
+}
+
+function openServer() {
+  serverLoadFailed = false;
+  if (failure) clearTimeout(failure.timer);
+  failure = null;
+  if (!config.server) showSetup();
+  else mainWindow.loadURL(`${config.server}/`);
+}
+
+function createMainWindow() {
+  const bounds = visibleBounds(config.bounds) || { width: 1280, height: 800 };
+  mainWindow = new BrowserWindow({
+    ...bounds,
+    minWidth: 420,
+    minHeight: 480,
+    show: false,
+    title: 'Web Screen Share',
+    icon: ICON,
+    backgroundColor: '#07080d',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+      spellcheck: false,
+      // Transmissão e voz continuam firmes com a janela minimizada ou atrás de outras.
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
+    },
+  });
+  if (config.maximized) mainWindow.maximize();
+  mainWindow.once('ready-to-show', () => {
+    if (!SELF_TEST) mainWindow.show();
+  });
+
+  const { webContents } = mainWindow;
+  // Links (do chat, do README...) abrem no navegador; nada sai do servidor aqui dentro.
+  webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  webContents.on('will-navigate', (event, url) => {
+    if (isServerUrl(url)) return;
+    event.preventDefault();
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+  });
+  webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
+    if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
+    serverLoadFailed = true;
+    // Trocar de página enquanto o Chromium ainda monta a página de erro deixa a janela
+    // sem desenhar: espera ela terminar de carregar (ou um tempo, se não vier).
+    if (failure) clearTimeout(failure.timer);
+    failure = {
+      message: `Não deu pra abrir ${config.server} (${description}). Veja se o servidor está ligado e se este PC alcança ele (mesma rede ou Tailscale).`,
+      timer: setTimeout(showFailure, 1500),
+    };
+  });
+  webContents.on('did-finish-load', async () => {
+    if (SELF_TEST) {
+      console.log(`SELF-TEST OK: ${webContents.getURL().split('?')[0]}`);
+      app.exit(0);
+      return;
+    }
+    if (failure) {
+      clearTimeout(failure.timer);
+      setTimeout(showFailure, 50);
+      return;
+    }
+    if (serverLoadFailed || !isServerUrl(webContents.getURL())) return;
+    const ok = await webContents.executeJavaScript('Boolean(document.getElementById("login-form") && document.getElementById("grid"))').catch(() => false);
+    if (!ok) showSetup('Esse endereço abriu, mas não é um servidor do Web Screen Share.');
+  });
+  webContents.on('render-process-gone', (event, details) => {
+    if (details.reason !== 'clean-exit') openServer();
+  });
+  webContents.on('before-input-event', (event, input) => handleShortcut(event, input));
+
+  mainWindow.on('focus', () => mainWindow.flashFrame(false));
+  mainWindow.on('close', () => {
+    config.maximized = mainWindow.isMaximized();
+    if (!config.maximized && !mainWindow.isMinimized()) config.bounds = mainWindow.getBounds();
+    saveConfig();
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    closeOverlay();
+    app.quit();
+  });
+  openServer();
+}
+
+// Sem menu (a tecla Alt é do "apontar/desenhar" na sala), os atalhos do navegador vêm daqui.
+function handleShortcut(event, input) {
+  if (input.type !== 'keyDown') return;
+  const key = input.key.toLowerCase();
+  const ctrl = input.control || input.meta;
+  const { webContents } = mainWindow;
+  let handled = true;
+  if (key === 'f5' || (ctrl && !input.shift && key === 'r')) webContents.reload();
+  else if (ctrl && input.shift && key === 'r') webContents.reloadIgnoringCache();
+  else if (key === 'f11') mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  else if (key === 'f12' || (ctrl && input.shift && key === 'i')) webContents.toggleDevTools();
+  else if (ctrl && (key === '=' || key === '+')) webContents.setZoomLevel(Math.min(webContents.getZoomLevel() + 0.5, 4));
+  else if (ctrl && key === '-') webContents.setZoomLevel(Math.max(webContents.getZoomLevel() - 0.5, -3));
+  else if (ctrl && key === '0') webContents.setZoomLevel(0);
+  else handled = false;
+  if (handled) event.preventDefault();
+}
+
+// ---------- seletor de tela/janela ----------
+
+function pickSource() {
+  if (picker) {
+    picker.win.focus();
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      parent: mainWindow,
+      modal: true,
+      width: 880,
+      height: 640,
+      minWidth: 560,
+      minHeight: 440,
+      show: false,
+      title: 'Escolha o que compartilhar',
+      icon: ICON,
+      backgroundColor: '#0b0d15',
+      autoHideMenuBar: true,
+      minimizable: false,
+      maximizable: false,
+      webPreferences: { preload: path.join(__dirname, 'picker-preload.js'), contextIsolation: true, sandbox: true },
+    });
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      picker = null;
+      resolve(result);
+      if (!win.isDestroyed()) win.close();
+    };
+    picker = { win, finish };
+    win.on('closed', () => finish(null));
+    win.once('ready-to-show', () => win.show());
+    win.loadFile(path.join(PAGES, 'picker.html'));
+  });
+}
+
+function screenLabel(source, displays) {
+  const display = displays.find((d) => String(d.id) === String(source.display_id));
+  if (displays.length <= 1) return 'Tela inteira';
+  const index = display ? displays.indexOf(display) + 1 : '';
+  const size = display ? ` (${display.size.width}×${display.size.height}${display.id === screen.getPrimaryDisplay().id ? ', principal' : ''})` : '';
+  return `Tela ${index}${size}`.trim();
+}
+
+ipcMain.handle('picker:info', () => ({ systemAudio: SYSTEM_AUDIO, overlay: OVERLAY_SUPPORTED }));
+
+ipcMain.handle('picker:sources', async (event) => {
+  if (!picker || event.sender !== picker.win.webContents) return [];
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 480, height: 270 },
+    fetchWindowIcons: true,
+  });
+  // As janelas do próprio app ficam de fora.
+  const own = new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
+  const displays = screen.getAllDisplays();
+  lastSources = new Map();
+  return sources.filter((s) => !own.has(s.id)).map((s) => {
+    lastSources.set(s.id, s);
+    const kind = s.id.startsWith('screen:') ? 'screen' : 'window';
+    return {
+      id: s.id,
+      kind,
+      name: kind === 'screen' ? screenLabel(s, displays) : s.name,
+      thumbnail: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null,
+      icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+    };
+  });
+});
+
+ipcMain.on('picker:choose', (event, choice) => {
+  if (!picker || event.sender !== picker.win.webContents || !choice) return;
+  const source = lastSources.get(choice.id);
+  if (!source) return;
+  const kind = source.id.startsWith('screen:') ? 'screen' : 'window';
+  picker.finish({ source, kind, displayId: source.display_id, audio: Boolean(choice.audio) });
+});
+
+ipcMain.on('picker:cancel', (event) => {
+  if (picker && event.sender === picker.win.webContents) picker.finish(null);
+});
+
+// ---------- camada por cima da tela transmitida ----------
+
+function overlayDisplay() {
+  if (!picked || picked.kind !== 'screen') return null;
+  const displays = screen.getAllDisplays();
+  return displays.find((d) => String(d.id) === String(picked.displayId)) || (displays.length === 1 ? displays[0] : null);
+}
+
+function openOverlay() {
+  closeOverlay();
+  const display = OVERLAY_SUPPORTED ? overlayDisplay() : null;
+  if (!display) return false;
+  overlay = new BrowserWindow({
+    ...display.bounds,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    movable: false,
+    focusable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    show: false,
+    title: 'Web Screen Share (marcações)',
+    webPreferences: { preload: path.join(__dirname, 'overlay-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
+  });
+  overlay.displayId = display.id;
+  overlay.setIgnoreMouseEvents(true);
+  overlay.setAlwaysOnTop(true, 'screen-saver');
+  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Fora da captura: quem assiste já vê as marcações por cima do vídeo, no navegador.
+  overlay.setContentProtection(true);
+  overlay.on('closed', () => { overlay = null; });
+  overlay.once('ready-to-show', () => {
+    if (overlay) overlay.showInactive();
+  });
+  overlay.loadFile(path.join(PAGES, 'overlay.html'));
+  return true;
+}
+
+function closeOverlay() {
+  if (overlay && !overlay.isDestroyed()) overlay.destroy();
+  overlay = null;
+}
+
+// ---------- o que a página do servidor pede ----------
+
+ipcMain.on('desktop:version', (event) => { event.returnValue = app.getVersion(); });
+
+ipcMain.handle('desktop:sharing', (event, on) => {
+  if (!fromServer(event)) return { overlay: false };
+  if (!on) {
+    closeOverlay();
+    return { overlay: false };
+  }
+  return { overlay: openOverlay(), kind: picked ? picked.kind : null };
+});
+
+ipcMain.on('desktop:overlay', (event, data) => {
+  if (fromServer(event) && overlay && !overlay.isDestroyed() && data && typeof data === 'object') {
+    overlay.webContents.send('overlay:event', data);
+  }
+});
+
+ipcMain.on('desktop:attention', (event) => {
+  if (fromServer(event) && !mainWindow.isFocused()) mainWindow.flashFrame(true);
+});
+
+ipcMain.on('desktop:change-server', (event) => {
+  if (fromServer(event)) showSetup();
+});
+
+ipcMain.handle('setup:connect', (event, raw) => {
+  if (!fromSetup(event)) return { error: 'Não permitido.' };
+  const origin = normalizeServer(raw);
+  if (!origin) return { error: 'Endereço inválido. Exemplo: https://meu-nas.tail1234.ts.net:3100' };
+  config.server = origin;
+  saveConfig();
+  openServer();
+  return { ok: true };
+});
+
+ipcMain.on('setup:retry', (event) => {
+  if (fromSetup(event)) openServer();
+});
+
+// ---------- app ----------
+
+// Certificado autoassinado (o que a imagem Docker gera sem o do Tailscale): pergunta uma
+// vez e lembra deste servidor.
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  if (!isServerUrl(url)) {
+    callback(false);
+    return;
+  }
+  event.preventDefault();
+  const host = new URL(url).host;
+  if (config.trusted[host] === certificate.fingerprint) {
+    callback(true);
+    return;
+  }
+  if (declined.has(certificate.fingerprint)) {
+    callback(false);
+    return;
+  }
+  const choice = dialog.showMessageBoxSync(mainWindow, {
+    type: 'warning',
+    buttons: ['Confiar neste servidor', 'Cancelar'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Certificado não reconhecido',
+    message: `O certificado HTTPS de ${host} não é reconhecido (${error}).`,
+    detail: 'Se este é o seu servidor, com o certificado autoassinado do app, pode confiar. '
+      + `Impressão digital:\n${certificate.fingerprint}`,
+  });
+  if (choice === 0) {
+    config.trusted[host] = certificate.fingerprint;
+    saveConfig();
+    callback(true);
+  } else {
+    declined.add(certificate.fingerprint);
+    callback(false);
+  }
+});
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.webscreenshare.desktop');
+    Menu.setApplicationMenu(null);
+    loadConfig();
+    if (SELF_TEST) {
+      setTimeout(() => {
+        console.log('SELF-TEST FAIL: a janela não carregou');
+        app.exit(1);
+      }, 30000);
+    }
+
+    const ses = session.defaultSession;
+    ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+      callback(PERMISSIONS.has(permission) && isServerUrl(details.requestingUrl || webContents.getURL()));
+    });
+    ses.setPermissionCheckHandler((webContents, permission, origin) => PERMISSIONS.has(permission) && isServerUrl(origin));
+    // "Compartilhar tela" na sala abre o seletor do app.
+    ses.setDisplayMediaRequestHandler(async (request, callback) => {
+      const origin = request.securityOrigin || (request.frame ? request.frame.url : '');
+      const choice = isServerUrl(origin) ? await pickSource() : null;
+      if (!choice || !mainWindow) {
+        callback({});
+        return;
+      }
+      picked = { kind: choice.kind, displayId: choice.displayId };
+      const streams = { video: choice.source };
+      if (choice.audio && SYSTEM_AUDIO) streams.audio = 'loopback';
+      callback(streams);
+    });
+
+    screen.on('display-metrics-changed', (event, display) => {
+      if (overlay && overlay.displayId === display.id) overlay.setBounds(display.bounds);
+    });
+    screen.on('display-removed', (event, display) => {
+      if (overlay && overlay.displayId === display.id) closeOverlay();
+    });
+
+    createMainWindow();
+  });
+
+  app.on('window-all-closed', () => app.quit());
+}

@@ -401,6 +401,43 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     **M** som, **F** tela cheia, **P** fixar, **S** print, **1** a **6** reações,
     **C** chat, **V** voz/microfone.
 
+## App de desktop (Windows)
+
+Além do navegador, dá pra usar o app de desktop. Ele abre a mesma sala do seu
+servidor (então tudo que muda no servidor chega nele sem reinstalar) e acrescenta o
+que o navegador não faz:
+
+- **Marcações na sua tela de verdade**: transmitindo a tela inteira pelo app, quando
+  alguém aponta (Alt + clique), desenha (Alt + arrastar) ou reage na sua transmissão,
+  aparece também no seu monitor, por cima de tudo (até de jogo em tela cheia "sem
+  bordas"; em tela cheia exclusiva o Windows não deixa nada por cima). Essa camada não
+  pega cliques e fica de fora da captura, então quem assiste não vê nada duplicado. O
+  seu quadro na sala ganha a etiqueta **na sua tela** enquanto isso está ligado.
+  Compartilhando só uma janela, as marcações aparecem só pra quem assiste.
+- **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
+  **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
+  tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.
+- A transmissão e a voz continuam firmes com o app minimizado, e a barra de tarefas
+  pisca quando chega mensagem no chat com o app em segundo plano.
+
+Instalação: baixe o `Web-Screen-Share-Setup-<versão>.exe` (ou o `Portable`, que roda
+sem instalar) na [página de Releases](https://github.com/UsuarioDeJava/web-screen-share/releases/latest)
+(o link **Baixar o app** no rodapé da lista de pessoas leva até lá). O app não é
+assinado: se aparecer "O Windows protegeu o computador", clique em **Mais informações**
+→ **Executar assim mesmo**. Na primeira vez ele pede o endereço do servidor (o mesmo do
+navegador, ex.: `https://nome-do-nas.tailXXXX.ts.net:3100`); pra trocar depois, use
+**Trocar servidor** no rodapé da lista de pessoas. Com o certificado autoassinado da
+imagem Docker, o app pergunta uma vez se pode confiar no servidor.
+
+Atalhos do app: **F11** tela cheia, **Ctrl+R**/**F5** recarregar, **Ctrl + +/−/0**
+zoom, **F12** ferramentas de desenvolvedor.
+
+Também sai uma versão pra Linux (`.AppImage`), sem o som do PC e sem as marcações na
+tela (lá não dá pra tirar a camada da captura). O código do app fica na pasta
+`desktop/`, e o GitHub Actions gera os instaladores a cada mudança nela
+(`.github/workflows/desktop.yml`). Pra rodar a partir do código: `cd desktop && npm
+install && npm start`.
+
 ## Observações
 
 - `getDisplayMedia` exige um "contexto seguro": HTTPS, ou `localhost`. Sem HTTPS

@@ -1,0 +1,61 @@
+{
+  "name": "web-screen-share-desktop",
+  "productName": "Web Screen Share",
+  "version": "1.0.0",
+  "description": "App de desktop do Web Screen Share: a sala do seu servidor, com as marcações na tela de verdade e o som do PC.",
+  "author": {
+    "name": "Web Screen Share"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/UsuarioDeJava/web-screen-share",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.3.2",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.webscreenshare.desktop",
+    "productName": "Web Screen Share",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "picker-preload.js",
+      "overlay-preload.js",
+      "pages/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "Web Screen Share",
+      "artifactName": "Web-Screen-Share-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Web-Screen-Share-Portable-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Network",
+      "artifactName": "Web-Screen-Share-${version}.${ext}"
+    }
+  }
+}

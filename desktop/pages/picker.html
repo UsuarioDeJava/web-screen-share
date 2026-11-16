@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'" />
+  <title>Escolha o que compartilhar</title>
+  <link rel="stylesheet" href="common.css" />
+  <link rel="stylesheet" href="picker.css" />
+</head>
+<body>
+  <main class="picker">
+    <header class="head">
+      <h1>Escolha o que compartilhar</h1>
+      <div class="tabs" role="tablist">
+        <button class="tab active" type="button" role="tab" data-kind="screen" aria-selected="true">Telas</button>
+        <button class="tab" type="button" role="tab" data-kind="window" aria-selected="false">Janelas</button>
+      </div>
+    </header>
+    <section id="grid" class="grid" aria-label="Opções"></section>
+    <p id="empty" class="empty" hidden>Nada pra mostrar aqui.</p>
+    <footer class="foot">
+      <div class="options">
+        <label id="audio-row" class="check" hidden>
+          <input id="audio" type="checkbox" checked />
+          <span>Compartilhar o som do PC <small>(quem está na voz: use fone, senão quem assiste ouve o próprio eco)</small></span>
+        </label>
+        <p id="hint" class="hint"></p>
+      </div>
+      <div class="actions">
+        <button id="cancel" class="btn" type="button">Cancelar</button>
+        <button id="share" class="btn btn-primary" type="button" disabled>Compartilhar</button>
+      </div>
+    </footer>
+  </main>
+  <script src="picker.js"></script>
+</body>
+</html>

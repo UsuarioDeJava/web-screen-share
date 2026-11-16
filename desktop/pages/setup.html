@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'" />
+  <title>Web Screen Share</title>
+  <link rel="stylesheet" href="common.css" />
+  <link rel="stylesheet" href="setup.css" />
+</head>
+<body>
+  <main class="setup">
+    <form id="form" class="card" autocomplete="off">
+      <img class="logo" src="icon.png" alt="" />
+      <h1>Web Screen Share</h1>
+      <p class="sub">Endereço do servidor da sala (o mesmo que vocês abrem no navegador).</p>
+      <input id="server" placeholder="https://meu-nas.tail1234.ts.net:3100" aria-label="Endereço do servidor" spellcheck="false" />
+      <p id="error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button id="retry" class="btn" type="button" hidden>Tentar de novo</button>
+        <button class="btn btn-primary" type="submit">Conectar</button>
+      </div>
+      <p class="hint">Dá pra trocar depois em "Trocar servidor", no rodapé da lista de pessoas.</p>
+    </form>
+  </main>
+  <script src="setup.js"></script>
+</body>
+</html>

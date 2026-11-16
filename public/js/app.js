@@ -675,8 +675,12 @@
       const viewers = el('span', 'tile-viewers');
       meta.append(viewers);
       if (!localStream.getAudioTracks().length) meta.append(el('span', 'tag', 'sem áudio'));
+      const overlayTag = el('span', 'tag tag-overlay', 'na sua tela');
+      overlayTag.title = 'Quando alguém apontar, desenhar ou reagir na sua transmissão, aparece também na sua tela de verdade';
+      overlayTag.hidden = true;
+      meta.prepend(overlayTag);
       base.bar.append(meta);
-      selfTile = { ...base, viewers };
+      selfTile = { ...base, viewers, overlayTag };
       // Quem transmite também pode apontar na própria tela, pra quem está assistindo.
       enableMarkup(base, () => me && me.id);
       gridInner.prepend(base.tile);
@@ -688,6 +692,7 @@
       .map(([id]) => users.get(id))
       .filter(Boolean)
       .map((u) => u.name);
+    selfTile.overlayTag.hidden = !desktopOverlay;
     selfTile.viewers.replaceChildren(icon('eye'), String(names.length));
     selfTile.viewers.title = names.length ? `Assistindo: ${names.join(', ')}` : 'Ninguém assistindo ainda';
   }
@@ -712,7 +717,10 @@
         selfBrowserSurface: 'exclude',
       });
     } catch (err) {
-      if (err.name !== 'NotAllowedError') showToast(`Não foi possível compartilhar a tela: ${err.message}`);
+      // Cancelar a escolha não é erro (no app de desktop, o cancelamento chega assim).
+      const cancelled = err.name === 'NotAllowedError' || err.name === 'AbortError'
+        || (window.wssDesktop && /invalid capture constraints/i.test(err.message));
+      if (!cancelled) showToast(`Não foi possível compartilhar a tela: ${err.message}`);
       return;
     }
     if (!me || localStream) {
@@ -727,6 +735,7 @@
     socket.emit('share', true, shareStartedAt + serverOffset);
     renderSelfTile();
     renderAll();
+    startDesktopOverlay();
   }
 
   function stopSharing() {
@@ -739,6 +748,7 @@
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
     shareStartedAt = null;
+    stopDesktopOverlay();
     renderSelfTile();
     renderAll();
   }
@@ -1890,8 +1900,10 @@
   }
 
   socket.on('react', ({ stream, emoji, name }) => {
+    if (!REACTIONS.includes(emoji)) return;
+    toDesktopOverlay(stream, { type: 'react', emoji, name, hue: nameHue(name) });
     const target = fxTarget(stream);
-    if (!target || !REACTIONS.includes(emoji)) return;
+    if (!target) return;
     const { fx } = target;
     const old = fx.querySelectorAll('.fx-reaction');
     for (let i = 0; i <= old.length - 30; i += 1) old[i].remove();
@@ -2024,6 +2036,7 @@
   const remoteStrokes = new Map(); // "transmissão|nome|id" -> traço
 
   socket.on('draw', ({ stream, id, points, end, name }) => {
+    toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: nameHue(name) });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
@@ -2126,6 +2139,8 @@
   window.addEventListener('blur', () => setAltDown(false));
 
   socket.on('ping', ({ stream, x, y, name }) => {
+    // O seu próprio clique no seu quadro não precisa aparecer na sua tela de verdade.
+    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: nameHue(name) });
     const target = fxTarget(stream);
     if (!target) return;
     const { fx, video } = target;
@@ -2324,6 +2339,7 @@
     }
     if (mentionsMe(msg.text)) sounds.play('mention');
     else if (!chatVisible()) sounds.play('message');
+    if (desktop && (!chatVisible() || !document.hasFocus())) desktop.attention();
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -2930,6 +2946,43 @@
   btnVoiceLeave.addEventListener('click', leaveVoice);
   voicePeople.addEventListener('click', () => setSidebar(true, true));
   renderVoice();
+
+  // ---------- app de desktop ----------
+
+  // Dentro do app (Electron), o que acontece na SUA transmissão (alguém apontando,
+  // desenhando ou reagindo) aparece também na sua tela de verdade, numa camada por cima
+  // de tudo que fica de fora da captura. No navegador, o rodapé oferece o app.
+  const desktop = window.wssDesktop || null;
+  let desktopOverlay = false;
+
+  function toDesktopOverlay(stream, event) {
+    if (desktop && desktopOverlay && me && stream === me.id) desktop.overlay(event);
+  }
+
+  function startDesktopOverlay() {
+    if (!desktop) return;
+    desktop.sharing(true).then((result) => {
+      desktopOverlay = Boolean(result && result.overlay) && Boolean(localStream);
+      renderSelfTile();
+    }).catch(() => {});
+  }
+
+  function stopDesktopOverlay() {
+    desktopOverlay = false;
+    if (desktop) desktop.sharing(false).catch(() => {});
+  }
+
+  if (desktop) {
+    $('btn-server').hidden = false;
+    $('btn-server').addEventListener('click', () => {
+      leaveVoice();
+      stopSharing();
+      desktop.changeServer();
+    });
+    sidebarVersionEl.title = `App de desktop ${desktop.version}`;
+  } else {
+    $('desktop-download').hidden = isTouch;
+  }
 
   renderShareButton();
 })();
