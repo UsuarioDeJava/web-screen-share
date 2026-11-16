@@ -478,13 +478,85 @@ const getInput = () => {
 };
 
 // Ponto da tela transmitida (0 a 1) em pixels de verdade do monitor.
+// Ponto da tela (em DIP, como o Electron conta) pra uma posição de 0 a 1 no monitor.
 function toScreen(display, x, y) {
   const b = display.bounds;
-  const point = {
+  return {
     x: b.x + Math.min(1, Math.max(0, Number(x) || 0)) * (b.width - 1),
     y: b.y + Math.min(1, Math.max(0, Number(y) || 0)) * (b.height - 1),
   };
-  return process.platform === 'win32' ? screen.dipToScreenPoint(point) : point;
+}
+
+// O mouse do Windows anda em pixels de verdade (com escala de tela, DIP ≠ pixel).
+const toDevice = (point) => (process.platform === 'win32' ? screen.dipToScreenPoint(point) : point);
+
+// ---- você tem prioridade no seu mouse
+// Mexeu no seu mouse de verdade enquanto alguém controla: o controle pausa até 1,5 s
+// depois do seu último movimento (e solta o que a pessoa estava apertando). Dá pra saber
+// que foi você porque o mouse sai de onde o controle (ou a última olhada) deixou.
+const LOCAL_PRIORITY_MS = 1500;
+const CONTROL_TICK_MS = 50;
+const NEAR = 3; // DIP (arredondamento da escala de tela)
+let recentMoves = []; // onde o controle pôs o mouse nos últimos instantes: { x, y, at } (DIP)
+let lastCursor = null; // onde o mouse estava na última olhada
+let localUntil = 0;
+let localPaused = false;
+let controlTimer = null;
+let revokeKeysWereDown = false;
+let revokeShortcutOk = false;
+
+function localActive() {
+  const now = Date.now();
+  const p = screen.getCursorScreenPoint();
+  recentMoves = recentMoves.filter((m) => now - m.at < 600);
+  const near = (a) => Math.abs(p.x - a.x) <= NEAR && Math.abs(p.y - a.y) <= NEAR;
+  if (recentMoves.some(near)) {
+    lastCursor = p; // onde o controle pôs
+  } else if (lastCursor && near(lastCursor)) {
+    // parado (ou tremidinha): continua comparando com o mesmo ponto
+  } else if (lastCursor || recentMoves.length) {
+    lastCursor = p;
+    localUntil = now + LOCAL_PRIORITY_MS;
+    if (!localPaused) {
+      localPaused = true;
+      if (input) input.releaseAll(); // nada da pessoa fica apertado enquanto você mexe
+      renderControlBanner();
+    }
+  } else {
+    lastCursor = p;
+  }
+  return now < localUntil;
+}
+
+function controlTick() {
+  if (!controller) return;
+  localActive();
+  if (localPaused && Date.now() >= localUntil) {
+    localPaused = false;
+    renderControlBanner();
+  }
+  // Ctrl+Shift+X lido direto do teclado (Windows), além do atalho registrado.
+  const down = Boolean(input && input.revokeKeysDown && input.revokeKeysDown());
+  if (down && !revokeKeysWereDown) revokeByShortcut();
+  revokeKeysWereDown = down;
+}
+
+// Ctrl+Shift+X: para na hora, aqui mesmo, e avisa a sala (a pessoa perde o botão).
+function revokeByShortcut() {
+  if (!controller) return;
+  setController(null);
+  toPage('desktop:control-revoke');
+}
+
+function renderControlBanner() {
+  toOverlay({
+    type: 'control',
+    on: Boolean(controller),
+    name: controller && controller.name,
+    hue: controller && controller.hue,
+    paused: localPaused,
+    shortcut: revokeShortcutOk || Boolean(input && input.revokeKeysDown),
+  });
 }
 
 function setController(next) {
@@ -492,11 +564,24 @@ function setController(next) {
   controller = next && next.name ? { name: String(next.name).slice(0, 40), hue: Number(next.hue) || 0 } : null;
   if (wasOn && !controller && input) input.releaseAll(); // nada fica apertado
   if (controller && !wasOn) {
-    try { globalShortcut.register(REVOKE_SHORTCUT, () => toPage('desktop:control-revoke')); } catch {}
-  } else if (!controller && wasOn && globalShortcut.isRegistered(REVOKE_SHORTCUT)) {
-    globalShortcut.unregister(REVOKE_SHORTCUT);
+    recentMoves = [];
+    lastCursor = null;
+    localUntil = 0;
+    localPaused = false;
+    revokeKeysWereDown = false;
+    getInput();
+    try { revokeShortcutOk = globalShortcut.register(REVOKE_SHORTCUT, revokeByShortcut); } catch { revokeShortcutOk = false; }
+    if (!revokeShortcutOk) console.error(`O atalho ${REVOKE_SHORTCUT} está com outro programa.`);
+    clearInterval(controlTimer);
+    controlTimer = setInterval(controlTick, CONTROL_TICK_MS);
+  } else if (!controller && wasOn) {
+    clearInterval(controlTimer);
+    controlTimer = null;
+    localPaused = false;
+    if (revokeShortcutOk && globalShortcut.isRegistered(REVOKE_SHORTCUT)) globalShortcut.unregister(REVOKE_SHORTCUT);
+    revokeShortcutOk = false;
   }
-  toOverlay({ type: 'control', on: Boolean(controller), name: controller && controller.name, hue: controller && controller.hue });
+  renderControlBanner();
 }
 
 function toPage(channel, data) {
@@ -518,9 +603,15 @@ ipcMain.on('desktop:control', (event, msg) => {
   const device = getInput();
   const display = screen.getAllDisplays().find((d) => d.id === overlay.displayId);
   if (!device || !display) return;
-  if (Number.isFinite(msg.x) && Number.isFinite(msg.y)) {
+  // Você mexendo no seu mouse: o da pessoa espera (só soltar tecla/botão passa).
+  const release = (msg.kind === 'button' || msg.kind === 'key') && !msg.down;
+  if (localActive() && !release) return;
+  if (Number.isFinite(msg.x) && Number.isFinite(msg.y) && !release) {
     const point = toScreen(display, msg.x, msg.y);
-    device.move(point.x, point.y);
+    const target = toDevice(point);
+    device.move(target.x, target.y);
+    recentMoves.push({ x: point.x, y: point.y, at: Date.now() });
+    if (recentMoves.length > 64) recentMoves.shift();
   }
   if (msg.kind === 'button') device.button(Number(msg.button), Boolean(msg.down));
   else if (msg.kind === 'wheel' && Number.isFinite(msg.dy)) device.wheel(msg.dy);

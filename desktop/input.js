@@ -57,6 +57,7 @@ function windowsInput() {
   const SetCursorPos = user32.func('__stdcall', 'SetCursorPos', 'bool', ['int', 'int']);
   const mouseEvent = user32.func('__stdcall', 'mouse_event', 'void', ['uint32', 'uint32', 'uint32', 'int32', 'uintptr_t']);
   const keybdEvent = user32.func('__stdcall', 'keybd_event', 'void', ['uint8', 'uint8', 'uint32', 'uintptr_t']);
+  const getAsyncKeyState = user32.func('__stdcall', 'GetAsyncKeyState', 'short', ['int']);
   const BUTTONS = [[0x0002, 0x0004], [0x0020, 0x0040], [0x0008, 0x0010]]; // esquerdo, meio, direito
   return {
     move: (x, y) => SetCursorPos(Math.round(x), Math.round(y)),
@@ -67,6 +68,9 @@ function windowsInput() {
       keybdEvent(0, scan, 0x0008 | (extended ? 0x0001 : 0) | (down ? 0 : 0x0002), 0);
     },
     supports: (code) => Boolean(SCAN[code]),
+    // Ctrl+Shift+X apertado agora (lido direto do teclado: vale mesmo se outro programa
+    // tiver ficado com o atalho).
+    revokeKeysDown: () => [0x11, 0x10, 0x58].every((vk) => getAsyncKeyState(vk) < 0),
     close: () => {},
   };
 }
@@ -124,6 +128,7 @@ function createInput() {
       for (const code of [...keys]) this.key(code, false);
       for (const button of [...buttons]) this.button(button, false);
     },
+    revokeKeysDown: backend.revokeKeysDown || null,
     close() {
       this.releaseAll();
       backend.close();

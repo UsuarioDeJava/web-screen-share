@@ -176,6 +176,8 @@ body.drawing::after {
   font-weight: 700;
   transform: translateX(-50%);
 }
-.control-banner[hidden] { display: none; }
+.control-banner[hidden], .control-banner [hidden] { display: none; }
+.control-banner.paused { border-color: rgba(52, 217, 135, 0.6); box-shadow: 0 0 24px -6px rgba(52, 217, 135, 0.8), 0 12px 30px -10px rgba(0, 0, 0, 0.9); color: #c4f5dc; }
+.control-banner.paused .control-dot { background: #34d987; box-shadow: 0 0 10px #34d987; animation: none; }
 .control-banner kbd { color: #fff; font: 700 12px ui-monospace, Consolas, monospace; }
 .control-dot { width: 10px; height: 10px; border-radius: 50%; background: #ffb041; box-shadow: 0 0 10px #ffb041; animation: blink 1.2s ease-in-out infinite; }

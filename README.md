@@ -449,7 +449,11 @@ que o navegador não faz:
   teclado dela digita no seu PC, pela posição das teclas (com o mesmo layout dos dois
   lados, ex.: ABNT2, sai igualzinho). Enquanto isso, um aviso fica na sua tela, e
   **Ctrl+Shift+X** (de qualquer programa) tira o controle na hora; ele também acaba
-  sozinho quando você para de transmitir ou a pessoa sai. A tecla do Windows fica
+  sozinho quando você para de transmitir ou a pessoa sai. **Você tem prioridade**:
+  mexeu no seu mouse, o controle da pessoa pausa até você parar (1,5 s depois do seu
+  último movimento), e o aviso fica verde ("Você está no mouse"). No Windows, o app lê o
+  Ctrl+Shift+X direto do teclado, então ele funciona mesmo se outro programa usar o
+  mesmo atalho. A tecla do Windows fica
   bloqueada (sem abrir o Iniciar nem bloquear o PC). Só funciona transmitindo a tela
   inteira (ou o OBS capturando um monitor) e não mexe em janelas abertas como
   administrador (o Windows não deixa).

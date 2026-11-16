@@ -262,9 +262,14 @@ function cursor({ id, x, y, gone, letter, hue }) {
 // ---------- alguém controlando o seu mouse e teclado ----------
 
 const controlBanner = document.getElementById('control');
-function control({ on, name }) {
+function control({ on, name, paused, shortcut }) {
   controlBanner.hidden = !on;
-  document.getElementById('control-text').textContent = on ? `${text(name)} está controlando o seu mouse e teclado ·` : '';
+  controlBanner.classList.toggle('paused', Boolean(paused));
+  document.getElementById('control-text').textContent = !on ? ''
+    : paused ? `Você está no mouse: ${text(name)} espera você parar ·`
+      : `${text(name)} está controlando o seu mouse e teclado ·`;
+  document.getElementById('control-keys').hidden = shortcut === false;
+  document.getElementById('control-list').hidden = shortcut !== false;
 }
 
 window.overlayBridge.onEvent((event) => {
