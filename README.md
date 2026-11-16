@@ -386,8 +386,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     microfone e você passa a ouvir e falar com quem está na voz. No topo ficam as
     carinhas de quem está na voz (acende verde em quem está falando) e, com você na
     voz, os botões de **microfone** (tecla **V**), **ensurdecer** (para de ouvir a voz
-    e desliga o microfone) e **sair da voz**. Na lista de pessoas aparece quem está na
-    voz, com o estado do microfone, e um **volume pra cada pessoa** (só pra você; fica
+    e desliga o microfone) e **sair da voz**. Na lista de pessoas, quem está na voz
+    ganha o ícone do microfone (vermelho se estiver mudo); com você na voz, clicar
+    nesse ícone abre ali mesmo o **volume da voz daquela pessoa** (só pra você; fica
     guardado neste navegador). Se a sua conexão cair (ou o app for atualizado), você
     volta pra voz sozinho, do jeito que estava. Sem microfone, dá pra entrar só pra
     ouvir. O áudio vai direto entre as pessoas (pelo TURN do servidor quando precisa),

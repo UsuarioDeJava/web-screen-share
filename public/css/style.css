@@ -1008,15 +1008,32 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .voice-hangup { color: #ff7b93; }
 .voice-hangup:hover { background: var(--live); color: #fff; }
 
-.voice-list { margin: 0; padding: 0 8px 4px; list-style: none; }
-.voice-member { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; }
-.voice-member:hover { background: rgba(255, 255, 255, 0.04); }
-.voice-member .avatar { width: 24px; height: 24px; font-size: 11px; }
-.voice-member-name { flex: 1; min-width: 0; overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.voice-member-icon svg, .user-voice svg { width: 15px; height: 15px; }
-.voice-member-icon, .user-voice { color: var(--ok); }
-.voice-member-icon.is-off, .user-voice.is-off { color: #ff7b93; }
-.voice-volume { width: 64px; margin: 0; }
+/* Microfone de quem está na voz, na lista da sala; com você na voz, abre o volume. */
+.user-voice svg { width: 15px; height: 15px; }
+.user-voice { color: var(--ok); }
+.user-voice.is-off { color: #ff7b93; }
+.user-voice-btn {
+  flex: none;
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+.user-voice-btn:hover, .user-voice-btn[aria-expanded="true"] { background: rgba(52, 217, 135, 0.14); }
+.user.has-volume { flex-wrap: wrap; row-gap: 4px; }
+.user-volume {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 2px 38px;
+  color: var(--muted);
+  cursor: default;
+}
+.user-volume .icon svg { width: 15px; height: 15px; }
+.user-volume .volume { flex: 1; margin: 0; }
+.user-volume-value { width: 34px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
 
 /* ---------- chat ---------- */
 
@@ -1326,8 +1343,8 @@ kbd {
   .people-btn,
   .topbar-conn { display: none !important; }
 
-  /* A lista "Na voz" fica pra telas maiores; aqui a faixa mostra quem está na voz. */
-  .voice-section { display: none; }
+  /* Na faixa do celular não cabe a barrinha de volume. */
+  .user-volume { display: none; }
 }
 
 /* Telas estreitas: botões do topo só com o ícone, e as janelas quase da largura toda. */

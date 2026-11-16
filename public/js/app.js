@@ -105,9 +105,6 @@
   const btnMic = $('btn-mic');
   const btnDeafen = $('btn-deafen');
   const btnVoiceLeave = $('btn-voice-leave');
-  const voiceSection = $('voice-section');
-  const voiceCountEl = $('voice-count');
-  const voiceListEl = $('voice-list');
   const sounds = window.RoomSounds;
 
   const socket = io();
@@ -479,7 +476,7 @@
       const face = avatar(u.name);
       if (u.voice) face.dataset.voiceId = u.id;
       li.append(face, el('span', 'user-name', u.name));
-      if (u.voice) li.append(voiceStateIcon(u.voice, 'user-voice'));
+      if (u.voice) li.append(voiceIndicator(u));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
       if (entry.obs) li.append(el('span', 'tag tag-obs', 'OBS'));
       const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
@@ -506,6 +503,10 @@
         const go = () => (watched ? focusTile(watched.id) : resume());
         li.addEventListener('click', go);
         li.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+      }
+      if (u.voice && volumeOpenFor === u.id && canAdjustVoice(u)) {
+        li.classList.add('has-volume');
+        li.append(voiceVolumeRow(u));
       }
       return li;
     }));
@@ -2531,7 +2532,7 @@
   // o id menor faz a oferta, pra os dois não ligarem um pro outro ao mesmo tempo.
   const voice = { joined: false, joining: false, stream: null, muted: false, deafened: false, noMic: false, meter: null, speakingAt: 0 };
   const voicePeers = new Map(); // id -> { pc, sid, pending, audio, speakingAt, retryTimer }
-  const voiceRows = new Map(); // id -> linha da pessoa na lista "Na voz"
+  let volumeOpenFor = null; // pessoa com a barrinha de volume aberta na lista
   const voiceAudio = el('div');
   voiceAudio.hidden = true;
   document.body.append(voiceAudio);
@@ -2556,11 +2557,9 @@
     peer.audio.muted = voice.deafened;
   }
 
-  function setVoiceVolume(name, value, slider) {
+  function setVoiceVolume(name, value) {
     voiceVolumes[name] = value;
     try { localStorage.setItem('wss-voice-volumes', JSON.stringify(voiceVolumes)); } catch {}
-    slider.style.setProperty('--fill', `${Math.round(value * 100)}%`);
-    slider.title = `Volume: ${Math.round(value * 100)}%`;
     for (const [id] of voicePeers) {
       const user = users.get(id);
       if (user && user.name === name) applyPeerVolume(id);
@@ -2834,41 +2833,67 @@
       .sort((a, b) => (b.id === myId) - (a.id === myId) || a.name.localeCompare(b.name));
   }
 
-  function voiceRow(u) {
-    let row = voiceRows.get(u.id);
-    if (!row || row.name !== u.name) {
-      const li = el('li', 'voice-member');
-      const face = avatar(u.name);
-      face.dataset.voiceId = u.id;
-      const state = el('span', 'voice-member-state');
-      li.append(face, el('span', 'voice-member-name', u.name), state);
-      row = { li, state, name: u.name, slider: null };
-      voiceRows.set(u.id, row);
-    }
-    row.state.replaceChildren(voiceStateIcon(u.voice, 'voice-member-icon'));
-    // Volume da voz de cada pessoa, só pra você (no iPhone o navegador não deixa).
-    const wantSlider = voice.joined && me && u.id !== me.id && canSetVolume;
-    if (wantSlider && !row.slider) {
-      const slider = el('input', 'volume voice-volume');
-      slider.type = 'range';
-      slider.min = '0';
-      slider.max = '100';
-      slider.setAttribute('aria-label', `Volume da voz de ${u.name}`);
-      slider.addEventListener('input', () => setVoiceVolume(u.name, Number(slider.value) / 100, slider));
-      row.slider = slider;
-      row.li.append(slider);
-    } else if (!wantSlider && row.slider) {
-      row.slider.remove();
-      row.slider = null;
-    }
-    if (row.slider && document.activeElement !== row.slider) {
-      const volume = Number.isFinite(voiceVolumes[u.name]) ? voiceVolumes[u.name] : 1;
-      row.slider.value = String(Math.round(volume * 100));
-      row.slider.style.setProperty('--fill', `${row.slider.value}%`);
-      row.slider.title = `Volume: ${row.slider.value}%`;
-    }
-    return row.li;
+  // Volume da voz de cada pessoa, só pra você (no iPhone o navegador não deixa).
+  const canAdjustVoice = (u) => voice.joined && Boolean(me) && u.id !== me.id && canSetVolume && desktopLayout.matches;
+
+  // Ícone do microfone na lista da sala. Com você na voz, clicar nele abre ali mesmo o
+  // volume da voz daquela pessoa.
+  function voiceIndicator(u) {
+    const state = voiceStateIcon(u.voice, 'user-voice');
+    if (!canAdjustVoice(u)) return state;
+    const btn = el('button', 'user-voice-btn');
+    btn.type = 'button';
+    btn.title = `${state.title}. Clique pra mudar o volume`;
+    state.removeAttribute('title');
+    btn.setAttribute('aria-label', `Volume da voz de ${u.name}`);
+    btn.setAttribute('aria-expanded', String(volumeOpenFor === u.id));
+    btn.append(state);
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      volumeOpenFor = volumeOpenFor === u.id ? null : u.id;
+      renderUsers();
+    });
+    return btn;
   }
+
+  function voiceVolumeRow(u) {
+    const row = el('div', 'user-volume');
+    const slider = el('input', 'volume');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.setAttribute('aria-label', `Volume da voz de ${u.name}`);
+    const value = el('span', 'user-volume-value');
+    const show = (volume) => {
+      slider.value = String(Math.round(volume * 100));
+      slider.style.setProperty('--fill', `${slider.value}%`);
+      value.textContent = `${slider.value}%`;
+    };
+    show(Number.isFinite(voiceVolumes[u.name]) ? voiceVolumes[u.name] : 1);
+    slider.addEventListener('input', () => {
+      const volume = Number(slider.value) / 100;
+      setVoiceVolume(u.name, volume);
+      show(volume);
+    });
+    row.append(icon('volume'), slider, value);
+    // Mexer no volume não conta como clique na pessoa (que levaria até a transmissão).
+    row.addEventListener('click', (e) => e.stopPropagation());
+    row.addEventListener('keydown', (e) => e.stopPropagation());
+    return row;
+  }
+
+  function closeVoiceVolume() {
+    volumeOpenFor = null;
+    for (const node of userListEl.querySelectorAll('.user-volume')) {
+      node.parentElement.classList.remove('has-volume');
+      node.remove();
+    }
+    for (const btn of userListEl.querySelectorAll('.user-voice-btn')) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (volumeOpenFor && e.target.closest && !e.target.closest('.user-volume, .user-voice-btn')) closeVoiceVolume();
+  });
 
   function renderVoice() {
     const members = me ? voiceMembers() : [];
@@ -2897,15 +2922,6 @@
     voicePeople.title = members.length ? `Na voz: ${members.map((u) => u.name).join(', ')}` : '';
     voicePeople.setAttribute('aria-label', voicePeople.title || 'Ninguém na voz');
 
-    voiceSection.hidden = !members.length;
-    voiceCountEl.textContent = members.length;
-    for (const id of [...voiceRows.keys()]) {
-      if (!members.some((u) => u.id === id)) voiceRows.delete(id);
-    }
-    const rows = members.map(voiceRow);
-    // Só reordena se mudou (mexer nas linhas soltaria o volume no meio do arrasto).
-    const same = rows.length === voiceListEl.children.length && rows.every((li, i) => voiceListEl.children[i] === li);
-    if (!same) voiceListEl.replaceChildren(...rows);
   }
 
   btnVoice.addEventListener('click', joinVoice);
