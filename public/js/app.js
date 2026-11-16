@@ -2,8 +2,12 @@
   const PRESETS = window.QUALITY_PRESETS;
   const DEFAULT_QUALITY = window.DEFAULT_QUALITY;
   const TILE_BAR_HEIGHT = 48; // precisa bater com .tile-bar no CSS
+  const TILE_BORDER = 1; // borda do .tile no CSS
   const TILE_GAP = 12;
   const MIN_TILE_WIDTH = 280;
+  // Miniaturas das outras transmissões quando uma está fixada em destaque.
+  const PIN_THUMB_MIN = 160;
+  const PIN_THUMB_MAX = 360;
 
   const ICONS = {
     share: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M9 10l3-3 3 3M12 7v6"/>',
@@ -14,6 +18,8 @@
     info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
+    pinOff: '<path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"/>',
     broadcast: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
   };
 
@@ -261,18 +267,37 @@
       for (const u of users.values()) {
         if (u.sharing && u.id !== me.id) addStreamTile(u);
       }
+      // O que estava no ar antes da queda e não está mais: conta a janela pra retomar
+      // a partir de agora (se voltar logo, volta do jeito que estava).
+      const live = new Set([...streams.values()].map((s) => s.key));
+      for (const [key, prefs] of streamPrefs) {
+        if (prefs.endedAt == null && !live.has(key)) prefs.endedAt = Date.now();
+      }
       renderUsers(); // agora com os quadros criados (botões de assistir/ir pra tela)
     });
   }
 
-  // Nada começa a tocar sozinho: transmissão nova aparece só como "Assistir" na lista.
-  // Guarda o que você está assistindo (por nome, que sobrevive a reconexões) pra retomar
-  // sozinho quando a SUA conexão cai e volta, ou quando a transmissão cai e volta logo
-  // (ex.: o OBS reconectando). Valor: null = assistindo; número = quando a transmissão
-  // acabou enquanto você assistia.
-  const watchKeys = new Map();
+  // Transmissão nova abre sozinha, mas sem som. Como você deixou cada uma (assistindo
+  // ou fechada no X, som, volume, qualidade) fica guardado pelo nick, que sobrevive a
+  // reconexões: quando a SUA conexão cai e volta (ou o app é atualizado), ou quando a
+  // transmissão cai e volta logo (ex.: o OBS reconectando), ela volta do mesmo jeito,
+  // inclusive fixada em destaque. endedAt: quando a transmissão acabou (null = no ar).
+  const streamPrefs = new Map(); // chave -> { watching, muted, volume, quality, endedAt }
   const RESUME_WINDOW_MS = 60000;
   const streamKey = (user) => `${user.kind === 'obs' ? 'obs' : 'web'}:${user.name}`;
+  let pinnedKey = null; // transmissão fixada em destaque (uma só)
+
+  function prefsFor(key) {
+    const saved = streamPrefs.get(key);
+    if (saved && (saved.endedAt == null || Date.now() - saved.endedAt < RESUME_WINDOW_MS)) {
+      saved.endedAt = null;
+      return saved;
+    }
+    if (pinnedKey === key) pinnedKey = null;
+    const prefs = { watching: true, muted: true, volume: 1, quality: DEFAULT_QUALITY, endedAt: null };
+    streamPrefs.set(key, prefs);
+    return prefs;
+  }
 
   function leaveRoomLocally() {
     me = null;
@@ -283,7 +308,8 @@
   }
 
   btnLeave.addEventListener('click', () => {
-    watchKeys.clear();
+    streamPrefs.clear();
+    pinnedKey = null;
     stopSharing();
     socket.emit('leave');
     wantedName = null;
@@ -424,7 +450,11 @@
         : 'Compartilhar a tela exige HTTPS (ou localhost). Você ainda pode assistir.';
       return;
     }
-    btnShare.replaceChildren(icon(localStream ? 'stop' : 'share'), localStream ? 'Parar transmissão' : 'Compartilhar tela');
+    // No celular o texto some e fica só o ícone; o nome vai no title/aria-label.
+    const label = localStream ? 'Parar transmissão' : 'Compartilhar tela';
+    btnShare.replaceChildren(icon(localStream ? 'stop' : 'share'), el('span', 'btn-label', label));
+    btnShare.title = label;
+    btnShare.setAttribute('aria-label', label);
     btnShare.className = localStream ? 'btn btn-danger' : 'btn btn-primary';
     btnShare.disabled = !me;
   }
@@ -453,23 +483,65 @@
     }
   }
 
+  // Altura de um quadro com essa largura (vídeo 16:9 + barra + borda) e o contrário.
+  const tileHeight = (w) => (w - TILE_BORDER * 2) * (9 / 16) + TILE_BAR_HEIGHT + TILE_BORDER * 2;
+  const tileWidthFor = (h) => (h - TILE_BAR_HEIGHT - TILE_BORDER * 2) * (16 / 9) + TILE_BORDER * 2;
+
   function layoutGrid() {
+    let pinned = null;
+    for (const s of streams.values()) {
+      const on = s.key === pinnedKey;
+      s.tile.classList.toggle('is-pinned', on);
+      if (on && !s.tile.hidden) pinned = s;
+      if (s.pinShown !== on) {
+        s.pinShown = on;
+        setIcon(s.btnPin, on ? 'pinOff' : 'pin', on ? 'Desafixar' : 'Fixar em destaque');
+        s.btnPin.classList.toggle('active', on);
+        s.btnPin.setAttribute('aria-pressed', String(on));
+      }
+    }
     // Quadros de quem você parou de assistir ficam escondidos e não ocupam espaço.
     const count = [...gridInner.children].filter((tile) => !tile.hidden).length;
     renderEmpty(count);
-    if (!count) return;
     const width = gridEl.clientWidth;
     const height = gridEl.clientHeight;
-    if (!width || !height) return;
+    const pinLayout = pinned && count > 1 && width && height ? layoutPinned(count - 1, width, height) : null;
+    gridInner.classList.toggle('pin-side', pinLayout === 'side');
+    gridInner.classList.toggle('pin-below', pinLayout === 'below');
+    if (pinLayout || !count || !width || !height) return;
     let best = 0;
     for (let cols = 1; cols <= count; cols += 1) {
       const rows = Math.ceil(count / cols);
       const byWidth = (width - TILE_GAP * (cols - 1)) / cols;
-      const byHeight = ((height - TILE_GAP * (rows - 1)) / rows - TILE_BAR_HEIGHT) * (16 / 9);
+      const byHeight = tileWidthFor((height - TILE_GAP * (rows - 1)) / rows);
       best = Math.max(best, Math.min(byWidth, byHeight));
     }
     if (best < MIN_TILE_WIDTH) best = width < MIN_TILE_WIDTH * 2 + TILE_GAP ? width : MIN_TILE_WIDTH;
     gridEl.style.setProperty('--tile-w', `${Math.floor(best) - 1}px`);
+  }
+
+  // Uma transmissão fixada fica grande e as outras (n) viram miniaturas, numa coluna do
+  // lado ou numa fileira embaixo: o que deixar a fixada maior (tela larga: do lado;
+  // celular em pé: embaixo). Todas continuam tocando.
+  function layoutPinned(n, width, height) {
+    const thumb = (w, max) => Math.max(Math.min(PIN_THUMB_MIN, max), Math.min(w, max));
+    const sideThumb = thumb(tileWidthFor((height - TILE_GAP * (n - 1)) / n), Math.min(PIN_THUMB_MAX, width * 0.3));
+    const perColumn = Math.max(1, Math.floor((height + TILE_GAP) / (tileHeight(sideThumb) + TILE_GAP)));
+    const sidePin = Math.min(width - Math.ceil(n / perColumn) * (sideThumb + TILE_GAP), tileWidthFor(height));
+    const belowThumb = thumb((width - TILE_GAP * (n - 1)) / n, Math.min(PIN_THUMB_MAX, width * 0.45));
+    const perRow = Math.max(1, Math.floor((width + TILE_GAP) / (belowThumb + TILE_GAP)));
+    const belowRows = Math.ceil(n / perRow);
+    const belowPin = Math.min(width, tileWidthFor(height - belowRows * (tileHeight(belowThumb) + TILE_GAP)));
+    const side = sidePin >= belowPin;
+    const pin = Math.max(side ? sidePin : belowPin, Math.min(width, MIN_TILE_WIDTH));
+    gridEl.style.setProperty('--pin-w', `${Math.floor(pin) - 1}px`);
+    gridEl.style.setProperty('--tile-w', `${Math.floor(side ? sideThumb : belowThumb) - 1}px`);
+    return side ? 'side' : 'below';
+  }
+
+  function togglePin(s) {
+    pinnedKey = pinnedKey === s.key ? null : s.key;
+    layoutGrid();
   }
 
   new ResizeObserver(layoutGrid).observe(gridEl);
@@ -823,7 +895,8 @@
 
   // ---------- transmitir pelo OBS ----------
 
-  btnObs.replaceChildren(icon('broadcast'), 'OBS');
+  btnObs.replaceChildren(icon('broadcast'), el('span', 'btn-label', 'OBS'));
+  btnObs.setAttribute('aria-label', 'Transmitir pelo OBS');
 
   btnObs.addEventListener('click', () => {
     if (!me) return;
@@ -1119,18 +1192,17 @@
   function addStreamTile(user) {
     if (streams.has(user.id)) return;
     const isObs = user.kind === 'obs';
-    // A própria transmissão do OBS começa muda: o som voltaria pro OBS pelo áudio do PC.
     const isMine = isObs && me && user.name === me.name;
     const base = createTile(user.name, isMine ? 'Você' : user.name, user.kind);
     const key = streamKey(user);
-    const since = watchKeys.get(key);
-    const resume = watchKeys.has(key) && (since === null || Date.now() - since < RESUME_WINDOW_MS);
-    if (resume) watchKeys.set(key, null);
-    else watchKeys.delete(key);
+    // Toda transmissão nova começa tocando sem som (inclusive a sua do OBS, cujo som
+    // voltaria pro OBS pelo áudio do PC); uma que voltou fica como você deixou.
+    const prefs = prefsFor(key);
     const s = {
       ...base,
       id: user.id,
       key,
+      prefs,
       kind: user.kind || null,
       stream: user.stream || null,
       whepUrl: null,
@@ -1138,11 +1210,12 @@
       pc: null,
       sid: null,
       pending: [],
-      watching: resume,
-      quality: DEFAULT_QUALITY,
-      volume: 1,
-      muted: isMine,
+      watching: prefs.watching,
+      quality: PRESETS[prefs.quality] ? prefs.quality : DEFAULT_QUALITY,
+      volume: prefs.volume,
+      muted: prefs.muted,
       hasAudio: true,
+      pinShown: null,
       retryTimer: null,
       statsTimer: null,
       lastBytes: null,
@@ -1163,9 +1236,12 @@
       tools.append(qualitySelect);
     }
     const btnStats = iconButton('info', 'Estatísticas da conexão');
+    btnStats.classList.add('stats-btn');
+    const btnPin = iconButton('pin', 'Fixar em destaque');
+    btnPin.classList.add('pin-btn');
     const btnFull = iconButton('maximize', 'Tela cheia');
     const btnClose = iconButton('close', 'Parar de assistir');
-    tools.append(btnStats, btnFull, btnClose);
+    tools.append(btnStats, btnPin, btnFull, btnClose);
 
     const stats = el('pre', 'tile-stats');
     stats.hidden = true;
@@ -1184,7 +1260,7 @@
       audio.append(slider);
     }
     base.bar.append(audio);
-    Object.assign(s, { qualitySelect, btnStats, stats, audio, btnMute, slider });
+    Object.assign(s, { qualitySelect, btnStats, btnPin, stats, audio, btnMute, slider });
 
     btnMute.addEventListener('click', () => {
       s.muted = !s.muted;
@@ -1207,11 +1283,13 @@
     if (qualitySelect) {
       qualitySelect.addEventListener('change', () => {
         s.quality = qualitySelect.value;
+        s.prefs.quality = s.quality;
         if (s.pc) send(s.id, { stream: s.id, type: 'quality', quality: s.quality });
         qualitySelect.blur(); // senão o foco prende os botões de cima na tela
       });
     }
     btnStats.addEventListener('click', () => toggleStats(s));
+    btnPin.addEventListener('click', () => togglePin(s));
     btnFull.addEventListener('click', () => toggleFullscreen(s));
     base.video.addEventListener('dblclick', () => toggleFullscreen(s));
     btnClose.addEventListener('click', () => stopWatching(s));
@@ -1220,17 +1298,17 @@
     streams.set(user.id, s);
     gridInner.append(s.tile);
     renderAudio(s);
-    if (resume) requestWatch(s);
-    else s.tile.hidden = true; // fica disponível na lista, com o botão Assistir
+    if (s.watching) requestWatch(s);
+    else s.tile.hidden = true; // fechada no X: fica na lista, com o botão Assistir
     layoutGrid();
   }
 
-  // ended: a transmissão acabou (ou quem transmite caiu). Sem isso, é a sua conexão que
-  // caiu, e o que você assistia continua marcado pra retomar quando voltar.
+  // ended: a transmissão acabou (ou quem transmite caiu): o jeito que você deixou vale
+  // se ela voltar logo. Sem isso, é a sua conexão que caiu, e vale quando você voltar.
   function removeStreamTile(id, { ended = false } = {}) {
     const s = streams.get(id);
     if (!s) return;
-    if (ended && s.watching) watchKeys.set(s.key, Date.now());
+    if (ended) s.prefs.endedAt = Date.now();
     streams.delete(id);
     closeIncoming(s);
     stopStats(s);
@@ -1242,6 +1320,7 @@
   function requestWatch(s) {
     closeIncoming(s);
     s.watching = true;
+    s.prefs.watching = true;
     setStatus(s, 'Conectando…', true);
     if (s.kind === 'obs') startWhep(s);
     else send(s.id, { stream: s.id, type: 'watch', quality: s.quality });
@@ -1251,7 +1330,8 @@
   // transmissões); pra voltar, é o botão Assistir na lista de pessoas.
   function stopWatching(s) {
     s.watching = false;
-    watchKeys.delete(s.key);
+    s.prefs.watching = false;
+    if (pinnedKey === s.key) pinnedKey = null;
     if (s.kind !== 'obs') send(s.id, { stream: s.id, type: 'unwatch' });
     closeIncoming(s);
     stopStats(s);
@@ -1264,7 +1344,6 @@
 
   function resumeWatching(s) {
     if (streams.get(s.id) !== s) return;
-    watchKeys.set(s.key, null);
     s.tile.hidden = false;
     requestWatch(s);
     layoutGrid();
@@ -1310,6 +1389,8 @@
   }
 
   function renderAudio(s) {
+    s.prefs.muted = s.muted;
+    s.prefs.volume = s.volume;
     const silent = s.muted || s.volume === 0;
     s.video.muted = s.muted;
     s.video.volume = s.volume;

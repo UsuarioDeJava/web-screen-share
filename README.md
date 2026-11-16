@@ -307,12 +307,12 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO** e um contador de
    quantas pessoas estão assistindo. Clique em **Parar transmissão** (ou no botão
    nativo do navegador) pra encerrar.
-3. Quando alguém começa a transmitir, nada abre sozinho: a pessoa ganha o botão
-   **Assistir** na lista de pessoas (e o botão de pessoas no topo, um pontinho
-   vermelho). Clique em **Assistir** pra abrir o quadro. O que você está assistindo
-   volta sozinho se a sua conexão cair e voltar (ou o app for atualizado), e também
-   se a transmissão cair e voltar em até 1 minuto (ex.: o OBS reconectando). Com o
-   quadro aberto, clicar no nome da pessoa na lista leva até ele.
+3. Quando alguém começa a transmitir, o quadro abre sozinho, mas **sem som** (o
+   alto-falante do quadro fica vermelho): clique nele pra ouvir. Se a sua conexão cair
+   e voltar (ou o app for atualizado), ou se a transmissão cair e voltar em até
+   1 minuto (ex.: o OBS reconectando), cada quadro volta do jeito que você deixou: com
+   ou sem som, volume, qualidade, fixado em destaque ou fechado no X. Clicar no nome
+   de quem está transmitindo, na lista de pessoas, leva até o quadro.
 4. Em cada quadro, quem assiste controla só pra si mesmo, sem afetar os outros:
    - **Som e volume**: botão do alto-falante pra mutar/desmutar e barra de volume ao
      lado (no iPhone/iPad só o mute funciona, o iOS não deixa sites mudarem o volume).
@@ -326,6 +326,10 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        até o próximo quadro-chave do OBS; se a imagem derrete sem perdas, o problema
        está no codificador de quem transmite (placa de vídeo sobrecarregada, por
        exemplo).
+     - **Fixar** (alfinete): deixa aquele quadro grande e as outras transmissões
+       menores do lado (ou embaixo, em telas estreitas e no celular), todas
+       continuando a tocar. Clique de novo pra desafixar; só um quadro fica fixado
+       por vez, e fixar outro troca o destaque.
      - **Tela cheia** (ou dois cliques no vídeo). Em tela cheia o vídeo ocupa tudo: a
        barra de baixo (nome, som e volume) fica escondida e aparece ao encostar o mouse
        na borda de baixo da tela, como a barra de tarefas do Windows com ocultar
