@@ -13,6 +13,10 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     // Mensagem nova com a janela sem foco: pisca na barra de tarefas.
     attention: () => ipcRenderer.send('desktop:attention'),
     changeServer: () => ipcRenderer.send('desktop:change-server'),
+    // Transmissão pelo OBS: os monitores, ligar/desligar a camada e em qual monitor.
+    displays: () => ipcRenderer.invoke('desktop:displays'),
+    obs: (on) => ipcRenderer.invoke('desktop:obs', Boolean(on)),
+    setObsDisplay: (value) => ipcRenderer.invoke('desktop:obs-display', String(value)),
   });
 } else {
   contextBridge.exposeInMainWorld('setupBridge', {

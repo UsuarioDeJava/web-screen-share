@@ -519,6 +519,7 @@
       ? 'Pessoas na sala (tem transmissão que você parou de assistir)'
       : 'Pessoas na sala';
     renderVoice();
+    syncObsOverlay();
   }
 
   function renderShareButton() {
@@ -1017,6 +1018,7 @@
     obsCertEl.hidden = window.location.protocol !== 'https:' || Boolean(serverStatus.certificate);
     obsDialog.showModal();
     checkObsPort();
+    renderObsOverlaySetting();
   });
 
   obsCopyBtn.addEventListener('click', async () => {
@@ -1440,6 +1442,12 @@
     }
     enableMarkup(s, () => s.id);
 
+    if (isMine && window.wssDesktop) {
+      s.overlayTag = el('span', 'tag tag-overlay', 'na sua tela');
+      s.overlayTag.title = 'Quando alguém apontar, desenhar ou reagir na sua transmissão do OBS, aparece também na sua tela de verdade';
+      s.overlayTag.hidden = true;
+      base.bar.firstElementChild.append(s.overlayTag);
+    }
     streams.set(user.id, s);
     gridInner.append(s.tile);
     renderAudio(s);
@@ -2956,8 +2964,86 @@
   let desktopOverlay = false;
 
   function toDesktopOverlay(stream, event) {
-    if (desktop && desktopOverlay && me && stream === me.id) desktop.overlay(event);
+    if (!desktop || !me) return;
+    const mine = (desktopOverlay && stream === me.id) || (obsOverlay && stream === myObsStreamId());
+    if (mine) desktop.overlay(event);
   }
+
+  // Transmitindo pelo OBS (com o mesmo nick daqui), as marcações também aparecem na sua
+  // tela: o app abre a camada no monitor que o OBS captura (escolhido na janela do OBS).
+  let obsOverlayWanted = false;
+  let obsOverlay = false;
+  const desktopObs = () => Boolean(desktop) && typeof desktop.obs === 'function';
+
+  function myObsStreamId() {
+    if (!me) return null;
+    for (const u of users.values()) {
+      if (u.kind === 'obs' && u.name === me.name) return u.id;
+    }
+    return null;
+  }
+
+  function renderObsOverlayTag() {
+    const s = streams.get(myObsStreamId());
+    if (s && s.overlayTag) s.overlayTag.hidden = !obsOverlay;
+  }
+
+  function syncObsOverlay() {
+    if (!desktopObs()) return;
+    const live = Boolean(myObsStreamId());
+    if (live === obsOverlayWanted) {
+      renderObsOverlayTag();
+      return;
+    }
+    obsOverlayWanted = live;
+    if (!live) obsOverlay = false;
+    desktop.obs(live).then((result) => {
+      if (obsOverlayWanted === live) obsOverlay = live && Boolean(result && result.overlay);
+      renderObsOverlayTag();
+    }).catch(() => {});
+  }
+
+  async function renderObsOverlaySetting() {
+    const box = $('obs-overlay');
+    const select = $('obs-overlay-display');
+    const tip = $('obs-overlay-tip');
+    box.hidden = !desktop;
+    if (!desktop) return;
+    if (!desktopObs()) {
+      // App de antes desta função: avisa que tem versão nova.
+      select.hidden = true;
+      const link = el('a', null, 'baixe a versão nova do app');
+      link.href = $('desktop-download').href;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      tip.replaceChildren('Pra ver as marcações da transmissão do OBS na sua tela, ', link, '.');
+      return;
+    }
+    const info = await desktop.displays().catch(() => null);
+    if (!info || !info.overlay) {
+      box.hidden = true; // no Linux não dá pra tirar a camada da captura
+      return;
+    }
+    select.hidden = false;
+    const option = (value, label) => {
+      const opt = el('option', null, label);
+      opt.value = value;
+      return opt;
+    };
+    select.replaceChildren(...info.displays.map((d) => option(d.id, d.label)), option('off', 'Desligado'));
+    select.value = info.obsDisplay;
+    tip.textContent = 'Quando alguém apontar, desenhar ou reagir na sua transmissão do OBS, aparece também '
+      + 'nesse monitor, por cima de tudo. Escolha o monitor que o OBS está capturando (com a captura '
+      + 'ocupando a cena inteira, cada marcação cai no lugar certo).';
+  }
+
+  $('obs-overlay-display').addEventListener('change', (e) => {
+    if (!desktopObs()) return;
+    desktop.setObsDisplay(e.target.value).then((result) => {
+      if (obsOverlayWanted) obsOverlay = Boolean(result && result.overlay);
+      renderObsOverlayTag();
+    }).catch(() => {});
+  });
 
   function startDesktopOverlay() {
     if (!desktop) return;

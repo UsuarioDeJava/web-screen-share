@@ -1190,6 +1190,27 @@ kbd {
 .copy-field input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(47, 194, 255, 0.18); }
 .copy-field .btn { height: 36px; flex: none; }
 
+.obs-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 194, 255, 0.25);
+  border-radius: 10px;
+  background: rgba(47, 194, 255, 0.06);
+}
+.obs-overlay-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.obs-overlay select {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+}
+.obs-overlay select option { background: var(--panel); }
+.obs-overlay .dialog-tip a { color: var(--accent-2); }
+
 .obs-check {
   margin: 0;
   padding: 10px 12px;

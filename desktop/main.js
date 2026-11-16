@@ -2,9 +2,9 @@
 // navegador, então ela se atualiza junto com o servidor) e acrescenta o que o navegador
 // não faz sozinho:
 // - um seletor próprio de tela/janela, com o som do PC no Windows;
-// - uma camada transparente por cima da tela que você está transmitindo, que não pega
-//   cliques e fica de fora da captura: quando alguém aponta, desenha ou reage na sua
-//   transmissão, aparece ali, na sua tela de verdade.
+// - uma camada transparente por cima da tela que você está transmitindo (pelo app ou
+//   pelo OBS), que não pega cliques e fica de fora da captura: quando alguém aponta,
+//   desenha ou reage na sua transmissão, aparece ali, na sua tela de verdade.
 const { app, BrowserWindow, Menu, desktopCapturer, dialog, ipcMain, screen, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -21,9 +21,11 @@ const OVERLAY_SUPPORTED = process.platform === 'win32' || process.platform === '
 const SYSTEM_AUDIO = process.platform === 'win32';
 const PERMISSIONS = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write', 'notifications']);
 
-let config = { server: null, trusted: {}, bounds: null, maximized: false };
+let config = { server: null, trusted: {}, bounds: null, maximized: false, obsDisplay: null };
 let mainWindow = null;
 let overlay = null;
+let overlayOwner = null; // de quem é a camada aberta: 'share' (tela escolhida no app) ou 'obs'
+let obsWanted = false; // a sua transmissão do OBS está no ar (com você na sala pelo app)
 let picker = null; // seletor de tela aberto: { win, finish }
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
 let picked = null; // última escolha do seletor: { kind, displayId }
@@ -172,6 +174,8 @@ function createMainWindow() {
     if (!ok) showSetup('Esse endereço abriu, mas não é um servidor do Web Screen Share.');
   });
   webContents.on('render-process-gone', (event, details) => {
+    obsWanted = false;
+    closeOverlay();
     if (details.reason !== 'clean-exit') openServer();
   });
   webContents.on('before-input-event', (event, input) => handleShortcut(event, input));
@@ -247,12 +251,18 @@ function pickSource() {
   });
 }
 
+// "Tela 2 (2560×1440, principal)", em pixels de verdade (sem a escala do Windows).
+function displayLabel(display, displays) {
+  const width = Math.round(display.size.width * display.scaleFactor);
+  const height = Math.round(display.size.height * display.scaleFactor);
+  const primary = display.id === screen.getPrimaryDisplay().id ? ', principal' : '';
+  return `Tela ${displays.indexOf(display) + 1} (${width}×${height}${primary})`;
+}
+
 function screenLabel(source, displays) {
-  const display = displays.find((d) => String(d.id) === String(source.display_id));
   if (displays.length <= 1) return 'Tela inteira';
-  const index = display ? displays.indexOf(display) + 1 : '';
-  const size = display ? ` (${display.size.width}×${display.size.height}${display.id === screen.getPrimaryDisplay().id ? ', principal' : ''})` : '';
-  return `Tela ${index}${size}`.trim();
+  const display = displays.find((d) => String(d.id) === String(source.display_id));
+  return display ? displayLabel(display, displays) : 'Tela';
 }
 
 ipcMain.handle('picker:info', () => ({ systemAudio: SYSTEM_AUDIO, overlay: OVERLAY_SUPPORTED }));
@@ -295,16 +305,28 @@ ipcMain.on('picker:cancel', (event) => {
 
 // ---------- camada por cima da tela transmitida ----------
 
-function overlayDisplay() {
+// Tela escolhida no seletor do app (só tela inteira: numa janela não dá pra saber onde
+// cada ponto cai).
+function shareDisplay() {
   if (!picked || picked.kind !== 'screen') return null;
   const displays = screen.getAllDisplays();
   return displays.find((d) => String(d.id) === String(picked.displayId)) || (displays.length === 1 ? displays[0] : null);
 }
 
-function openOverlay() {
+// Monitor que o OBS está capturando: o escolhido na janela do OBS da sala, ou o principal.
+function obsDisplay() {
+  if (config.obsDisplay === 'off') return null;
+  return screen.getAllDisplays().find((d) => String(d.id) === String(config.obsDisplay)) || screen.getPrimaryDisplay();
+}
+
+function openObsOverlay() {
+  if (overlayOwner === 'share' && overlay) return false; // a tela compartilhada pelo app tem prioridade
+  return openOverlay(obsDisplay(), 'obs');
+}
+
+function openOverlay(display, owner) {
+  if (!OVERLAY_SUPPORTED || !display) return false;
   closeOverlay();
-  const display = OVERLAY_SUPPORTED ? overlayDisplay() : null;
-  if (!display) return false;
   overlay = new BrowserWindow({
     ...display.bounds,
     transparent: true,
@@ -322,12 +344,18 @@ function openOverlay() {
     webPreferences: { preload: path.join(__dirname, 'overlay-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
   overlay.displayId = display.id;
+  overlayOwner = owner;
   overlay.setIgnoreMouseEvents(true);
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // Fora da captura: quem assiste já vê as marcações por cima do vídeo, no navegador.
   overlay.setContentProtection(true);
-  overlay.on('closed', () => { overlay = null; });
+  const self = overlay;
+  overlay.on('closed', () => {
+    if (overlay !== self) return;
+    overlay = null;
+    overlayOwner = null;
+  });
   overlay.once('ready-to-show', () => {
     if (overlay) overlay.showInactive();
   });
@@ -335,9 +363,13 @@ function openOverlay() {
   return true;
 }
 
-function closeOverlay() {
-  if (overlay && !overlay.isDestroyed()) overlay.destroy();
+// Sem dono: fecha qualquer uma. Com dono: só se a camada aberta for dele.
+function closeOverlay(owner) {
+  if (owner && overlayOwner !== owner) return;
+  const current = overlay;
   overlay = null;
+  overlayOwner = null;
+  if (current && !current.isDestroyed()) current.destroy();
 }
 
 // ---------- o que a página do servidor pede ----------
@@ -347,10 +379,44 @@ ipcMain.on('desktop:version', (event) => { event.returnValue = app.getVersion();
 ipcMain.handle('desktop:sharing', (event, on) => {
   if (!fromServer(event)) return { overlay: false };
   if (!on) {
-    closeOverlay();
+    closeOverlay('share');
+    if (obsWanted && !overlay) openObsOverlay();
     return { overlay: false };
   }
-  return { overlay: openOverlay(), kind: picked ? picked.kind : null };
+  const display = shareDisplay();
+  return { overlay: display ? openOverlay(display, 'share') : false, kind: picked ? picked.kind : null };
+});
+
+// A sua transmissão do OBS entrou no ar (ou saiu): abre/fecha a camada no monitor dele.
+ipcMain.handle('desktop:obs', (event, on) => {
+  if (!fromServer(event)) return { overlay: false };
+  obsWanted = Boolean(on);
+  if (!obsWanted) {
+    closeOverlay('obs');
+    return { overlay: false };
+  }
+  if (overlay && overlayOwner === 'obs') return { overlay: true };
+  return { overlay: openObsOverlay() };
+});
+
+ipcMain.handle('desktop:obs-display', (event, value) => {
+  if (!fromServer(event)) return { overlay: false };
+  config.obsDisplay = value === 'off' ? 'off' : String(value);
+  saveConfig();
+  if (!obsWanted) return { overlay: false };
+  closeOverlay('obs');
+  return { overlay: openObsOverlay() };
+});
+
+ipcMain.handle('desktop:displays', (event) => {
+  if (!fromServer(event)) return null;
+  const displays = screen.getAllDisplays();
+  const current = obsDisplay();
+  return {
+    overlay: OVERLAY_SUPPORTED,
+    obsDisplay: current ? String(current.id) : 'off',
+    displays: displays.map((d) => ({ id: String(d.id), label: displayLabel(d, displays) })),
+  };
 });
 
 ipcMain.on('desktop:overlay', (event, data) => {
@@ -364,7 +430,10 @@ ipcMain.on('desktop:attention', (event) => {
 });
 
 ipcMain.on('desktop:change-server', (event) => {
-  if (fromServer(event)) showSetup();
+  if (!fromServer(event)) return;
+  obsWanted = false;
+  closeOverlay();
+  showSetup();
 });
 
 ipcMain.handle('setup:connect', (event, raw) => {

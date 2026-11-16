@@ -414,6 +414,14 @@ que o navegador não faz:
   pega cliques e fica de fora da captura, então quem assiste não vê nada duplicado. O
   seu quadro na sala ganha a etiqueta **na sua tela** enquanto isso está ligado.
   Compartilhando só uma janela, as marcações aparecem só pra quem assiste.
+- **Também transmitindo pelo OBS**: com o app aberto na sala com o mesmo nick do OBS,
+  quando a sua transmissão do OBS entra no ar o app abre essa camada sozinho, no
+  monitor principal (o seu quadro do OBS, "Você", ganha a etiqueta **na sua tela**).
+  Pra escolher o monitor que o OBS está capturando, ou desligar, use o botão **OBS** da
+  sala: a janela dele ganha a opção **Marcações na sua tela**, e o app lembra a escolha.
+  As marcações caem no lugar certo quando a cena do OBS é a captura do monitor ocupando
+  a tela toda (o normal); com a cena recortada ou montada, elas ficam na proporção da
+  cena.
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
   **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.
