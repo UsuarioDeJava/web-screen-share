@@ -41,6 +41,7 @@ body { font: 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans
 .draw { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 4px var(--c)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
 .draw path { fill: none; stroke: var(--c); stroke-width: 6px; stroke-linecap: round; stroke-linejoin: round; }
 .draw.fading { animation: fade 0.8s ease-in 2.4s forwards; }
+.draw.clearing { animation: fade 0.4s ease-in forwards; }
 
 /* Reações sobem pelo canto de baixo à direita, sem tampar o meio da tela. */
 .react {
@@ -66,3 +67,59 @@ body { font: 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans
   78% { opacity: 1; }
   100% { bottom: 38%; opacity: 0; transform: translateX(calc(-50% + var(--drift))) scale(0.9); }
 }
+
+/* ---------- modo desenho (Ctrl+Shift+D): a camada pega o mouse ---------- */
+
+.board { position: fixed; inset: 0; display: none; cursor: crosshair; }
+body.drawing { pointer-events: auto; }
+body.drawing .board { display: block; }
+/* Moldura acesa: deixa claro que o mouse está desenhando, não no programa de baixo. */
+body.drawing::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  border: 3px solid var(--mine, #2fc2ff);
+  box-shadow: inset 0 0 28px -6px var(--mine, #2fc2ff);
+  pointer-events: none;
+}
+.own path { stroke-width: 7px; }
+
+.hud {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(9, 11, 19, 0.88);
+  box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.9);
+  color: #eef0f8;
+  font-size: 13px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.hud[hidden] { display: none; }
+.hud-live { width: 9px; height: 9px; border-radius: 50%; background: #ff3b5c; box-shadow: 0 0 10px #ff3b5c; animation: blink 1.4s ease-in-out infinite; }
+.hud-text { white-space: nowrap; font-weight: 600; }
+.hud-colors { display: flex; gap: 4px; padding: 0 4px; }
+.swatch { width: 20px; height: 20px; padding: 0; border: 2px solid rgba(255, 255, 255, 0.25); border-radius: 50%; background: var(--c); cursor: pointer; }
+.swatch.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25), 0 0 12px var(--c); }
+.hud button:not(.swatch) {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hud button:not(.swatch):hover { background: rgba(255, 255, 255, 0.14); }
+.hud .hud-exit { border-color: rgba(255, 59, 92, 0.5); background: rgba(255, 59, 92, 0.16); }
+.hud kbd { margin-left: 4px; color: #9ba1b6; font: 600 11px ui-monospace, Consolas, monospace; }
+@keyframes blink { 50% { opacity: 0.35; } }

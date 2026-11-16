@@ -422,6 +422,16 @@ que o navegador não faz:
   As marcações caem no lugar certo quando a cena do OBS é a captura do monitor ocupando
   a tela toda (o normal); com a cena recortada ou montada, elas ficam na proporção da
   cena.
+- **Modo desenho (Ctrl+Shift+D)**: transmitindo pelo app (tela inteira) ou pelo OBS,
+  o atalho funciona com qualquer programa ou jogo na frente e liga o modo desenho na
+  sua tela: a camada passa a pegar o mouse e você rabisca direto no seu monitor, e quem
+  assiste vê o traço chegando ao vivo na sua transmissão (e você no seu quadro da
+  sala). Sem limite de tamanho do traço nem de ritmo, porque é você rabiscando a sua
+  própria transmissão. Os rabiscos ficam na tela enquanto o modo estiver ligado; uma
+  barrinha no topo mostra que ele está ligado e tem as cores (a sua, vermelho, amarelo,
+  verde, branco), **Desfazer** (**Ctrl+Z**), **Limpar** (**Del**) e **Sair** (**Esc** ou
+  **Ctrl+Shift+D** de novo); saindo, os rabiscos somem pra todo mundo. A camada não
+  rouba o foco: o jogo continua na frente quando você sai do modo.
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
   **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.

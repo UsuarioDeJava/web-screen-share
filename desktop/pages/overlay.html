@@ -8,6 +8,15 @@
 </head>
 <body>
   <div id="fx" class="fx"></div>
+  <div id="board" class="board"></div>
+  <div id="hud" class="hud" hidden>
+    <span class="hud-live"></span>
+    <span class="hud-text">Desenhando na sua tela · quem assiste vê ao vivo</span>
+    <span id="colors" class="hud-colors"></span>
+    <button type="button" data-act="undo">Desfazer <kbd>Ctrl+Z</kbd></button>
+    <button type="button" data-act="clear">Limpar <kbd>Del</kbd></button>
+    <button type="button" data-act="exit" class="hud-exit">Sair <kbd>Esc</kbd></button>
+  </div>
   <script src="overlay.js"></script>
 </body>
 </html>

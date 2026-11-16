@@ -17,6 +17,9 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     displays: () => ipcRenderer.invoke('desktop:displays'),
     obs: (on) => ipcRenderer.invoke('desktop:obs', Boolean(on)),
     setObsDisplay: (value) => ipcRenderer.invoke('desktop:obs-display', String(value)),
+    // Modo desenho (Ctrl+Shift+D): a sua cor e o que você rabiscou na sua tela.
+    identity: (data) => ipcRenderer.send('desktop:identity', { hue: Number(data && data.hue) }),
+    onLocalDraw: (callback) => ipcRenderer.on('desktop:local-draw', (_event, data) => callback(data)),
   });
 } else {
   contextBridge.exposeInMainWorld('setupBridge', {

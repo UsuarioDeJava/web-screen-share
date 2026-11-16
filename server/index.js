@@ -483,16 +483,41 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
+  // A transmissão é dessa pessoa (pela página ou pelo OBS, com o mesmo nick)?
+  const ownsStream = (user, id) => {
+    if (id === user.id) return user.sharing;
+    return Boolean(obs && obs.list().some((stream) => stream.id === id && stream.name === user.name));
+  };
+
   // Desenho ao vivo por cima da transmissão: o traço chega em pedaços (pontos de 0 a 1,
-  // [x, y, x, y...]) enquanto a pessoa ainda está desenhando.
+  // [x, y, x, y...]) enquanto a pessoa ainda está desenhando. Quem transmite, rabiscando
+  // a própria tela pelo app, não tem limite de ritmo, escolhe a cor (hue de 0 a 359, -1
+  // pra branco) e o traço fica (hold) até ela limpar ou sair do modo desenho.
   socket.on('draw', (msg) => {
     const user = users.get(socket.id);
     if (!user || !msg || !isLive(msg.stream) || typeof msg.id !== 'string' || msg.id.length > 32) return;
     const { points } = msg;
     if (!Array.isArray(points) || points.length > 128 || points.length % 2) return;
     if (!points.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)) return;
-    if (!allow(socket, 'draw', 80, 2000)) return;
-    socket.to(ROOM).emit('draw', { stream: msg.stream, id: msg.id, points, end: Boolean(msg.end), name: user.name });
+    const owner = ownsStream(user, msg.stream);
+    if (!owner && !allow(socket, 'draw', 80, 2000)) return;
+    const out = { stream: msg.stream, id: msg.id, points, end: Boolean(msg.end), name: user.name };
+    if (owner && msg.hold) out.hold = true;
+    if (owner && Number.isInteger(msg.hue) && msg.hue >= -1 && msg.hue < 360) out.hue = msg.hue;
+    socket.to(ROOM).emit('draw', out);
+  });
+
+  // Desfazer um traço / limpar os traços que ficaram: só quem transmite, na própria.
+  socket.on('draw:undo', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || typeof msg.id !== 'string' || msg.id.length > 32 || !ownsStream(user, msg.stream)) return;
+    socket.to(ROOM).emit('draw:undo', { stream: msg.stream, id: msg.id, name: user.name });
+  });
+
+  socket.on('draw:clear', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || !ownsStream(user, msg.stream)) return;
+    socket.to(ROOM).emit('draw:clear', { stream: msg.stream, name: user.name });
   });
 
   // "Olha aqui": um ponto na imagem (x e y de 0 a 1), pra todo mundo que está vendo.

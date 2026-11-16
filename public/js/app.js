@@ -292,6 +292,7 @@
         return;
       }
       me = { id: res.me.id, name: res.me.name };
+      if (window.wssDesktop && window.wssDesktop.identity) window.wssDesktop.identity({ hue: nameHue(me.name) });
       if (Number.isFinite(res.now)) serverOffset = res.now - Date.now();
       // Voltando de uma queda (ou do app atualizando), os outros reconectam junto com
       // você: isso não vira aviso de "entrou" nem de "começou a transmitir".
@@ -1968,6 +1969,8 @@
 
   // O desenho fica em cima só da imagem (sem as faixas pretas), em coordenadas de 0 a 1:
   // acompanha o quadro se ele mudar de tamanho.
+  const strokeColor = (hue) => (hue < 0 ? '#ffffff' : `hsl(${hue} 95% 64%)`);
+
   function createStrokeView(target, hue) {
     const { fx, video } = target;
     const width = fx.clientWidth || 1;
@@ -1981,7 +1984,7 @@
     svg.style.top = `${(box.top / height) * 100}%`;
     svg.style.width = `${(box.width / width) * 100}%`;
     svg.style.height = `${(box.height / height) * 100}%`;
-    svg.style.setProperty('--ping', `hsl(${hue} 95% 64%)`);
+    svg.style.setProperty('--ping', strokeColor(hue));
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
@@ -2041,17 +2044,22 @@
     finishStroke(stroke.view);
   }
 
-  const remoteStrokes = new Map(); // "transmissão|nome|id" -> traço
+  const remoteStrokes = new Map(); // "transmissão|nome|id" -> traço sendo desenhado
+  // Traços de quem transmite rabiscando a própria tela pelo app: ficam até ela desfazer,
+  // limpar ou sair do modo desenho. "transmissão|nome" -> Map(id -> traço)
+  const heldStrokes = new Map();
 
-  socket.on('draw', ({ stream, id, points, end, name }) => {
-    toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: nameHue(name) });
+  // local: o seu próprio rabisco (do modo desenho do app), mostrado no seu quadro.
+  function handleDraw({ stream, id, points, end, name, hold, hue }, local = false) {
+    const color = Number.isInteger(hue) ? hue : nameHue(name);
+    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: color });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
     let view = remoteStrokes.get(key);
     if (!view) {
       if (!points.length) return;
-      view = createStrokeView(target, nameHue(name));
+      view = createStrokeView(target, color);
       remoteStrokes.set(key, view);
     }
     view.points.push(...points);
@@ -2059,11 +2067,45 @@
     clearTimeout(view.expire);
     const done = () => {
       remoteStrokes.delete(key);
-      finishStroke(view);
+      if (!hold) {
+        finishStroke(view);
+        return;
+      }
+      const owner = `${stream}|${name}`;
+      if (!heldStrokes.has(owner)) heldStrokes.set(owner, new Map());
+      heldStrokes.get(owner).set(id, view);
     };
     if (end) done();
-    else view.expire = setTimeout(done, 5000); // quem desenhava caiu no meio do traço
-  });
+    else view.expire = setTimeout(done, hold ? 60000 : 5000); // quem desenhava caiu no meio do traço
+  }
+
+  function undoStroke(stream, name, id) {
+    const key = `${stream}|${name}|${id}`;
+    const held = heldStrokes.get(`${stream}|${name}`);
+    const view = (held && held.get(id)) || remoteStrokes.get(key);
+    if (held) held.delete(id);
+    remoteStrokes.delete(key);
+    if (!view) return;
+    clearTimeout(view.expire);
+    view.svg.remove();
+  }
+
+  function clearHeld(stream, name) {
+    const owner = `${stream}|${name}`;
+    const held = heldStrokes.get(owner);
+    heldStrokes.delete(owner);
+    if (!held) return;
+    // Limpar ou sair do modo desenho: os rabiscos somem logo.
+    for (const view of held.values()) {
+      clearTimeout(view.expire);
+      view.svg.classList.add('clearing');
+      view.svg.addEventListener('animationend', () => view.svg.remove());
+    }
+  }
+
+  socket.on('draw', (msg) => handleDraw(msg || {}));
+  socket.on('draw:undo', ({ stream, id, name }) => undoStroke(stream, name, id));
+  socket.on('draw:clear', ({ stream, name }) => clearHeld(stream, name));
 
   // Alt + clique aponta e Alt + arrastar desenha, ao vivo, pra todo mundo que está vendo
   // a transmissão (inclusive quem transmite, que também pode marcar a própria tela). No
@@ -3058,7 +3100,34 @@
     if (desktop) desktop.sharing(false).catch(() => {});
   }
 
+  // Modo desenho do app (Ctrl+Shift+D): o que você rabisca na sua tela de verdade vai pra
+  // quem assiste a sua transmissão (pelo app ou pelo OBS), e aparece também no seu quadro.
+  function onLocalDraw(msg) {
+    if (!me || !msg) return;
+    const stream = msg.owner === 'obs' ? myObsStreamId() : (localStream ? me.id : null);
+    if (!stream) return;
+    const id = `d${msg.id}`;
+    if (msg.type === 'undo') {
+      socket.emit('draw:undo', { stream, id });
+      undoStroke(stream, me.name, id);
+    } else if (msg.type === 'clear') {
+      socket.emit('draw:clear', { stream });
+      clearHeld(stream, me.name);
+    } else if (msg.type === 'draw') {
+      const points = Array.isArray(msg.points) ? msg.points : [];
+      const hue = Number.isInteger(msg.hue) ? msg.hue : nameHue(me.name);
+      // Em pedaços de até 64 pontos (o tamanho máximo de cada mensagem no servidor).
+      for (let i = 0; i < points.length || i === 0; i += 128) {
+        const data = { stream, id, points: points.slice(i, i + 128), end: Boolean(msg.end) && i + 128 >= points.length, hold: true, hue };
+        socket.emit('draw', data);
+        handleDraw({ ...data, name: me.name }, true);
+      }
+    }
+  }
+
   if (desktop) {
+    if (typeof desktop.onLocalDraw === 'function') desktop.onLocalDraw(onLocalDraw);
+    for (const node of document.querySelectorAll('.desktop-only')) node.hidden = false;
     $('btn-server').hidden = false;
     $('btn-server').addEventListener('click', () => {
       leaveVoice();

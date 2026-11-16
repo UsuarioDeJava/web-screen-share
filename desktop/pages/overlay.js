@@ -5,7 +5,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const strokes = new Map(); // "nome|id" -> { svg, path, points, expire }
 
 const unit = (v) => Math.min(1, Math.max(0, Number(v) || 0));
-const color = (hue) => `hsl(${(Number(hue) || 0) % 360} 95% 64%)`;
+const color = (hue) => (Number(hue) === -1 ? '#ffffff' : `hsl(${(Number(hue) || 0) % 360} 95% 64%)`);
 const text = (v) => String(v == null ? '' : v).slice(0, 40);
 
 function el(tag, className, content) {
@@ -87,9 +87,137 @@ function react({ emoji, name, hue }) {
   fx.append(item);
 }
 
+// ---------- modo desenho (Ctrl+Shift+D): você rabisca aqui, quem assiste vê ----------
+
+const board = document.getElementById('board');
+const hud = document.getElementById('hud');
+const colorsEl = document.getElementById('colors');
+// Sua cor da sala, vermelho, amarelo, verde e branco.
+const PALETTE = [{ hue: null, name: 'Sua cor' }, { hue: 0, name: 'Vermelho' }, { hue: 50, name: 'Amarelo' }, { hue: 140, name: 'Verde' }, { hue: -1, name: 'Branco' }];
+const own = []; // seus traços: ficam até desfazer, limpar ou sair do modo
+let myHue = 200;
+let picked = null; // cor escolhida na barrinha (null: a sua cor)
+let current = null; // traço sendo desenhado agora
+let ownCounter = 0;
+
+const activeHue = () => (picked === null ? myHue : picked);
+
+function renderColors() {
+  document.body.style.setProperty('--mine', color(activeHue()));
+  colorsEl.replaceChildren(...PALETTE.map((option) => {
+    const swatch = el('button', 'swatch');
+    swatch.type = 'button';
+    swatch.title = option.name;
+    swatch.style.setProperty('--c', color(option.hue === null ? myHue : option.hue));
+    swatch.classList.toggle('active', option.hue === picked);
+    swatch.addEventListener('click', () => {
+      picked = option.hue;
+      renderColors();
+    });
+    return swatch;
+  }));
+}
+
+function fadeOut(stroke) {
+  stroke.svg.classList.add('clearing');
+  stroke.svg.addEventListener('animationend', () => stroke.svg.remove());
+}
+
+function newStroke() {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'draw own');
+  svg.setAttribute('viewBox', '0 0 1 1');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const hue = activeHue();
+  svg.style.setProperty('--c', color(hue));
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('vector-effect', 'non-scaling-stroke');
+  svg.append(path);
+  fx.append(svg);
+  ownCounter += 1;
+  return { id: ownCounter, hue, svg, path, points: [], pending: [], timer: null };
+}
+
+// Sai em pedaços a cada 30 ms enquanto você desenha; sem limite de tamanho.
+function flush(stroke, end = false) {
+  clearTimeout(stroke.timer);
+  stroke.timer = null;
+  if (!stroke.pending.length && !end) return;
+  window.overlayBridge.draw({ id: stroke.id, points: stroke.pending.splice(0), end, hue: stroke.hue });
+}
+
+function addPoint(stroke, clientX, clientY) {
+  const x = Math.round(unit(clientX / innerWidth) * 10000) / 10000;
+  const y = Math.round(unit(clientY / innerHeight) * 10000) / 10000;
+  const n = stroke.points.length;
+  if (n && Math.hypot(x - stroke.points[n - 2], y - stroke.points[n - 1]) < 0.0008) return;
+  stroke.points.push(x, y);
+  stroke.pending.push(x, y);
+  stroke.path.setAttribute('d', strokePath(stroke.points));
+  if (!stroke.timer) stroke.timer = setTimeout(() => flush(stroke), 30);
+}
+
+function endStroke() {
+  if (!current) return;
+  flush(current, true);
+  own.push(current);
+  current = null;
+}
+
+function undo() {
+  if (current) return;
+  const stroke = own.pop();
+  if (!stroke) return;
+  stroke.svg.remove();
+  window.overlayBridge.undo(stroke.id);
+}
+
+function clearOwn() {
+  endStroke();
+  for (const stroke of own.splice(0)) stroke.svg.remove();
+  window.overlayBridge.clear();
+}
+
+function setDrawMode(on, hue) {
+  if (Number.isInteger(hue)) myHue = hue;
+  document.body.classList.toggle('drawing', on);
+  hud.hidden = !on;
+  renderColors();
+  if (!on) {
+    endStroke();
+    for (const stroke of own.splice(0)) fadeOut(stroke); // somem devagar, como pra quem assiste
+  }
+}
+
+board.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  board.setPointerCapture(event.pointerId);
+  endStroke();
+  current = newStroke();
+  addPoint(current, event.clientX, event.clientY);
+});
+board.addEventListener('pointermove', (event) => {
+  if (!current) return;
+  const coalesced = event.getCoalescedEvents ? event.getCoalescedEvents() : [];
+  for (const e of coalesced.length ? coalesced : [event]) addPoint(current, e.clientX, e.clientY);
+});
+board.addEventListener('pointerup', endStroke);
+board.addEventListener('pointercancel', endStroke);
+board.addEventListener('contextmenu', (event) => event.preventDefault());
+hud.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-act]');
+  if (!button) return;
+  if (button.dataset.act === 'undo') undo();
+  else if (button.dataset.act === 'clear') clearOwn();
+  else if (button.dataset.act === 'exit') window.overlayBridge.exit();
+});
+
 window.overlayBridge.onEvent((event) => {
   if (!event || typeof event !== 'object') return;
   if (event.type === 'ping') ping(event);
   else if (event.type === 'draw') draw(event);
   else if (event.type === 'react') react(event);
+  else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue);
+  else if (event.type === 'draw-undo') undo();
+  else if (event.type === 'draw-clear') clearOwn();
 });

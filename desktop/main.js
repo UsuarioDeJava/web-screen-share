@@ -4,8 +4,10 @@
 // - um seletor próprio de tela/janela, com o som do PC no Windows;
 // - uma camada transparente por cima da tela que você está transmitindo (pelo app ou
 //   pelo OBS), que não pega cliques e fica de fora da captura: quando alguém aponta,
-//   desenha ou reage na sua transmissão, aparece ali, na sua tela de verdade.
-const { app, BrowserWindow, Menu, desktopCapturer, dialog, ipcMain, screen, session, shell } = require('electron');
+//   desenha ou reage na sua transmissão, aparece ali, na sua tela de verdade;
+// - o modo desenho (Ctrl+Shift+D): você rabisca direto na sua tela, e quem assiste vê
+//   o traço na transmissão, ao vivo.
+const { app, BrowserWindow, Menu, Notification, desktopCapturer, dialog, globalShortcut, ipcMain, screen, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -19,6 +21,7 @@ const SELF_TEST = process.argv.includes('--self-test');
 const OVERLAY_SUPPORTED = process.platform === 'win32' || process.platform === 'darwin' || process.env.WSS_FORCE_OVERLAY === '1';
 // Som do PC junto com a tela: o Chromium só sabe capturar no Windows.
 const SYSTEM_AUDIO = process.platform === 'win32';
+const DRAW_SHORTCUT = 'CommandOrControl+Shift+D';
 const PERMISSIONS = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write', 'notifications']);
 
 let config = { server: null, trusted: {}, bounds: null, maximized: false, obsDisplay: null };
@@ -26,6 +29,8 @@ let mainWindow = null;
 let overlay = null;
 let overlayOwner = null; // de quem é a camada aberta: 'share' (tela escolhida no app) ou 'obs'
 let obsWanted = false; // a sua transmissão do OBS está no ar (com você na sala pelo app)
+let drawMode = false; // você está rabiscando a sua tela (a camada pega o mouse)
+let identity = { hue: 200 }; // a sua cor na sala
 let picker = null; // seletor de tela aberto: { win, finish }
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
 let picked = null; // última escolha do seletor: { kind, displayId }
@@ -353,6 +358,7 @@ function openOverlay(display, owner) {
   const self = overlay;
   overlay.on('closed', () => {
     if (overlay !== self) return;
+    setDrawMode(false);
     overlay = null;
     overlayOwner = null;
   });
@@ -366,15 +372,91 @@ function openOverlay(display, owner) {
 // Sem dono: fecha qualquer uma. Com dono: só se a camada aberta for dele.
 function closeOverlay(owner) {
   if (owner && overlayOwner !== owner) return;
+  setDrawMode(false);
   const current = overlay;
   overlay = null;
   overlayOwner = null;
   if (current && !current.isDestroyed()) current.destroy();
 }
 
+// ---------- modo desenho: rabiscar a sua tela, ao vivo pra quem assiste ----------
+
+// Enquanto ele está ligado, estas teclas valem em qualquer programa (a camada não pega
+// o foco, pra não tirar o jogo da frente).
+const DRAW_KEYS = [
+  ['Escape', () => setDrawMode(false)],
+  ['CommandOrControl+Z', () => toOverlay({ type: 'draw-undo' })],
+  ['Delete', () => toOverlay({ type: 'draw-clear' })],
+];
+
+function toOverlay(event) {
+  if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:event', event);
+}
+
+// O que você rabiscou vai pra página da sala, que manda pra quem assiste a transmissão
+// dona da camada (a tela compartilhada pelo app ou a do OBS).
+function toRoom(message) {
+  if (mainWindow && !mainWindow.isDestroyed() && overlayOwner) {
+    mainWindow.webContents.send('desktop:local-draw', { ...message, owner: overlayOwner });
+  }
+}
+
+function setDrawMode(on) {
+  const next = Boolean(on) && Boolean(overlay) && !overlay.isDestroyed();
+  if (next === drawMode) return;
+  drawMode = next;
+  if (overlay && !overlay.isDestroyed()) overlay.setIgnoreMouseEvents(!drawMode);
+  for (const [accelerator, action] of DRAW_KEYS) {
+    if (drawMode) {
+      try { globalShortcut.register(accelerator, action); } catch {}
+    } else if (globalShortcut.isRegistered(accelerator)) {
+      globalShortcut.unregister(accelerator);
+    }
+  }
+  toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue });
+  if (!drawMode) toRoom({ type: 'clear' }); // saindo, os rabiscos somem pra todo mundo
+}
+
+function toggleDrawMode() {
+  if (overlay && !overlay.isDestroyed()) {
+    setDrawMode(!drawMode);
+    return;
+  }
+  if (Notification.isSupported()) {
+    new Notification({
+      title: 'Web Screen Share',
+      body: OVERLAY_SUPPORTED
+        ? 'Pra desenhar na sua tela, transmita a tela inteira pelo app (ou pelo OBS, com o app aberto na sala).'
+        : 'Desenhar na tela não funciona neste sistema.',
+      icon: ICON,
+    }).show();
+  }
+}
+
+const fromOverlay = (event) => Boolean(overlay) && !overlay.isDestroyed() && event.sender === overlay.webContents;
+
+ipcMain.on('overlay:draw', (event, data) => {
+  if (!fromOverlay(event) || !drawMode || !data || !Array.isArray(data.points)) return;
+  const points = data.points.filter((v) => Number.isFinite(v)).map((v) => Math.min(1, Math.max(0, v)));
+  toRoom({ type: 'draw', id: Number(data.id) || 0, points, end: Boolean(data.end), hue: Number.isInteger(data.hue) ? data.hue : identity.hue });
+});
+ipcMain.on('overlay:undo', (event, id) => {
+  if (fromOverlay(event)) toRoom({ type: 'undo', id: Number(id) || 0 });
+});
+ipcMain.on('overlay:clear', (event) => {
+  if (fromOverlay(event)) toRoom({ type: 'clear' });
+});
+ipcMain.on('overlay:exit', (event) => {
+  if (fromOverlay(event)) setDrawMode(false);
+});
+
 // ---------- o que a página do servidor pede ----------
 
 ipcMain.on('desktop:version', (event) => { event.returnValue = app.getVersion(); });
+
+ipcMain.on('desktop:identity', (event, data) => {
+  if (fromServer(event) && data && Number.isInteger(data.hue)) identity = { hue: data.hue };
+});
 
 ipcMain.handle('desktop:sharing', (event, on) => {
   if (!fromServer(event)) return { overlay: false };
@@ -536,7 +618,11 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     createMainWindow();
+    if (!globalShortcut.register(DRAW_SHORTCUT, toggleDrawMode)) {
+      console.error(`O atalho ${DRAW_SHORTCUT} já é usado por outro programa: o modo desenho fica sem atalho.`);
+    }
   });
 
+  app.on('will-quit', () => globalShortcut.unregisterAll());
   app.on('window-all-closed', () => app.quit());
 }

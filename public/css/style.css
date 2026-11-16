@@ -830,6 +830,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   stroke-linejoin: round;
 }
 .fx-draw.fading { animation: fx-fade-out 0.8s ease-in 2.4s forwards; }
+.fx-draw.clearing { animation: fx-fade-out 0.4s ease-in forwards; }
 @keyframes fx-fade-out {
   to { opacity: 0; }
 }
@@ -1403,4 +1404,5 @@ kbd {
   .fx-ping { animation: fx-life 3s linear forwards !important; }
   .fx-ping-ring { display: none; }
   .fx-draw.fading { animation: fx-fade-out 0.8s ease-in 2.4s forwards !important; }
+  .fx-draw.clearing { animation: fx-fade-out 0.4s ease-in forwards !important; }
 }
