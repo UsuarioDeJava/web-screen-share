@@ -157,4 +157,5 @@ export MEDIAMTX_API_URL=http://127.0.0.1:9997
 export MEDIAMTX_API_AUTH="web-screen-share:$MTX_API_PASS"
 
 export IN_CONTAINER=1
+export CHAT_FILE="${CHAT_FILE:-$DATA_DIR/chat.json}"
 exec node server/index.js

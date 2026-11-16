@@ -20,8 +20,16 @@
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pinOff: '<path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"/>',
+    smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
+    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    pip: '<path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    bellOff: '<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
     broadcast: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
   };
+
+  // Reações que sobem por cima da transmissão (o servidor aceita só estas).
+  const REACTIONS = ['🔥', '😂', '😮', '👏', '❤️', '💀'];
 
   const CONNECTION_LABELS = {
     new: 'iniciando',
@@ -76,6 +84,17 @@
   const topbarConn = $('topbar-conn');
   const diagDialog = $('diag-dialog');
   const diagOutput = $('diag-output');
+  const btnChat = $('btn-chat');
+  const chatUnreadEl = $('chat-unread');
+  const chatEl = $('chat');
+  const chatList = $('chat-list');
+  const chatEmpty = $('chat-empty');
+  const chatForm = $('chat-form');
+  const chatInput = $('chat-input');
+  const chatError = $('chat-error');
+  const btnSounds = $('btn-sounds');
+  const keysDialog = $('keys-dialog');
+  const sounds = window.RoomSounds;
 
   const socket = io();
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
@@ -104,6 +123,10 @@
   let toastTimer = null;
   let pageVersion = null; // versão do servidor quando esta página foi carregada
   let serverStatus = {};
+  let serverOffset = 0; // hora do servidor menos a hora daqui (pro tempo ao vivo)
+  let shareStartedAt = null; // quando você começou a transmitir (hora daqui)
+  let quietUntil = 0; // logo depois de reconectar: sem avisos de quem reconecta junto
+  let joinedBefore = false;
 
   // ---------- helpers de DOM ----------
 
@@ -133,11 +156,16 @@
     return btn;
   }
 
-  function paintAvatar(node, name) {
-    node.textContent = [...name][0] || '?';
+  // Cor de cada pessoa (avatar, nome no chat, marcação na tela), sempre a mesma pro nick.
+  function nameHue(name) {
     let hash = 0;
     for (const ch of name) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
-    node.style.setProperty('--avatar', `hsl(${hash % 360} 45% 42%)`);
+    return hash % 360;
+  }
+
+  function paintAvatar(node, name) {
+    node.textContent = [...name][0] || '?';
+    node.style.setProperty('--avatar', `hsl(${nameHue(name)} 45% 42%)`);
     return node;
   }
 
@@ -237,6 +265,7 @@
     }
     wantedName = name;
     try { localStorage.setItem('wss-nick', name); } catch {}
+    sounds.unlock(); // o navegador só libera som depois de um clique
     loginBtn.disabled = true;
     loginBtn.textContent = socket.connected ? 'Entrando…' : 'Conectando ao servidor…';
     loginError.textContent = '';
@@ -252,6 +281,11 @@
         return;
       }
       me = { id: res.me.id, name: res.me.name };
+      if (Number.isFinite(res.now)) serverOffset = res.now - Date.now();
+      // Voltando de uma queda (ou do app atualizando), os outros reconectam junto com
+      // você: isso não vira aviso de "entrou" nem de "começou a transmitir".
+      if (joinedBefore) quietUntil = Date.now() + 8000;
+      joinedBefore = true;
       setPageVersion(res.version);
       // O container reinicia ao atualizar e o socket reconecta sozinho, mas esta
       // página continua com o código antigo até ser recarregada.
@@ -261,9 +295,10 @@
       // Reconexão no meio de uma transmissão: continua transmitindo.
       if (localStream) {
         users.get(me.id).sharing = true;
-        socket.emit('share', true);
+        socket.emit('share', true, shareStartedAt + serverOffset);
       }
       showApp();
+      loadChat(res.chat || []);
       for (const u of users.values()) {
         if (u.sharing && u.id !== me.id) addStreamTile(u);
       }
@@ -310,6 +345,8 @@
   btnLeave.addEventListener('click', () => {
     streamPrefs.clear();
     pinnedKey = null;
+    chatSeenId = null;
+    joinedBefore = false;
     stopSharing();
     socket.emit('leave');
     wantedName = null;
@@ -340,19 +377,26 @@
     // Quem entra pelo OBS já chega transmitindo.
     if (user.sharing) addStreamTile(user);
     renderUsers();
+    if (user.kind === 'obs') announceLive(user.name, ' pelo OBS');
+    else announceJoin(user.name);
   });
 
   socket.on('user:updated', (user) => {
     if (!me) return;
     const before = users.get(user.id);
     users.set(user.id, user);
-    if (user.sharing && !(before && before.sharing)) addStreamTile(user);
+    if (user.sharing && !(before && before.sharing)) {
+      addStreamTile(user);
+      announceLive(user.name, '');
+    }
     if (!user.sharing && before && before.sharing) removeStreamTile(user.id, { ended: true });
     renderUsers();
   });
 
   socket.on('user:left', ({ id }) => {
     if (!me || id === me.id) return;
+    const gone = users.get(id);
+    if (gone && gone.kind !== 'obs') announceLeave(gone.name);
     users.delete(id);
     removeStreamTile(id, { ended: true });
     closeOutgoing(id);
@@ -554,15 +598,19 @@
     video.playsInline = true;
     const status = el('div', 'tile-status');
     status.hidden = true;
-    media.append(video, status);
+    // Camada das reações e marcações, por cima do vídeo e sem pegar cliques.
+    const fx = el('div', 'tile-fx');
+    media.append(video, status, fx);
     const bar = el('div', 'tile-bar');
     const who = el('div', 'tile-who');
     who.append(avatar(name), el('span', 'tile-name', label));
     if (kind === 'obs') who.append(el('span', 'tag tag-obs', 'OBS'));
-    who.append(el('span', 'live-badge', 'AO VIVO'));
+    const uptime = el('span', 'tile-uptime');
+    uptime.title = 'Tempo ao vivo';
+    who.append(el('span', 'live-badge', 'AO VIVO'), uptime);
     bar.append(who);
     tile.append(media, bar);
-    return { tile, media, video, status, bar };
+    return { tile, media, video, status, bar, fx, uptime };
   }
 
   function setStatus(s, text, loading) {
@@ -593,12 +641,19 @@
       if (!localStream.getAudioTracks().length) meta.append(el('span', 'tag', 'sem áudio'));
       base.bar.append(meta);
       selfTile = { ...base, viewers };
+      // Quem transmite também pode apontar na própria tela, pra quem está assistindo.
+      enablePing(base.media, base.video, () => me && me.id);
       gridInner.prepend(base.tile);
       layoutGrid();
+      renderUptimes();
     }
-    const watching = [...outgoing.values()].filter((o) => o.pc.connectionState === 'connected').length;
-    selfTile.viewers.replaceChildren(icon('eye'), String(watching));
-    selfTile.viewers.title = watching === 1 ? '1 pessoa assistindo' : `${watching} pessoas assistindo`;
+    const names = [...outgoing.entries()]
+      .filter(([, o]) => o.pc.connectionState === 'connected')
+      .map(([id]) => users.get(id))
+      .filter(Boolean)
+      .map((u) => u.name);
+    selfTile.viewers.replaceChildren(icon('eye'), String(names.length));
+    selfTile.viewers.title = names.length ? `Assistindo: ${names.join(', ')}` : 'Ninguém assistindo ainda';
   }
 
   // ---------- transmitir ----------
@@ -626,10 +681,11 @@
       return;
     }
     localStream = stream;
+    shareStartedAt = Date.now();
     // Botão nativo "Parar de compartilhar" do navegador.
     stream.getVideoTracks()[0].addEventListener('ended', stopSharing);
     users.get(me.id).sharing = true;
-    socket.emit('share', true);
+    socket.emit('share', true, shareStartedAt + serverOffset);
     renderSelfTile();
     renderAll();
   }
@@ -643,6 +699,7 @@
     for (const id of [...outgoing.keys()]) closeOutgoing(id);
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
+    shareStartedAt = null;
     renderSelfTile();
     renderAll();
   }
@@ -1203,6 +1260,8 @@
       id: user.id,
       key,
       prefs,
+      name: user.name,
+      since: user.since || Date.now() + serverOffset,
       kind: user.kind || null,
       stream: user.stream || null,
       whepUrl: null,
@@ -1239,9 +1298,18 @@
     btnStats.classList.add('stats-btn');
     const btnPin = iconButton('pin', 'Fixar em destaque');
     btnPin.classList.add('pin-btn');
-    const btnFull = iconButton('maximize', 'Tela cheia');
+    const btnFull = iconButton('maximize', 'Tela cheia (F)');
     const btnClose = iconButton('close', 'Parar de assistir');
-    tools.append(btnStats, btnPin, btnFull, btnClose);
+    tools.append(btnStats, btnPin);
+    // Janelinha por cima de tudo, pra continuar vendo enquanto usa outro programa.
+    const btnPip = document.pictureInPictureEnabled && base.video.requestPictureInPicture
+      ? iconButton('pip', 'Picture-in-picture: janelinha por cima de tudo')
+      : null;
+    if (btnPip) {
+      btnPip.classList.add('pip-btn');
+      tools.append(btnPip);
+    }
+    tools.append(btnFull, btnClose);
 
     const stats = el('pre', 'tile-stats');
     stats.hidden = true;
@@ -1259,8 +1327,24 @@
       slider.setAttribute('aria-label', `Volume de ${user.name}`);
       audio.append(slider);
     }
-    base.bar.append(audio);
-    Object.assign(s, { qualitySelect, btnStats, btnPin, stats, audio, btnMute, slider });
+    const actions = el('div', 'tile-actions');
+    const btnReact = iconButton('smile', 'Reagir (teclas 1 a 6)');
+    btnReact.classList.add('react-btn');
+    const btnShot = iconButton('camera', 'Salvar um print da transmissão (S)');
+    btnShot.classList.add('shot-btn');
+    actions.append(btnReact, btnShot);
+    const reactPop = el('div', 'react-pop');
+    reactPop.hidden = true;
+    REACTIONS.forEach((emoji, i) => {
+      const choice = el('button', 'react-choice', emoji);
+      choice.type = 'button';
+      choice.title = `${emoji} (tecla ${i + 1})`;
+      choice.addEventListener('click', () => sendReaction(s.id, emoji));
+      reactPop.append(choice);
+    });
+    base.tile.append(reactPop);
+    base.bar.append(actions, audio);
+    Object.assign(s, { qualitySelect, btnStats, btnPin, btnPip, stats, audio, btnMute, slider, btnReact, reactPop });
 
     btnMute.addEventListener('click', () => {
       s.muted = !s.muted;
@@ -1294,6 +1378,14 @@
     base.video.addEventListener('dblclick', () => toggleFullscreen(s));
     btnClose.addEventListener('click', () => stopWatching(s));
     base.video.addEventListener('playing', () => setStatus(s, ''));
+    btnReact.addEventListener('click', () => toggleReactions(s));
+    btnShot.addEventListener('click', () => capture(s));
+    if (btnPip) {
+      btnPip.addEventListener('click', () => togglePip(s));
+      base.video.addEventListener('enterpictureinpicture', () => btnPip.classList.add('active'));
+      base.video.addEventListener('leavepictureinpicture', () => btnPip.classList.remove('active'));
+    }
+    enablePing(base.media, base.video, () => s.id);
 
     streams.set(user.id, s);
     gridInner.append(s.tile);
@@ -1301,6 +1393,7 @@
     if (s.watching) requestWatch(s);
     else s.tile.hidden = true; // fechada no X: fica na lista, com o botão Assistir
     layoutGrid();
+    renderUptimes();
   }
 
   // ended: a transmissão acabou (ou quem transmite caiu): o jeito que você deixou vale
@@ -1310,6 +1403,7 @@
     if (!s) return;
     if (ended) s.prefs.endedAt = Date.now();
     streams.delete(id);
+    leavePip(s);
     closeIncoming(s);
     stopStats(s);
     if (document.fullscreenElement === s.tile) exitFullscreen();
@@ -1333,6 +1427,8 @@
     s.prefs.watching = false;
     if (pinnedKey === s.key) pinnedKey = null;
     if (s.kind !== 'obs') send(s.id, { stream: s.id, type: 'unwatch' });
+    leavePip(s);
+    s.reactPop.hidden = true;
     closeIncoming(s);
     stopStats(s);
     setStatus(s, '');
@@ -1691,6 +1787,528 @@
     }
     return lines;
   }
+
+  // ---------- tempo ao vivo ----------
+
+  function formatUptime(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const pad = (n) => String(n).padStart(2, '0');
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    return h ? `${h}:${pad(m)}:${pad(total % 60)}` : `${m}:${pad(total % 60)}`;
+  }
+
+  function renderUptimes() {
+    const now = Date.now();
+    if (selfTile && shareStartedAt) selfTile.uptime.textContent = formatUptime(now - shareStartedAt);
+    for (const s of streams.values()) {
+      if (!s.tile.hidden) s.uptime.textContent = formatUptime(now + serverOffset - s.since);
+    }
+  }
+
+  setInterval(renderUptimes, 1000);
+
+  // ---------- reações, "olha aqui", print e picture-in-picture ----------
+
+  let lastReactionAt = 0;
+
+  function sendReaction(streamId, emoji) {
+    const now = Date.now();
+    if (!me || now - lastReactionAt < 120) return;
+    lastReactionAt = now;
+    socket.emit('react', { stream: streamId, emoji });
+  }
+
+  function toggleReactions(s) {
+    const open = s.reactPop.hidden;
+    closeReactions();
+    s.reactPop.hidden = !open;
+    s.btnReact.classList.toggle('active', open);
+  }
+
+  function closeReactions() {
+    for (const s of streams.values()) {
+      s.reactPop.hidden = true;
+      s.btnReact.classList.remove('active');
+    }
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest || e.target.closest('.react-pop, .react-btn')) return;
+    closeReactions();
+  });
+
+  // Quadro onde aparecem as reações e marcações de uma transmissão: o seu (se for a
+  // sua) ou o de quem você está assistindo.
+  function fxTarget(streamId) {
+    if (me && streamId === me.id) return selfTile;
+    const s = streams.get(streamId);
+    return s && s.watching && !s.tile.hidden ? s : null;
+  }
+
+  socket.on('react', ({ stream, emoji, name }) => {
+    const target = fxTarget(stream);
+    if (!target || !REACTIONS.includes(emoji)) return;
+    const { fx } = target;
+    while (fx.childElementCount >= 40) fx.firstElementChild.remove();
+    const item = el('span', 'fx-reaction');
+    item.append(el('span', 'fx-emoji', emoji), el('span', 'fx-who', name));
+    item.style.left = `${10 + Math.random() * 80}%`;
+    item.style.setProperty('--drift', `${Math.round(Math.random() * 80 - 40)}px`);
+    item.style.setProperty('--tilt', `${Math.round(Math.random() * 30 - 15)}deg`);
+    item.addEventListener('animationend', () => item.remove());
+    fx.append(item);
+  });
+
+  // Área da imagem dentro do elemento (o vídeo fica centralizado, com faixas pretas).
+  function contentBox(video, width, height) {
+    const vw = video.videoWidth || 16;
+    const vh = video.videoHeight || 9;
+    const scale = Math.min(width / vw, height / vh);
+    return { left: (width - vw * scale) / 2, top: (height - vh * scale) / 2, width: vw * scale, height: vh * scale };
+  }
+
+  // Ponto da imagem (de 0 a 1) debaixo do clique; null nas faixas pretas.
+  function videoPoint(video, clientX, clientY) {
+    const r = video.getBoundingClientRect();
+    const box = contentBox(video, r.width, r.height);
+    const x = (clientX - r.left - box.left) / box.width;
+    const y = (clientY - r.top - box.top) / box.height;
+    return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
+  }
+
+  // Alt+clique no vídeo (no celular: tocar e segurar) marca um ponto pra todo mundo
+  // que está vendo aquela transmissão, inclusive quem transmite.
+  function enablePing(media, video, streamId) {
+    const ping = (clientX, clientY) => {
+      const point = videoPoint(video, clientX, clientY);
+      const id = streamId();
+      if (point && id && me) socket.emit('ping', { stream: id, x: point.x, y: point.y });
+    };
+    const outside = (target) => target.closest('.tile-tools, .tile-stats');
+    media.addEventListener('click', (e) => {
+      if (!e.altKey || outside(e.target)) return;
+      e.preventDefault();
+      ping(e.clientX, e.clientY);
+    });
+    let press = null;
+    const cancel = () => {
+      if (press) clearTimeout(press.timer);
+    };
+    media.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' || outside(e.target)) return;
+      cancel();
+      const current = { x: e.clientX, y: e.clientY, fired: false };
+      current.timer = setTimeout(() => {
+        current.fired = true;
+        ping(current.x, current.y);
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, 450);
+      press = current;
+    });
+    media.addEventListener('pointermove', (e) => {
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) cancel();
+    });
+    media.addEventListener('pointerup', cancel);
+    media.addEventListener('pointercancel', cancel);
+    media.addEventListener('contextmenu', (e) => {
+      if (press && press.fired) e.preventDefault();
+    });
+  }
+
+  socket.on('ping', ({ stream, x, y, name }) => {
+    const target = fxTarget(stream);
+    if (!target) return;
+    const { fx, video } = target;
+    const width = fx.clientWidth;
+    const height = fx.clientHeight;
+    if (!width || !height) return;
+    const box = contentBox(video, width, height);
+    const mark = el('span', 'fx-ping');
+    mark.style.left = `${((box.left + x * box.width) / width) * 100}%`;
+    mark.style.top = `${((box.top + y * box.height) / height) * 100}%`;
+    mark.style.setProperty('--ping', `hsl(${nameHue(name)} 95% 64%)`);
+    mark.classList.toggle('flip', x > 0.75); // nome do lado esquerdo perto da borda direita
+    mark.append(el('span', 'fx-ping-ring'), el('span', 'fx-ping-ring'), el('span', 'fx-ping-dot'), el('span', 'fx-ping-name', name));
+    mark.addEventListener('animationend', (e) => {
+      if (e.target === mark) mark.remove();
+    });
+    fx.append(mark);
+    sounds.play('ping');
+  });
+
+  function fileStamp(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}.${pad(date.getMinutes())}.${pad(date.getSeconds())}`;
+  }
+
+  // Print do quadro atual na resolução de verdade da transmissão, baixado como PNG.
+  function capture(s) {
+    const { video } = s;
+    if (!video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const name = `${s.name.replace(/[\\/:*?"<>|]+/g, '_')} ${fileStamp(new Date())}.png`;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = el('a');
+      link.href = url;
+      link.download = name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }, 'image/png');
+    const flash = el('span', 'fx-flash');
+    flash.addEventListener('animationend', () => flash.remove());
+    s.fx.append(flash);
+  }
+
+  function togglePip(s) {
+    if (document.pictureInPictureElement === s.video) {
+      document.exitPictureInPicture().catch(() => {});
+    } else if (s.video.readyState >= 1) {
+      s.video.requestPictureInPicture().catch(() => {});
+    }
+  }
+
+  function leavePip(s) {
+    if (document.pictureInPictureElement === s.video) document.exitPictureInPicture().catch(() => {});
+  }
+
+  // ---------- chat ----------
+
+  const BASE_TITLE = document.title;
+  const URL_PATTERN = /\bhttps?:\/\/[^\s<>"]+/gi;
+  let chatOpen = false;
+  try { chatOpen = localStorage.getItem('wss-chat') === '1'; } catch {}
+  let chatUnread = 0;
+  let chatSeenId = null; // última mensagem que você já viu (null: ainda não entrou)
+  let chatLastId = 0;
+  let chatLast = null; // última linha, pra juntar mensagens seguidas da mesma pessoa
+  let chatErrorTimer = null;
+  const isTouch = window.matchMedia('(hover: none)').matches;
+
+  const chatVisible = () => chatOpen && !document.hidden;
+
+  function setChat(open, { focus = false } = {}) {
+    chatOpen = open;
+    appEl.classList.toggle('show-chat', open);
+    btnChat.classList.toggle('active', open);
+    btnChat.setAttribute('aria-expanded', String(open));
+    btnChat.setAttribute('aria-label', open ? 'Fechar o chat' : 'Abrir o chat');
+    try { localStorage.setItem('wss-chat', open ? '1' : '0'); } catch {}
+    if (open) {
+      markChatRead();
+      scrollChat();
+      if (focus && !isTouch) chatInput.focus();
+    } else if (chatEl.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+  }
+
+  function markChatRead() {
+    chatSeenId = chatLastId;
+    chatUnread = 0;
+    renderUnread();
+  }
+
+  function renderUnread() {
+    chatUnreadEl.hidden = !chatUnread;
+    chatUnreadEl.textContent = chatUnread > 99 ? '99+' : String(chatUnread);
+    document.title = chatUnread ? `(${chatUnread}) ${BASE_TITLE}` : BASE_TITLE;
+  }
+
+  const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  function mentionsMe(text) {
+    return Boolean(me) && new RegExp(`@${escapeRegExp(me.name)}(?![\\p{L}\\p{N}_])`, 'iu').test(text);
+  }
+
+  function linkify(node, text) {
+    let last = 0;
+    for (const match of text.matchAll(URL_PATTERN)) {
+      const url = match[0].replace(/[.,;:!?)\]]+$/, ''); // pontuação colada no fim fica de fora
+      if (match.index > last) node.append(text.slice(last, match.index));
+      const link = el('a', null, url);
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      node.append(link);
+      last = match.index + url.length;
+    }
+    if (last < text.length) node.append(text.slice(last));
+  }
+
+  const chatTime = (at) => new Date(at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  function scrollChat() {
+    chatList.scrollTop = chatList.scrollHeight;
+  }
+
+  function pushChatLine(li, { stick = false } = {}) {
+    const atBottom = chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < 80;
+    chatList.append(li);
+    while (chatList.childElementCount > 200) chatList.firstElementChild.remove();
+    chatEmpty.hidden = true;
+    if (atBottom || stick) scrollChat();
+  }
+
+  function appendChatMessage(msg) {
+    const mine = Boolean(me) && msg.name === me.name;
+    const grouped = chatLast && chatLast.name === msg.name && msg.at - chatLast.at < 300000;
+    const li = el('li', 'chat-msg');
+    li.classList.toggle('grouped', Boolean(grouped));
+    li.classList.toggle('mention', !mine && mentionsMe(msg.text));
+    if (!grouped) {
+      const meta = el('div', 'chat-meta');
+      const name = el('span', 'chat-name', msg.name);
+      name.style.setProperty('--name', `hsl(${nameHue(msg.name)} 75% 72%)`);
+      meta.append(avatar(msg.name), name, el('time', 'chat-time', chatTime(msg.at)));
+      li.append(meta);
+    }
+    const body = el('div', 'chat-text');
+    body.title = chatTime(msg.at);
+    linkify(body, msg.text);
+    li.append(body);
+    pushChatLine(li, { stick: mine });
+    chatLast = { name: msg.name, at: msg.at };
+    chatLastId = Math.max(chatLastId, msg.id);
+  }
+
+  // Linha cinza de aviso (entrou, saiu, começou a transmitir). Fica só nesta página.
+  const recentNotes = new Map();
+  function chatNote(text) {
+    const now = Date.now();
+    if (now - (recentNotes.get(text) || 0) < 120000) return; // OBS caindo e voltando não enche o chat
+    recentNotes.set(text, now);
+    const li = el('li', 'chat-note');
+    li.append(el('span', null, text), el('time', 'chat-time', chatTime(now)));
+    pushChatLine(li);
+    chatLast = null;
+  }
+
+  function loadChat(history) {
+    chatList.replaceChildren();
+    chatLast = null;
+    for (const msg of history) appendChatMessage(msg);
+    chatEmpty.hidden = history.length > 0;
+    const lastId = history.length ? history[history.length - 1].id : 0;
+    if (chatSeenId == null || chatVisible()) chatSeenId = lastId; // ao entrar, o histórico conta como lido
+    chatUnread = history.filter((m) => m.id > chatSeenId && m.name !== me.name).length;
+    renderUnread();
+    scrollChat();
+  }
+
+  socket.on('chat:message', (msg) => {
+    if (!me || !msg || msg.id <= chatLastId) return;
+    appendChatMessage(msg);
+    fsChatLine(msg);
+    if (msg.name === me.name) return;
+    if (chatVisible()) chatSeenId = msg.id;
+    else {
+      chatUnread += 1;
+      renderUnread();
+    }
+    if (mentionsMe(msg.text)) sounds.play('mention');
+    else if (!chatVisible()) sounds.play('message');
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (chatVisible()) markChatRead();
+  });
+
+  function showChatError(text) {
+    chatError.textContent = text;
+    chatError.hidden = false;
+    clearTimeout(chatErrorTimer);
+    chatErrorTimer = setTimeout(() => { chatError.hidden = true; }, 4000);
+  }
+
+  function sendChat(input) {
+    const text = input.value.trim();
+    if (!text || !me) return;
+    input.value = '';
+    socket.emit('chat:send', text, (res) => {
+      if (!res || !res.error) return;
+      if (!input.value) input.value = text;
+      showChatError(res.error);
+    });
+  }
+
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    sendChat(chatInput);
+  });
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') chatInput.blur();
+  });
+  btnChat.addEventListener('click', () => setChat(!chatOpen, { focus: true }));
+  $('btn-chat-close').addEventListener('click', () => setChat(false));
+  setChat(chatOpen);
+
+  // Avisos de quem entra, sai e começa a transmitir: linha no chat e som. Quem cai e
+  // volta em poucos segundos (internet piscando, app atualizando) não gera aviso.
+  const pendingLeaves = new Map(); // nome -> timer
+  const rejoinedAt = new Map(); // nome -> quando voltou de uma queda
+
+  function announceJoin(name) {
+    if (pendingLeaves.has(name)) {
+      clearTimeout(pendingLeaves.get(name));
+      pendingLeaves.delete(name);
+      rejoinedAt.set(name, Date.now());
+      return;
+    }
+    if (Date.now() < quietUntil) return;
+    chatNote(`${name} entrou na sala`);
+    sounds.play('join');
+  }
+
+  function announceLeave(name) {
+    clearTimeout(pendingLeaves.get(name));
+    pendingLeaves.set(name, setTimeout(() => {
+      pendingLeaves.delete(name);
+      if (!me) return;
+      chatNote(`${name} saiu da sala`);
+      sounds.play('leave');
+    }, 6000));
+  }
+
+  function announceLive(name, how) {
+    if (Date.now() < quietUntil || Date.now() - (rejoinedAt.get(name) || 0) < 15000) return;
+    chatNote(`${name} começou a transmitir${how}`);
+    if (!(me && name === me.name)) sounds.play('live');
+  }
+
+  // ---------- chat em tela cheia ----------
+
+  // Em tela cheia as mensagens novas aparecem por cima do vídeo, e o Enter abre um
+  // campo pra responder sem sair dela.
+  const fsChat = el('div', 'fs-chat');
+  const fsFeed = el('ol', 'fs-chat-feed');
+  const fsForm = el('form', 'fs-chat-form');
+  const fsInput = el('input');
+  fsInput.maxLength = 500;
+  fsInput.placeholder = 'Mensagem pra sala (Enter envia)';
+  fsInput.setAttribute('aria-label', 'Mensagem pra sala');
+  fsInput.autocomplete = 'off';
+  fsForm.hidden = true;
+  fsForm.append(fsInput);
+  fsChat.append(fsFeed, fsForm);
+
+  function fsChatLine(msg) {
+    if (!fullscreenTile()) return;
+    const li = el('li', 'fs-chat-line');
+    const who = el('b', null, msg.name);
+    who.style.setProperty('--name', `hsl(${nameHue(msg.name)} 80% 72%)`);
+    li.append(who, msg.text);
+    fsFeed.append(li);
+    while (fsFeed.childElementCount > 5) fsFeed.firstElementChild.remove();
+    setTimeout(() => li.classList.add('fade'), 8000);
+    setTimeout(() => li.remove(), 8700);
+  }
+
+  function openFsChat() {
+    const tile = fullscreenTile();
+    if (!tile) return;
+    fsForm.hidden = false;
+    fsInput.focus();
+  }
+
+  fsForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    sendChat(fsInput);
+    fsInput.blur();
+  });
+  fsInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') fsInput.blur();
+  });
+  fsInput.addEventListener('blur', () => {
+    if (!fsInput.value) fsForm.hidden = true;
+  });
+
+  document.addEventListener('fullscreenchange', () => {
+    fsFeed.replaceChildren();
+    fsForm.hidden = true;
+    const tile = fullscreenTile();
+    if (tile) tile.append(fsChat);
+    else fsChat.remove();
+  });
+
+  // ---------- atalhos de teclado ----------
+
+  let hoveredTile = null;
+  gridInner.addEventListener('pointerover', (e) => { hoveredTile = e.target.closest('.tile'); });
+  gridInner.addEventListener('pointerleave', () => { hoveredTile = null; });
+
+  // Quadro que os atalhos controlam: o em tela cheia, o debaixo do mouse, o fixado ou
+  // o único na tela.
+  function targetStream() {
+    const visible = [...streams.values()].filter((s) => s.watching && !s.tile.hidden);
+    const byTile = (tile) => (tile ? visible.find((s) => s.tile === tile) : null);
+    return byTile(fullscreenTile()) || byTile(hoveredTile)
+      || visible.find((s) => s.key === pinnedKey) || (visible.length === 1 ? visible[0] : null);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (appEl.hidden || !me || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.querySelector('dialog[open]')) return;
+    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const key = e.key;
+    const reaction = /^[1-6]$/.test(key);
+    if (e.repeat && !reaction) return;
+    if (key === 'Enter' && fullscreenTile()) {
+      e.preventDefault();
+      openFsChat();
+      return;
+    }
+    if (key === '?') {
+      e.preventDefault();
+      keysDialog.showModal();
+      return;
+    }
+    const lower = key.toLowerCase();
+    if (lower === 'c' && !fullscreenTile()) {
+      e.preventDefault();
+      setChat(!chatOpen, { focus: true });
+      return;
+    }
+    const s = targetStream();
+    if (!s) return;
+    if (lower === 'm') s.btnMute.click();
+    else if (lower === 'f') toggleFullscreen(s);
+    else if (lower === 'p') togglePin(s);
+    else if (lower === 's') capture(s);
+    else if (reaction) sendReaction(s.id, REACTIONS[Number(key) - 1]);
+    else return;
+    e.preventDefault();
+  });
+
+  $('btn-keys').addEventListener('click', () => keysDialog.showModal());
+  keysDialog.addEventListener('click', (e) => {
+    if (e.target === keysDialog) keysDialog.close();
+  });
+
+  // ---------- sons ----------
+
+  function renderSoundsButton() {
+    const on = sounds.enabled;
+    setIcon(btnSounds, on ? 'bell' : 'bellOff', on ? 'Sons da sala ligados (clique pra desligar)' : 'Sons da sala desligados (clique pra ligar)');
+    btnSounds.setAttribute('aria-pressed', String(on));
+  }
+
+  btnSounds.addEventListener('click', () => {
+    sounds.enabled = !sounds.enabled;
+    renderSoundsButton();
+    if (sounds.enabled) {
+      sounds.unlock();
+      setTimeout(() => sounds.play('message'), 50);
+    }
+  });
+  renderSoundsButton();
 
   renderShareButton();
 })();

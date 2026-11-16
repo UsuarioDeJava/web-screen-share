@@ -304,9 +304,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    digita um nick e clica em **Entrar**. Se o nick já estiver em uso, o servidor
    acrescenta um número (ex.: `Ana (2)`).
 2. Pra transmitir, clique em **Compartilhar tela** no topo e escolha a tela/janela no
-   prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO** e um contador de
-   quantas pessoas estão assistindo. Clique em **Parar transmissão** (ou no botão
-   nativo do navegador) pra encerrar.
+   prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO**, o tempo no ar e
+   um contador de quantas pessoas estão assistindo (passe o mouse nele pra ver quem).
+   Clique em **Parar transmissão** (ou no botão nativo do navegador) pra encerrar.
 3. Quando alguém começa a transmitir, o quadro abre sozinho, mas **sem som** (o
    alto-falante do quadro fica vermelho): clique nele pra ouvir. Se a sua conexão cair
    e voltar (ou o app for atualizado), ou se a transmissão cair e voltar em até
@@ -316,6 +316,12 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 4. Em cada quadro, quem assiste controla só pra si mesmo, sem afetar os outros:
    - **Som e volume**: botão do alto-falante pra mutar/desmutar e barra de volume ao
      lado (no iPhone/iPad só o mute funciona, o iOS não deixa sites mudarem o volume).
+   - **Reagir** (carinha, na barra de baixo): 🔥 😂 😮 👏 ❤️ 💀 sobem por cima do vídeo,
+     com o seu nome, pra todo mundo que está vendo aquela transmissão, inclusive quem
+     transmite.
+   - **Print** (câmera, na barra de baixo): salva a imagem atual da transmissão em PNG,
+     na resolução que está chegando.
+   - Ao lado do nome, o tempo que a transmissão está no ar.
    - Passando o mouse sobre o vídeo (no celular fica sempre visível):
      - **Qualidade** (Alta / Média / Baixa / Mínima): reduz resolução, quadros e taxa
        de bits que aquela pessoa te envia, útil com internet fraca.
@@ -330,6 +336,8 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        menores do lado (ou embaixo, em telas estreitas e no celular), todas
        continuando a tocar. Clique de novo pra desafixar; só um quadro fica fixado
        por vez, e fixar outro troca o destaque.
+     - **Picture-in-picture**: a transmissão vira uma janelinha que fica por cima de
+       tudo, pra continuar vendo enquanto usa outro programa (Chrome e Edge).
      - **Tela cheia** (ou dois cliques no vídeo). Em tela cheia o vídeo ocupa tudo: a
        barra de baixo (nome, som e volume) fica escondida e aparece ao encostar o mouse
        na borda de baixo da tela, como a barra de tarefas do Windows com ocultar
@@ -351,12 +359,30 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    que deixa ela aberta até clicar fora, apertar Esc ou clicar em «. No celular ela
    fica numa faixa no topo. Se a conexão com o servidor cair, o aviso "Reconectando…"
    aparece também no topo.
-7. **Sair** (ícone no rodapé da lista de pessoas) volta pra tela de nick.
+7. **Sair** (ícone no rodapé da lista de pessoas) volta pra tela de nick. Do lado
+   dele, o **sino** liga e desliga os sons da sala (alguém entrou ou saiu, começou a
+   transmitir, mensagem nova no chat, alguém te marcou ou apontou na tela).
 8. **Testar conexão** (no rodapé da lista de pessoas): quando alguém não consegue
    assistir, isso testa, no navegador dessa pessoa, o TURN do servidor por UDP e por
    TCP, uma conexão completa por ele, se o navegador decodifica H.264 (o formato do
    OBS) e a conexão com uma transmissão do OBS que estiver no ar. O botão **Copiar
    resultado** copia tudo pra mandar pra quem cuida do servidor.
+9. **Chat** (botão no topo, ou tecla **C**): abre do lado das transmissões (embaixo
+   delas no celular). Links viram clicáveis, mensagens com `@seu-nick` ficam
+   destacadas pra você, e quem entra, sai ou começa a transmitir aparece numa linha
+   cinza. Com o chat fechado, o botão e o título da aba mostram quantas mensagens
+   você não leu. Quem entra depois vê as últimas 100 mensagens; na imagem Docker
+   elas ficam salvas em `chat.json`, na pasta de dados, e continuam lá depois de
+   atualizar o app. Em tela cheia, as mensagens novas aparecem por cima do vídeo e o
+   **Enter** abre um campo pra responder sem sair da tela cheia.
+10. **Apontar na tela**: **Alt + clique** num ponto do vídeo (no celular: tocar e
+    segurar) mostra um sinal com o seu nome naquele ponto, pra todo mundo que está
+    vendo a transmissão, inclusive quem transmite (que também pode apontar na própria
+    tela, pra mostrar algo pra quem assiste).
+11. **Atalhos** (lista completa no rodapé da lista de pessoas, ou tecla **?**): valem
+    pro quadro debaixo do mouse (ou o em tela cheia, o fixado ou o único na tela):
+    **M** som, **F** tela cheia, **P** fixar, **S** print, **1** a **6** reações,
+    **C** chat.
 
 ## Observações
 

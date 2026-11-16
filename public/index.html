@@ -39,7 +39,10 @@
       <ul id="user-list" class="user-list"></ul>
       <div class="sidebar-foot">
         <div id="sidebar-version" class="app-version"></div>
-        <button id="btn-diag" class="link-btn" type="button">Testar conexão</button>
+        <span class="sidebar-links">
+          <button id="btn-keys" class="link-btn" type="button">Atalhos</button>
+          <button id="btn-diag" class="link-btn" type="button">Testar conexão</button>
+        </span>
       </div>
       <div class="me">
         <span id="me-avatar" class="avatar"></span>
@@ -47,6 +50,7 @@
           <div id="me-name" class="me-name"></div>
           <div class="me-status"><span id="conn-dot" class="dot"></span><span id="conn-text"></span></div>
         </div>
+        <button id="btn-sounds" class="icon-btn" type="button" aria-pressed="true"></button>
         <button id="btn-leave" class="icon-btn" type="button" title="Sair da sala" aria-label="Sair da sala">
           <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
         </button>
@@ -66,6 +70,11 @@
         </div>
         <div class="topbar-actions">
           <span id="share-hint" class="share-hint" hidden></span>
+          <button id="btn-chat" class="btn chat-btn" type="button" title="Chat (C)" aria-controls="chat" aria-expanded="false">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+            <span class="btn-label">Chat</span>
+            <span id="chat-unread" class="unread-badge" hidden></span>
+          </button>
           <button id="btn-obs" class="btn" type="button" title="Transmitir pelo OBS Studio" hidden></button>
           <button id="btn-share" class="btn btn-primary" type="button"></button>
         </div>
@@ -79,6 +88,7 @@
         <button id="btn-reload" class="btn btn-primary" type="button">Recarregar</button>
       </div>
 
+      <div class="content">
       <div class="stage">
         <div id="grid" class="grid"><div id="grid-inner" class="grid-inner"></div></div>
         <div id="empty" class="empty">
@@ -88,6 +98,25 @@
           <strong id="empty-title">Ninguém está transmitindo agora</strong>
           <span id="empty-hint">Clique em <b>Compartilhar tela</b> pra começar.</span>
         </div>
+      </div>
+
+      <aside id="chat" class="chat" aria-label="Chat da sala">
+        <div class="chat-head">
+          <span class="chat-title">Chat da sala</span>
+          <button id="btn-chat-close" class="icon-btn" type="button" title="Fechar o chat" aria-label="Fechar o chat">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+          </button>
+        </div>
+        <ol id="chat-list" class="chat-list"></ol>
+        <p id="chat-empty" class="chat-empty">Nenhuma mensagem ainda. Fala aí!</p>
+        <form id="chat-form" class="chat-form" autocomplete="off">
+          <input id="chat-input" maxlength="500" placeholder="Mensagem pra sala" aria-label="Mensagem pra sala" enterkeyhint="send" />
+          <button class="icon-btn chat-send" type="submit" title="Enviar" aria-label="Enviar">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></span>
+          </button>
+        </form>
+        <p id="chat-error" class="chat-error" role="alert" hidden></p>
+      </aside>
       </div>
     </main>
   </div>
@@ -137,10 +166,34 @@
     </form>
   </dialog>
 
+  <dialog id="keys-dialog" class="dialog" aria-labelledby="keys-title">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="keys-title">Atalhos</h3>
+        <button class="icon-btn" type="submit" title="Fechar" aria-label="Fechar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </button>
+      </div>
+      <p class="dialog-sub">Valem pro quadro debaixo do mouse (ou o que estiver em tela cheia, ou o fixado, ou o único na tela).</p>
+      <dl class="keys">
+        <dt><kbd>M</kbd></dt><dd>Ativar/desativar o som</dd>
+        <dt><kbd>F</kbd></dt><dd>Tela cheia</dd>
+        <dt><kbd>P</kbd></dt><dd>Fixar em destaque</dd>
+        <dt><kbd>S</kbd></dt><dd>Salvar um print da transmissão</dd>
+        <dt><kbd>1</kbd> … <kbd>6</kbd></dt><dd>Reagir: 🔥 😂 😮 👏 ❤️ 💀</dd>
+        <dt><kbd>Alt</kbd> + clique</dt><dd>Apontar um lugar na tela pra todo mundo (no celular: toque e segure)</dd>
+        <dt><kbd>C</kbd></dt><dd>Abrir/fechar o chat</dd>
+        <dt><kbd>Enter</kbd></dt><dd>Em tela cheia: escrever no chat sem sair dela</dd>
+        <dt><kbd>?</kbd></dt><dd>Esta lista</dd>
+      </dl>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/quality.js"></script>
+  <script src="js/sounds.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -244,8 +244,92 @@ function uniqueName(name) {
   }
 }
 
-const publicUser = ({ id, name, sharing, kind, stream }) =>
-  (kind ? { id, name, sharing, kind, stream } : { id, name, sharing });
+// since: quando a transmissão começou (hora do servidor), pro tempo ao vivo nos quadros.
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt }) => {
+  const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
+  if (sharing) user.since = since || startedAt || null;
+  return user;
+};
+
+// ---------- chat, reações e "apontar" ----------
+
+const CHAT_HISTORY = 100;
+const CHAT_MAX_LENGTH = 500;
+const REACTIONS = ['🔥', '😂', '😮', '👏', '❤️', '💀'];
+const chatHistory = [];
+// Id da mensagem: cresce sempre, inclusive depois de o servidor reiniciar (é a hora em
+// ms), pra quem estava na sala saber o que ainda não leu.
+let lastChatId = 0;
+
+// Limite por pessoa: no máximo `max` eventos de um tipo a cada `windowMs`.
+function allow(socket, kind, max, windowMs) {
+  const now = Date.now();
+  const times = socket.data[kind] || (socket.data[kind] = []);
+  while (times.length && now - times[0] > windowMs) times.shift();
+  if (times.length >= max) return false;
+  times.push(now);
+  return true;
+}
+
+function cleanChatText(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, CHAT_MAX_LENGTH);
+}
+
+// O histórico vai pra um arquivo (na imagem Docker, na pasta de dados), pra continuar
+// lá depois de reiniciar ou atualizar o app.
+const CHAT_FILE = process.env.CHAT_FILE || null;
+let chatSaveTimer = null;
+
+function loadChatHistory() {
+  if (!CHAT_FILE) return;
+  try {
+    const saved = JSON.parse(fs.readFileSync(CHAT_FILE, 'utf8'));
+    if (!Array.isArray(saved)) return;
+    for (const m of saved.slice(-CHAT_HISTORY)) {
+      if (!m || !Number.isFinite(m.id) || !Number.isFinite(m.at)) continue;
+      const name = cleanName(m.name);
+      const text = cleanChatText(m.text);
+      if (!name || !text) continue;
+      chatHistory.push({ id: m.id, name, text, at: m.at });
+      lastChatId = Math.max(lastChatId, m.id);
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.log(`AVISO: não deu pra ler o histórico do chat (${err.message}).`);
+  }
+}
+
+function saveChatNow() {
+  clearTimeout(chatSaveTimer);
+  chatSaveTimer = null;
+  if (!CHAT_FILE) return;
+  try {
+    const tmp = `${CHAT_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(chatHistory));
+    fs.renameSync(tmp, CHAT_FILE);
+  } catch (err) {
+    console.log(`AVISO: não deu pra salvar o histórico do chat (${err.message}).`);
+  }
+}
+
+function saveChatSoon() {
+  if (CHAT_FILE && !chatSaveTimer) chatSaveTimer = setTimeout(saveChatNow, 2000);
+}
+
+loadChatHistory();
+
+// Parar o container (ou Ctrl+C) salva o que ainda não foi pro arquivo.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    if (chatSaveTimer) saveChatNow();
+    process.exit(0);
+  });
+}
 
 // Transmissões do OBS aparecem na sala como participantes que já entram transmitindo.
 const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
@@ -322,14 +406,61 @@ io.on('connection', (socket) => {
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
-    ack({ me: publicUser(user), users: everyone.map(publicUser), version: VERSION });
+    ack({ me: publicUser(user), users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION });
   });
 
-  socket.on('share', (sharing) => {
+  // startedAt: quando a pessoa começou a transmitir, pra não zerar o tempo ao vivo
+  // quando ela reconecta no meio da transmissão.
+  socket.on('share', (sharing, startedAt) => {
     const user = users.get(socket.id);
     if (!user) return;
     user.sharing = Boolean(sharing);
+    const now = Date.now();
+    user.since = user.sharing
+      ? (Number.isFinite(startedAt) && startedAt <= now && now - startedAt < 86400000 ? startedAt : now)
+      : null;
     socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
+  socket.on('chat:send', (raw, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const user = users.get(socket.id);
+    if (!user) return reply({ error: 'Você não está na sala.' });
+    const text = cleanChatText(raw);
+    if (!text) return reply({ error: 'Mensagem vazia.' });
+    if (!allow(socket, 'chat', 5, 5000)) return reply({ error: 'Calma aí: muitas mensagens seguidas.' });
+    lastChatId = Math.max(lastChatId + 1, Date.now());
+    const message = { id: lastChatId, name: user.name, text, at: Date.now() };
+    chatHistory.push(message);
+    if (chatHistory.length > CHAT_HISTORY) chatHistory.shift();
+    saveChatSoon();
+    io.to(ROOM).emit('chat:message', message);
+    reply({ ok: true });
+  });
+
+  const isLive = (id) => {
+    if (typeof id !== 'string') return false;
+    const user = users.get(id);
+    if (user) return user.sharing;
+    return Boolean(obs && obs.list().some((stream) => stream.id === id));
+  };
+
+  // Emoji que sobe por cima da transmissão, pra todo mundo que está vendo.
+  socket.on('react', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || !REACTIONS.includes(msg.emoji) || !isLive(msg.stream)) return;
+    if (!allow(socket, 'react', 12, 3000)) return;
+    io.to(ROOM).emit('react', { stream: msg.stream, emoji: msg.emoji, name: user.name });
+  });
+
+  // "Olha aqui": um ponto na imagem (x e y de 0 a 1), pra todo mundo que está vendo.
+  socket.on('ping', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || !isLive(msg.stream)) return;
+    const { x, y } = msg;
+    if (![x, y].every((v) => Number.isFinite(v) && v >= 0 && v <= 1)) return;
+    if (!allow(socket, 'ping', 4, 2000)) return;
+    io.to(ROOM).emit('ping', { stream: msg.stream, x, y, name: user.name });
   });
 
   // Relay ponto a ponto da sinalização WebRTC (watch/offer/answer/candidate/...).
