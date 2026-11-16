@@ -432,6 +432,23 @@ que o navegador não faz:
   verde, branco), **Desfazer** (**Ctrl+Z**), **Limpar** (**Del**) e **Sair** (**Esc** ou
   **Ctrl+Shift+D** de novo); saindo, os rabiscos somem pra todo mundo. A camada não
   rouba o foco: o jogo continua na frente quando você sai do modo.
+- **Mouse de quem assiste**: transmitindo pelo app (ou pelo OBS, com as marcações na
+  tela ligadas), quando alguém passa o mouse por cima da sua transmissão, aparece na
+  sua tela uma setinha na cor da pessoa, com a letrinha do nick (como o avatar da
+  sala), sem nome; cada pessoa com uma cor diferente. Quem assiste desliga o próprio
+  mouse no botão da setinha, no rodapé da lista de pessoas; quem transmite desliga
+  todos no painel **Mouse e controle** (o botão da setinha no seu quadro da sala).
+- **Controle remoto** (desligado por padrão): no painel **Mouse e controle**, você
+  clica em **Permitir** do lado de uma pessoa (uma por vez) e ela ganha o botão 🎮 em
+  cima da sua transmissão. Com ele ligado, o mouse dela mexe no seu mouse de verdade
+  (clique, botão direito, rodinha) e, com o mouse dela em cima da transmissão, o
+  teclado dela digita no seu PC, pela posição das teclas (com o mesmo layout dos dois
+  lados, ex.: ABNT2, sai igualzinho). Enquanto isso, um aviso fica na sua tela, e
+  **Ctrl+Shift+X** (de qualquer programa) tira o controle na hora; ele também acaba
+  sozinho quando você para de transmitir ou a pessoa sai. A tecla do Windows fica
+  bloqueada (sem abrir o Iniciar nem bloquear o PC). Só funciona transmitindo a tela
+  inteira (ou o OBS capturando um monitor) e não mexe em janelas abertas como
+  administrador (o Windows não deixa).
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
   **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.
@@ -447,11 +464,13 @@ navegador, ex.: `https://nome-do-nas.tailXXXX.ts.net:3100`); pra trocar depois, 
 **Trocar servidor** no rodapé da lista de pessoas. Com o certificado autoassinado da
 imagem Docker, o app pergunta uma vez se pode confiar no servidor.
 
-Atalhos do app: **F11** tela cheia, **Ctrl+R**/**F5** recarregar, **Ctrl + +/−/0**
-zoom, **F12** ferramentas de desenvolvedor.
+Atalhos do app: **Ctrl+Shift+D** modo desenho e **Ctrl+Shift+X** tirar o controle
+(os dois valem com qualquer programa na frente), **F11** tela cheia, **Ctrl+R**/**F5**
+recarregar, **Ctrl + +/−/0** zoom, **F12** ferramentas de desenvolvedor.
 
-Também sai uma versão pra Linux (`.AppImage`), sem o som do PC e sem as marcações na
-tela (lá não dá pra tirar a camada da captura). O código do app fica na pasta
+Também sai uma versão pra Linux (`.AppImage`), sem o som do PC, sem as marcações, o
+mouse de quem assiste e o controle remoto na tela (lá não dá pra tirar a camada da
+captura). O código do app fica na pasta
 `desktop/`, e o GitHub Actions gera os instaladores a cada mudança nela
 (`.github/workflows/desktop.yml`). Pra rodar a partir do código: `cd desktop && npm
 install && npm start`.

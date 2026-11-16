@@ -6,10 +6,13 @@
 //   pelo OBS), que não pega cliques e fica de fora da captura: quando alguém aponta,
 //   desenha ou reage na sua transmissão, aparece ali, na sua tela de verdade;
 // - o modo desenho (Ctrl+Shift+D): você rabisca direto na sua tela, e quem assiste vê
-//   o traço na transmissão, ao vivo.
+//   o traço na transmissão, ao vivo;
+// - o mouse de quem assiste aparecendo na sua tela, e o controle remoto: quem você
+//   deixar mexe no seu mouse e teclado (Ctrl+Shift+X tira o controle na hora).
 const { app, BrowserWindow, Menu, Notification, desktopCapturer, dialog, globalShortcut, ipcMain, screen, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { createInput } = require('./input');
 
 if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
 
@@ -22,6 +25,7 @@ const OVERLAY_SUPPORTED = process.platform === 'win32' || process.platform === '
 // Som do PC junto com a tela: o Chromium só sabe capturar no Windows.
 const SYSTEM_AUDIO = process.platform === 'win32';
 const DRAW_SHORTCUT = 'CommandOrControl+Shift+D';
+const REVOKE_SHORTCUT = 'CommandOrControl+Shift+X';
 const PERMISSIONS = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write', 'notifications']);
 
 let config = { server: null, trusted: {}, bounds: null, maximized: false, obsDisplay: null };
@@ -31,6 +35,8 @@ let overlayOwner = null; // de quem é a camada aberta: 'share' (tela escolhida 
 let obsWanted = false; // a sua transmissão do OBS está no ar (com você na sala pelo app)
 let drawMode = false; // você está rabiscando a sua tela (a camada pega o mouse)
 let identity = { hue: 200 }; // a sua cor na sala
+let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
+let controller = null; // quem está controlando agora: { name }
 let picker = null; // seletor de tela aberto: { win, finish }
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
 let picked = null; // última escolha do seletor: { kind, displayId }
@@ -373,6 +379,10 @@ function openOverlay(display, owner) {
 function closeOverlay(owner) {
   if (owner && overlayOwner !== owner) return;
   setDrawMode(false);
+  if (controller) {
+    setController(null);
+    toPage('desktop:control-revoke');
+  }
   const current = overlay;
   overlay = null;
   overlayOwner = null;
@@ -448,6 +458,63 @@ ipcMain.on('overlay:clear', (event) => {
 });
 ipcMain.on('overlay:exit', (event) => {
   if (fromOverlay(event)) setDrawMode(false);
+});
+
+// ---------- controle remoto ----------
+
+const getInput = () => {
+  if (input === undefined) input = createInput();
+  return input;
+};
+
+// Ponto da tela transmitida (0 a 1) em pixels de verdade do monitor.
+function toScreen(display, x, y) {
+  const b = display.bounds;
+  const point = {
+    x: b.x + Math.min(1, Math.max(0, Number(x) || 0)) * (b.width - 1),
+    y: b.y + Math.min(1, Math.max(0, Number(y) || 0)) * (b.height - 1),
+  };
+  return process.platform === 'win32' ? screen.dipToScreenPoint(point) : point;
+}
+
+function setController(next) {
+  const wasOn = Boolean(controller);
+  controller = next && next.name ? { name: String(next.name).slice(0, 40), hue: Number(next.hue) || 0 } : null;
+  if (wasOn && !controller && input) input.releaseAll(); // nada fica apertado
+  if (controller && !wasOn) {
+    try { globalShortcut.register(REVOKE_SHORTCUT, () => toPage('desktop:control-revoke')); } catch {}
+  } else if (!controller && wasOn && globalShortcut.isRegistered(REVOKE_SHORTCUT)) {
+    globalShortcut.unregister(REVOKE_SHORTCUT);
+  }
+  toOverlay({ type: 'control', on: Boolean(controller), name: controller && controller.name, hue: controller && controller.hue });
+}
+
+function toPage(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
+}
+
+ipcMain.handle('desktop:caps', (event) => {
+  if (!fromServer(event)) return {};
+  return { overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && Boolean(getInput()) };
+});
+
+ipcMain.on('desktop:control-state', (event, data) => {
+  if (fromServer(event)) setController(data && data.on ? data : null);
+});
+
+// O que quem controla fez em cima da sua transmissão, já validado pelo servidor.
+ipcMain.on('desktop:control', (event, msg) => {
+  if (!fromServer(event) || !controller || !msg || !overlay || overlay.isDestroyed()) return;
+  const device = getInput();
+  const display = screen.getAllDisplays().find((d) => d.id === overlay.displayId);
+  if (!device || !display) return;
+  if (Number.isFinite(msg.x) && Number.isFinite(msg.y)) {
+    const point = toScreen(display, msg.x, msg.y);
+    device.move(point.x, point.y);
+  }
+  if (msg.kind === 'button') device.button(Number(msg.button), Boolean(msg.down));
+  else if (msg.kind === 'wheel' && Number.isFinite(msg.dy)) device.wheel(msg.dy);
+  else if (msg.kind === 'key' && typeof msg.code === 'string') device.key(msg.code, Boolean(msg.down));
 });
 
 // ---------- o que a página do servidor pede ----------
@@ -623,6 +690,9 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
+    if (input) input.close();
+  });
   app.on('window-all-closed', () => app.quit());
 }

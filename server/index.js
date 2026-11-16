@@ -350,6 +350,7 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
         io.to(ROOM).emit('user:joined', publicUser(stream));
       }
       for (const stream of removed) {
+        revokeControlFor(stream.id);
         logEvent(`OBS: ${stream.name} parou de transmitir (ficou no ar ${formatDuration(Date.now() - stream.startedAt)})`);
         io.to(ROOM).emit('user:left', { id: stream.id });
       }
@@ -364,7 +365,25 @@ function clientAddress(socket) {
   return address.startsWith('::ffff:') ? address.slice(7) : address;
 }
 
+// Controle remoto: quem transmite deixou alguém (control.to) mexer no mouse e teclado.
+// Acaba quando qualquer um dos dois sai ou a transmissão termina.
+function revokeControl(owner) {
+  if (!owner || !owner.control) return;
+  const { to, stream } = owner.control;
+  owner.control = null;
+  io.to(to).emit('control:revoked', { stream });
+  io.to(owner.id).emit('control:revoked', { stream, mine: true });
+  logEvent(`${owner.name} tirou o controle`);
+}
+
+function revokeControlFor(id) {
+  for (const user of users.values()) {
+    if (user.control && (user.id === id || user.control.to === id || user.control.stream === id)) revokeControl(user);
+  }
+}
+
 function removeUser(socket) {
+  revokeControlFor(socket.id);
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
@@ -423,6 +442,7 @@ io.on('connection', (socket) => {
     user.since = user.sharing
       ? (Number.isFinite(startedAt) && startedAt <= now && now - startedAt < 86400000 ? startedAt : now)
       : null;
+    if (!user.sharing && user.control && user.control.stream === user.id) revokeControl(user);
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
@@ -518,6 +538,73 @@ io.on('connection', (socket) => {
     const user = users.get(socket.id);
     if (!user || !msg || !ownsStream(user, msg.stream)) return;
     socket.to(ROOM).emit('draw:clear', { stream: msg.stream, name: user.name });
+  });
+
+  // Quem transmite essa transmissão (a pessoa, ou quem está na sala com o nick do OBS).
+  const streamOwners = (id) => {
+    const user = users.get(id);
+    if (user) return user.sharing ? [user] : [];
+    const stream = obs && obs.list().find((s) => s.id === id);
+    return stream ? [...users.values()].filter((u) => u.name === stream.name) : [];
+  };
+  const unit = (v) => Number.isFinite(v) && v >= 0 && v <= 1;
+
+  // Mouse de quem assiste passando por cima da transmissão: vai só pra quem transmite
+  // (o app mostra na tela dela).
+  socket.on('cursor', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || typeof msg.stream !== 'string') return;
+    if (!msg.gone && !(unit(msg.x) && unit(msg.y))) return;
+    if (!allow(socket, 'cursor', 60, 1000)) return;
+    const out = msg.gone
+      ? { stream: msg.stream, id: socket.id, name: user.name, gone: true }
+      : { stream: msg.stream, id: socket.id, name: user.name, x: msg.x, y: msg.y };
+    for (const owner of streamOwners(msg.stream)) {
+      if (owner.id !== socket.id) io.to(owner.id).emit('cursor', out);
+    }
+  });
+
+  // Controle remoto: quem transmite (pelo app) deixa UMA pessoa mexer no mouse e teclado.
+  socket.on('control:grant', (msg, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const user = users.get(socket.id);
+    const target = msg && users.get(msg.to);
+    if (!user || !target || target.id === user.id || !ownsStream(user, msg.stream)) return reply({ error: 'Não deu pra dar o controle.' });
+    revokeControl(user);
+    user.control = { to: target.id, stream: msg.stream };
+    io.to(target.id).emit('control:granted', { stream: msg.stream, from: user.name });
+    logEvent(`${user.name} deixou ${target.name} controlar o mouse e teclado`);
+    reply({ ok: true });
+  });
+
+  socket.on('control:revoke', () => revokeControl(users.get(socket.id)));
+
+  // O que quem controla fez: só vale com permissão e só vai pra quem deu a permissão.
+  const KINDS = new Set(['move', 'button', 'wheel', 'key']);
+  socket.on('control:input', (msg) => {
+    if (!msg || !KINDS.has(msg.kind) || !allow(socket, 'control', 400, 1000)) return;
+    const owner = [...users.values()].find((u) => u.control && u.control.to === socket.id && u.control.stream === msg.stream);
+    if (!owner) return;
+    const out = { kind: msg.kind, from: socket.id };
+    if (unit(msg.x) && unit(msg.y)) {
+      out.x = msg.x;
+      out.y = msg.y;
+    }
+    if (msg.kind === 'button') {
+      if (![0, 1, 2].includes(msg.button)) return;
+      out.button = msg.button;
+      out.down = Boolean(msg.down);
+    } else if (msg.kind === 'wheel') {
+      if (!Number.isFinite(msg.dy)) return;
+      out.dy = Math.max(-10, Math.min(10, msg.dy));
+    } else if (msg.kind === 'key') {
+      if (typeof msg.code !== 'string' || !/^[A-Za-z0-9]{1,24}$/.test(msg.code)) return;
+      out.code = msg.code;
+      out.down = Boolean(msg.down);
+    } else if (out.x === undefined) {
+      return;
+    }
+    io.to(owner.id).emit('control:input', out);
   });
 
   // "Olha aqui": um ponto na imagem (x e y de 0 a 1), pra todo mundo que está vendo.

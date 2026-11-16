@@ -52,6 +52,7 @@
           <div id="me-name" class="me-name"></div>
           <div class="me-status"><span id="conn-dot" class="dot"></span><span id="conn-text"></span></div>
         </div>
+        <button id="btn-cursor" class="icon-btn" type="button" aria-pressed="true"></button>
         <button id="btn-sounds" class="icon-btn" type="button" aria-pressed="true"></button>
         <button id="btn-leave" class="icon-btn" type="button" title="Sair da sala" aria-label="Sair da sala">
           <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
@@ -202,11 +203,32 @@
         <dt><kbd>Alt</kbd> + clique</dt><dd>Apontar um lugar na tela pra todo mundo (no celular: toque e segure)</dd>
         <dt><kbd>Alt</kbd> + arrastar</dt><dd>Desenhar na tela, ao vivo pra todo mundo (no celular: segure e arraste)</dd>
         <dt><kbd>V</kbd></dt><dd>Entrar na voz / ligar e desligar o microfone</dd>
+        <dt class="desktop-only" hidden><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd></dt><dd class="desktop-only" hidden>No app: tira na hora o controle de quem você deixou mexer no seu mouse e teclado</dd>
         <dt class="desktop-only" hidden><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></dt><dd class="desktop-only" hidden>No app, transmitindo: desenhar direto na sua tela, ao vivo pra quem assiste (funciona com qualquer programa na frente; <kbd>Esc</kbd> sai, <kbd>Ctrl</kbd>+<kbd>Z</kbd> desfaz, <kbd>Del</kbd> limpa)</dd>
         <dt><kbd>C</kbd></dt><dd>Abrir/fechar o chat</dd>
         <dt><kbd>Enter</kbd></dt><dd>Em tela cheia: escrever no chat sem sair dela</dd>
         <dt><kbd>?</kbd></dt><dd>Esta lista</dd>
       </dl>
+    </form>
+  </dialog>
+
+  <dialog id="control-dialog" class="dialog" aria-labelledby="control-title">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="control-title">Mouse e controle</h3>
+        <button class="icon-btn" type="submit" title="Fechar" aria-label="Fechar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </button>
+      </div>
+      <label class="switch-row">
+        <input id="show-cursors" type="checkbox" checked />
+        <span><b>Mostrar na minha tela o mouse de quem assiste</b><small>Quando alguém passa o mouse pela sua transmissão, aparece uma setinha na cor da pessoa, com a letrinha do nick.</small></span>
+      </label>
+      <div id="control-section" class="control-section">
+        <p class="dialog-sub"><b>Deixar alguém controlar o meu mouse e teclado</b>: a pessoa ganha o botão <b>Controlar</b> no seu quadro e mexe no seu PC pela transmissão. Uma pessoa por vez. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> tira o controle na hora, de qualquer programa; a tecla do Windows fica bloqueada.</p>
+        <p id="control-note" class="obs-check" hidden></p>
+        <ul id="control-list" class="control-list"></ul>
+      </div>
     </form>
   </dialog>
 

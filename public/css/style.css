@@ -1151,6 +1151,47 @@ kbd {
   text-align: center;
 }
 
+/* ---------- mouse e controle ---------- */
+
+.switch-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255, 255, 255, 0.03); cursor: pointer; }
+.switch-row input { margin-top: 3px; accent-color: var(--accent-2); }
+.switch-row span { display: flex; flex-direction: column; gap: 2px; }
+.switch-row small { color: var(--muted); font-size: 12px; }
+.control-section { display: flex; flex-direction: column; gap: 10px; }
+.control-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.control-person { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.control-person.is-active { border-color: rgba(255, 176, 65, 0.55); background: rgba(255, 176, 65, 0.08); }
+.control-person .avatar { width: 26px; height: 26px; font-size: 11px; }
+.control-name { flex: 1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.control-status { color: #ffcf85; font-size: 12px; font-weight: 700; }
+.control-person .btn { height: 32px; padding: 0 12px; }
+.control-empty { color: var(--faint); font-size: 13px; }
+.tile-meta .panel-btn { width: 28px; height: 28px; }
+
+/* Controlando o mouse e o teclado de quem transmite. */
+.tile.is-controlling {
+  border-color: rgba(255, 176, 65, 0.8);
+  box-shadow: 0 0 0 1px rgba(255, 176, 65, 0.4), 0 0 28px -6px rgba(255, 176, 65, 0.75);
+}
+.tile.is-controlling .tile-media { cursor: crosshair; }
+.tile.is-controlling .tile-media::after {
+  content: "Controlando · as teclas vão pra lá enquanto o mouse estiver aqui em cima";
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 3;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(9, 11, 19, 0.82);
+  color: #ffcf85;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.tile-tools .control-btn.active { background: rgba(255, 176, 65, 0.25); color: #ffcf85; box-shadow: inset 0 0 0 1px rgba(255, 176, 65, 0.5); }
+
 /* ---------- janelas (OBS, teste de conexão) ---------- */
 
 .dialog {

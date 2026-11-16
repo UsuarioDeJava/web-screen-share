@@ -30,6 +30,9 @@
     mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
     micOff: '<path d="m2 2 20 20M18.89 13.23A7.12 7.12 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.34V5a3 3 0 0 0-5.68-1.33M9 9v3a3 3 0 0 0 5.12 2.12M12 19v3"/>',
     phoneOff: '<path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91M22 2 2 22"/>',
+    pointer: '<path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/>',
+    pointerOff: '<path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/><path d="m2 2 20 20"/>',
+    gamepad: '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.59C2.6 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.41-1.41A2 2 0 0 1 9.83 16h4.34a2 2 0 0 1 1.41.59L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.6-6.58-.68-7.26A4 4 0 0 0 17.32 5z"/>',
     broadcast: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
   };
 
@@ -293,6 +296,9 @@
       }
       me = { id: res.me.id, name: res.me.name };
       if (window.wssDesktop && window.wssDesktop.identity) window.wssDesktop.identity({ hue: nameHue(me.name) });
+      // Permissões de controle não sobrevivem a uma queda (o servidor já cancelou): o
+      // aviso do app some junto.
+      if (window.wssDesktop && window.wssDesktop.controlState) window.wssDesktop.controlState({ on: false });
       if (Number.isFinite(res.now)) serverOffset = res.now - Date.now();
       // Voltando de uma queda (ou do app atualizando), os outros reconectam junto com
       // você: isso não vira aviso de "entrou" nem de "começou a transmitir".
@@ -357,6 +363,7 @@
 
   function leaveRoomLocally() {
     me = null;
+    resetControl();
     // Continua "na voz": ao reconectar, as conexões de voz são refeitas.
     for (const id of [...voicePeers.keys()]) closeVoicePeer(id);
     for (const id of [...outgoing.keys()]) closeOutgoing(id);
@@ -521,6 +528,7 @@
       : 'Pessoas na sala';
     renderVoice();
     syncObsOverlay();
+    if (controlDialog.open) renderControlPanel();
   }
 
   function renderShareButton() {
@@ -681,6 +689,12 @@
       overlayTag.title = 'Quando alguém apontar, desenhar ou reagir na sua transmissão, aparece também na sua tela de verdade';
       overlayTag.hidden = true;
       meta.prepend(overlayTag);
+      if (window.wssDesktop) {
+        const btnPanel = iconButton('pointer', 'Mouse e controle');
+        btnPanel.classList.add('panel-btn');
+        btnPanel.addEventListener('click', () => openControlPanel());
+        meta.append(btnPanel);
+      }
       base.bar.append(meta);
       selfTile = { ...base, viewers, overlayTag };
       // Quem transmite também pode apontar na própria tela, pra quem está assistindo.
@@ -1365,6 +1379,16 @@
       btnPip.classList.add('pip-btn');
       tools.append(btnPip);
     }
+    // Controle remoto: só aparece quando quem transmite deixou você mexer.
+    const btnControl = isMine ? null : iconButton('gamepad', `Controlar o mouse e o teclado de ${user.name}`);
+    if (btnControl) {
+      btnControl.classList.add('control-btn');
+      btnControl.hidden = true;
+      tools.append(btnControl);
+    }
+    // No seu próprio quadro do OBS (no app): o painel do mouse e do controle.
+    const btnPanel = isMine && window.wssDesktop ? iconButton('pointer', 'Mouse e controle') : null;
+    if (btnPanel) tools.append(btnPanel);
     tools.append(btnFull, btnClose);
 
     const stats = el('pre', 'tile-stats');
@@ -1400,7 +1424,7 @@
     });
     base.tile.append(reactPop);
     base.bar.append(actions, audio);
-    Object.assign(s, { qualitySelect, btnStats, btnPin, btnPip, stats, audio, btnMute, slider, btnReact, reactPop });
+    Object.assign(s, { qualitySelect, btnStats, btnPin, btnPip, btnControl, stats, audio, btnMute, slider, btnReact, reactPop });
 
     btnMute.addEventListener('click', () => {
       s.muted = !s.muted;
@@ -1431,7 +1455,9 @@
     btnStats.addEventListener('click', () => toggleStats(s));
     btnPin.addEventListener('click', () => togglePin(s));
     btnFull.addEventListener('click', () => toggleFullscreen(s));
-    base.video.addEventListener('dblclick', () => toggleFullscreen(s));
+    base.video.addEventListener('dblclick', () => {
+      if (controlling !== s.id) toggleFullscreen(s);
+    });
     btnClose.addEventListener('click', () => stopWatching(s));
     base.video.addEventListener('playing', () => setStatus(s, ''));
     btnReact.addEventListener('click', () => toggleReactions(s));
@@ -1442,6 +1468,12 @@
       base.video.addEventListener('leavepictureinpicture', () => btnPip.classList.remove('active'));
     }
     enableMarkup(s, () => s.id);
+    if (btnControl) {
+      btnControl.addEventListener('click', () => toggleControlling(s));
+      enableCursorShare(s);
+      enableControl(s);
+    }
+    if (btnPanel) btnPanel.addEventListener('click', () => openControlPanel());
 
     if (isMine && window.wssDesktop) {
       s.overlayTag = el('span', 'tag tag-overlay', 'na sua tela');
@@ -1451,6 +1483,7 @@
     }
     streams.set(user.id, s);
     gridInner.append(s.tile);
+    renderControlButton(s);
     renderAudio(s);
     if (s.watching) requestWatch(s);
     else s.tile.hidden = true; // fechada no X: fica na lista, com o botão Assistir
@@ -1465,6 +1498,7 @@
     if (!s) return;
     if (ended) s.prefs.endedAt = Date.now();
     streams.delete(id);
+    if (controlling === id) stopControlling();
     leavePip(s);
     closeIncoming(s);
     stopStats(s);
@@ -1488,6 +1522,7 @@
     s.watching = false;
     s.prefs.watching = false;
     if (pinnedKey === s.key) pinnedKey = null;
+    if (controlling === s.id) stopControlling();
     if (s.kind !== 'obs') send(s.id, { stream: s.id, type: 'unwatch' });
     leavePip(s);
     s.reactPop.hidden = true;
@@ -2127,6 +2162,7 @@
     };
     media.addEventListener('pointerdown', (e) => {
       if (!me || outside(e.target)) return;
+      if (controlling && controlling === streamId()) return; // controlando: o clique vai pro PC de lá
       if (gesture) finish(gesture, true);
       const g = { id: e.pointerId, touch: e.pointerType === 'touch', x: e.clientX, y: e.clientY, armed: false, stroke: null, timer: null };
       if (g.touch) {
@@ -3138,6 +3174,320 @@
   } else {
     $('desktop-download').hidden = isTouch;
   }
+
+  // ---------- mouse de quem assiste e controle remoto ----------
+
+  const controlDialog = $('control-dialog');
+  const btnCursor = $('btn-cursor');
+  const round4 = (v) => Math.round(v * 10000) / 10000;
+  let shareCursor = true; // o seu mouse aparece na tela de quem transmite (no app dela)
+  let showCursors = true; // você (transmitindo pelo app) vê o mouse de quem assiste
+  try {
+    shareCursor = localStorage.getItem('wss-cursor') !== '0';
+    showCursors = localStorage.getItem('wss-show-cursors') !== '0';
+  } catch {}
+
+  function renderCursorButton() {
+    setIcon(btnCursor, shareCursor ? 'pointer' : 'pointerOff', shareCursor
+      ? 'O seu mouse aparece na tela de quem transmite pelo app (clique pra esconder)'
+      : 'O seu mouse não aparece pra quem transmite (clique pra mostrar)');
+    btnCursor.setAttribute('aria-pressed', String(shareCursor));
+  }
+  btnCursor.addEventListener('click', () => {
+    shareCursor = !shareCursor;
+    try { localStorage.setItem('wss-cursor', shareCursor ? '1' : '0'); } catch {}
+    renderCursorButton();
+  });
+  renderCursorButton();
+
+  // Passando o mouse por cima de uma transmissão: a posição vai (no máximo ~20 vezes por
+  // segundo) só pra quem transmite, que vê uma setinha na sua cor, na tela dela.
+  function enableCursorShare(s) {
+    let last = 0;
+    let pending = null;
+    let timer = null;
+    let inside = false;
+    const flush = () => {
+      timer = null;
+      if (!pending || !me) return;
+      last = performance.now();
+      socket.emit('cursor', { stream: s.id, ...pending });
+      pending = null;
+    };
+    const queue = (msg) => {
+      pending = msg;
+      const wait = 50 - (performance.now() - last);
+      if (wait <= 0) flush();
+      else if (!timer) timer = setTimeout(flush, wait);
+    };
+    s.media.addEventListener('pointermove', (e) => {
+      if (!shareCursor || e.pointerType === 'touch' || controlling === s.id || !s.watching) return;
+      const point = videoPoint(s.video, e.clientX, e.clientY);
+      if (point) {
+        inside = true;
+        queue({ x: round4(point.x), y: round4(point.y) });
+      } else if (inside) {
+        inside = false;
+        queue({ gone: true });
+      }
+    });
+    s.media.addEventListener('pointerleave', () => {
+      if (!inside) return;
+      inside = false;
+      queue({ gone: true });
+    });
+  }
+
+  socket.on('cursor', ({ stream, id, name, x, y, gone }) => {
+    if (!showCursors || typeof name !== 'string') return;
+    toDesktopOverlay(stream, { type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name) });
+  });
+
+  // ---- quem transmite: dar e tirar o controle
+
+  let controlGrant = null; // { to, name, stream }: quem está controlando o seu PC
+  let desktopCaps = null;
+
+  // A sua transmissão que dá pra controlar: a tela inteira pelo app, ou o OBS com a
+  // camada ligada (é ela que sabe em qual monitor cada ponto cai).
+  function myControlStream() {
+    if (desktopOverlay && localStream && me) return me.id;
+    if (obsOverlay) return myObsStreamId();
+    return null;
+  }
+
+  async function openControlPanel() {
+    if (!desktop) return;
+    if (!desktopCaps && typeof desktop.caps === 'function') desktopCaps = await desktop.caps().catch(() => null);
+    renderControlPanel();
+    if (!controlDialog.open) controlDialog.showModal();
+  }
+
+  function renderControlPanel() {
+    $('show-cursors').checked = showCursors;
+    const note = $('control-note');
+    const list = $('control-list');
+    const stream = myControlStream();
+    let problem = '';
+    if (typeof desktop.caps !== 'function') problem = 'Atualize o app de desktop pra usar o mouse de quem assiste e o controle.';
+    else if (!desktopCaps || !desktopCaps.control) problem = 'O controle remoto não funciona neste sistema (precisa do app no Windows).';
+    else if (!stream) problem = 'Comece a transmitir a tela inteira pelo app (ou pelo OBS, com as marcações na sua tela ligadas) pra poder dar o controle.';
+    note.hidden = !problem;
+    note.textContent = problem;
+    note.className = problem ? 'obs-check is-bad' : 'obs-check';
+    const people = [...users.values()].filter((u) => u.kind !== 'obs' && me && u.id !== me.id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    list.replaceChildren(...people.map((u) => {
+      const li = el('li', 'control-person');
+      const active = controlGrant && controlGrant.to === u.id;
+      li.classList.toggle('is-active', Boolean(active));
+      li.append(avatar(u.name), el('span', 'control-name', u.name));
+      if (active) li.append(el('span', 'control-status', 'controlando'));
+      const btn = el('button', active ? 'btn btn-danger' : 'btn', active ? 'Tirar o controle' : 'Permitir');
+      btn.type = 'button';
+      btn.disabled = !active && Boolean(problem);
+      btn.addEventListener('click', () => (active ? revokeControl() : grantControl(u)));
+      li.append(btn);
+      return li;
+    }));
+    if (!people.length) list.replaceChildren(el('li', 'control-empty', 'Ninguém mais na sala.'));
+  }
+
+  $('show-cursors').addEventListener('change', (e) => {
+    showCursors = e.target.checked;
+    try { localStorage.setItem('wss-show-cursors', showCursors ? '1' : '0'); } catch {}
+  });
+  controlDialog.addEventListener('click', (e) => {
+    if (e.target === controlDialog) controlDialog.close();
+  });
+
+  function grantControl(user) {
+    const stream = myControlStream();
+    if (!stream) return;
+    socket.emit('control:grant', { stream, to: user.id }, (res) => {
+      if (!res || res.error) {
+        showToast((res && res.error) || 'Não deu pra dar o controle.');
+        return;
+      }
+      controlGrant = { to: user.id, name: user.name, stream };
+      desktop.controlState({ on: true, name: user.name, hue: nameHue(user.name) });
+      chatNote(`${user.name} pode controlar o seu mouse e teclado (Ctrl+Shift+X tira)`);
+      renderControlPanel();
+    });
+  }
+
+  function revokeControl() {
+    socket.emit('control:revoke');
+  }
+
+  if (desktop && typeof desktop.onControlRevoke === 'function') desktop.onControlRevoke(revokeControl);
+
+  // O que quem você deixou controlar fez em cima da sua transmissão (o servidor só manda
+  // de quem tem a permissão): vira mouse e teclado de verdade, no app.
+  socket.on('control:input', (msg) => {
+    if (desktop && controlGrant && msg && msg.from === controlGrant.to && typeof desktop.control === 'function') {
+      desktop.control(msg);
+    }
+  });
+
+  // ---- quem assiste: controlar o PC de quem deixou
+
+  const controlAllowed = new Map(); // transmissão -> nick de quem deixou você controlar
+  let controlling = null; // transmissão que você está controlando agora
+  let controlHover = false; // o mouse está em cima dela (o teclado só vai pra lá assim)
+  const controlKeys = new Set();
+  const controlButtons = new Set();
+
+  // Caiu a conexão: o servidor cancela as permissões dos dois lados.
+  function resetControl() {
+    stopControlling();
+    controlAllowed.clear();
+    controlGrant = null;
+    for (const s of streams.values()) renderControlButton(s);
+  }
+
+  function renderControlButton(s) {
+    if (!s.btnControl) return;
+    const from = controlAllowed.get(s.id);
+    s.btnControl.hidden = !from;
+    s.btnControl.classList.toggle('active', controlling === s.id);
+    setIcon(s.btnControl, 'gamepad', controlling === s.id ? 'Parar de controlar' : `Controlar o mouse e o teclado de ${from || ''}`);
+    s.tile.classList.toggle('is-controlling', controlling === s.id);
+  }
+
+  function sendControl(msg) {
+    if (controlling) socket.emit('control:input', { stream: controlling, ...msg });
+  }
+
+  // Solta tudo que estava apertado do lado de lá (nada fica preso).
+  function releaseControl() {
+    for (const code of controlKeys) sendControl({ kind: 'key', code, down: false });
+    for (const button of controlButtons) sendControl({ kind: 'button', button, down: false });
+    controlKeys.clear();
+    controlButtons.clear();
+  }
+
+  function stopControlling() {
+    if (!controlling) return;
+    releaseControl();
+    const s = streams.get(controlling);
+    controlling = null;
+    controlHover = false;
+    if (s) renderControlButton(s);
+  }
+
+  function toggleControlling(s) {
+    if (controlling === s.id) {
+      stopControlling();
+      return;
+    }
+    stopControlling();
+    if (!controlAllowed.has(s.id)) return;
+    controlling = s.id;
+    renderControlButton(s);
+  }
+
+  function enableControl(s) {
+    const { media, video } = s;
+    let lastMove = 0;
+    let moveTimer = null;
+    let pendingMove = null;
+    const point = (e) => {
+      const p = videoPoint(video, e.clientX, e.clientY, true);
+      return { x: round4(p.x), y: round4(p.y) };
+    };
+    const active = () => controlling === s.id;
+    const flushMove = () => {
+      moveTimer = null;
+      if (!pendingMove || !active()) return;
+      lastMove = performance.now();
+      sendControl({ kind: 'move', ...pendingMove });
+      pendingMove = null;
+    };
+    media.addEventListener('pointerenter', () => { if (active()) controlHover = true; });
+    media.addEventListener('pointerleave', () => {
+      if (!active()) return;
+      controlHover = false;
+      for (const code of controlKeys) sendControl({ kind: 'key', code, down: false });
+      controlKeys.clear();
+    });
+    media.addEventListener('pointermove', (e) => {
+      if (!active()) return;
+      controlHover = true;
+      pendingMove = point(e);
+      const wait = 16 - (performance.now() - lastMove);
+      if (wait <= 0) flushMove();
+      else if (!moveTimer) moveTimer = setTimeout(flushMove, wait);
+    });
+    media.addEventListener('pointerdown', (e) => {
+      if (!active() || e.target.closest('.tile-tools')) return;
+      e.preventDefault();
+      try { media.setPointerCapture(e.pointerId); } catch {}
+      const button = e.button === 1 ? 1 : e.button === 2 ? 2 : 0;
+      controlButtons.add(button);
+      sendControl({ kind: 'button', button, down: true, ...point(e) });
+    });
+    media.addEventListener('pointerup', (e) => {
+      if (!active()) return;
+      const button = e.button === 1 ? 1 : e.button === 2 ? 2 : 0;
+      if (!controlButtons.delete(button)) return;
+      sendControl({ kind: 'button', button, down: false, ...point(e) });
+    });
+    media.addEventListener('wheel', (e) => {
+      if (!active()) return;
+      e.preventDefault();
+      const notches = e.deltaMode === 1 ? e.deltaY / 3 : e.deltaMode === 2 ? e.deltaY * 3 : e.deltaY / 100;
+      sendControl({ kind: 'wheel', dy: Math.round(notches * 100) / 100, ...point(e) });
+    }, { passive: false });
+    media.addEventListener('contextmenu', (e) => {
+      if (active()) e.preventDefault();
+    });
+  }
+
+  // Controlando e com o mouse em cima da transmissão, as teclas vão pro PC de lá (os
+  // atalhos da sala ficam de fora).
+  window.addEventListener('keydown', (e) => {
+    if (!controlling || !controlHover || e.isComposing) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!e.code) return;
+    controlKeys.add(e.code);
+    sendControl({ kind: 'key', code: e.code, down: true });
+  }, true);
+  window.addEventListener('keyup', (e) => {
+    if (!controlling || !controlKeys.has(e.code)) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    controlKeys.delete(e.code);
+    sendControl({ kind: 'key', code: e.code, down: false });
+  }, true);
+  window.addEventListener('blur', () => {
+    if (controlling) releaseControl();
+  });
+
+  socket.on('control:granted', ({ stream, from }) => {
+    controlAllowed.set(stream, from);
+    const s = streams.get(stream);
+    if (s) renderControlButton(s);
+    chatNote(`${from} deixou você controlar o mouse e o teclado da transmissão`);
+    showToast(`${from} deixou você controlar o mouse e o teclado: clique no 🎮 em cima da transmissão.`);
+  });
+
+  socket.on('control:revoked', ({ stream, mine }) => {
+    if (mine) {
+      if (controlGrant) chatNote(`${controlGrant.name} não controla mais o seu PC`);
+      controlGrant = null;
+      if (desktop && typeof desktop.controlState === 'function') desktop.controlState({ on: false });
+      if (controlDialog.open) renderControlPanel();
+      return;
+    }
+    const from = controlAllowed.get(stream);
+    controlAllowed.delete(stream);
+    if (controlling === stream) stopControlling();
+    const s = streams.get(stream);
+    if (s) renderControlButton(s);
+    if (from) chatNote(`${from} tirou o seu controle`);
+  });
 
   renderShareButton();
 })();

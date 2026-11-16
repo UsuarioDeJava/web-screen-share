@@ -20,6 +20,12 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     // Modo desenho (Ctrl+Shift+D): a sua cor e o que você rabiscou na sua tela.
     identity: (data) => ipcRenderer.send('desktop:identity', { hue: Number(data && data.hue) }),
     onLocalDraw: (callback) => ipcRenderer.on('desktop:local-draw', (_event, data) => callback(data)),
+    // Mouse de quem assiste e controle remoto.
+    caps: () => ipcRenderer.invoke('desktop:caps'),
+    controlState: (data) => ipcRenderer.send('desktop:control-state', data && data.on
+      ? { on: true, name: String(data.name || ''), hue: Number(data.hue) || 0 } : { on: false }),
+    control: (msg) => ipcRenderer.send('desktop:control', msg),
+    onControlRevoke: (callback) => ipcRenderer.on('desktop:control-revoke', () => callback()),
   });
 } else {
   contextBridge.exposeInMainWorld('setupBridge', {

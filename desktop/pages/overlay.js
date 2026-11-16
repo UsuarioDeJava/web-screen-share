@@ -212,8 +212,65 @@ hud.addEventListener('click', (event) => {
   else if (button.dataset.act === 'exit') window.overlayBridge.exit();
 });
 
+// ---------- mouse de quem assiste ----------
+
+const cursorsEl = document.getElementById('cursors');
+const cursors = new Map(); // id -> { node, hue, timer }
+const ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2.5 19.5 13l-7 1.2-3.6 6.3z"/></svg>';
+const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+
+// Cor da pessoa (a mesma do avatar); se ficar parecida demais com a de outro mouse na
+// tela, gira até ficar diferente: cada um com a sua.
+function distinctHue(id, wanted) {
+  const used = [...cursors.entries()].filter(([key]) => key !== id).map(([, c]) => c.hue);
+  let hue = ((Number(wanted) || 0) % 360 + 360) % 360;
+  for (let i = 0; i < 12 && used.some((u) => hueGap(u, hue) < 32); i += 1) hue = (hue + 137.5) % 360;
+  return Math.round(hue);
+}
+
+function removeCursor(id) {
+  const c = cursors.get(id);
+  if (!c) return;
+  cursors.delete(id);
+  clearTimeout(c.timer);
+  c.node.classList.add('gone');
+  setTimeout(() => c.node.remove(), 300);
+}
+
+function cursor({ id, x, y, gone, letter, hue }) {
+  if (typeof id !== 'string') return;
+  if (gone) {
+    removeCursor(id);
+    return;
+  }
+  let c = cursors.get(id);
+  if (!c) {
+    const node = el('div', 'cursor');
+    node.innerHTML = ARROW;
+    node.append(el('span', 'cursor-badge', text(letter).slice(0, 2)));
+    c = { node, hue: distinctHue(id, hue), timer: null };
+    node.style.setProperty('--c', color(c.hue));
+    cursors.set(id, c);
+    cursorsEl.append(node);
+  }
+  c.node.style.left = `${unit(x) * 100}%`;
+  c.node.style.top = `${unit(y) * 100}%`;
+  clearTimeout(c.timer);
+  c.timer = setTimeout(() => removeCursor(id), 4000); // parou de mandar: some
+}
+
+// ---------- alguém controlando o seu mouse e teclado ----------
+
+const controlBanner = document.getElementById('control');
+function control({ on, name }) {
+  controlBanner.hidden = !on;
+  document.getElementById('control-text').textContent = on ? `${text(name)} está controlando o seu mouse e teclado ·` : '';
+}
+
 window.overlayBridge.onEvent((event) => {
   if (!event || typeof event !== 'object') return;
+  if (event.type === 'cursor') cursor(event);
+  else if (event.type === 'control') control(event);
   if (event.type === 'ping') ping(event);
   else if (event.type === 'draw') draw(event);
   else if (event.type === 'react') react(event);
