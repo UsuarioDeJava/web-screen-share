@@ -18,12 +18,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # latest*.yml e .blockmap: o que o app lê pra saber da versão nova e se atualizar.
           - os: windows-latest
             target: --win
-            files: desktop/dist/*.exe
+            update-info: latest.yml
+            files: |
+              desktop/dist/*.exe
+              desktop/dist/*.blockmap
+              desktop/dist/latest.yml
           - os: ubuntu-latest
             target: --linux
-            files: desktop/dist/*.AppImage
+            update-info: latest-linux.yml
+            files: |
+              desktop/dist/*.AppImage
+              desktop/dist/*.blockmap
+              desktop/dist/latest-linux.yml
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -44,6 +53,12 @@ jobs:
 
       - name: Build
         run: npx electron-builder ${{ matrix.target }} --publish never
+
+      - name: Update info
+        shell: bash
+        run: |
+          test -f "dist/${{ matrix.update-info }}"
+          cat "dist/${{ matrix.update-info }}"
 
       # O app empacotado abre e carrega a tela de configurar o servidor.
       - name: Smoke test
@@ -92,3 +107,5 @@ jobs:
             **Linux**: `Web-Screen-Share-${{ steps.version.outputs.value }}.AppImage` (dê permissão de execução). No Linux não tem o som do PC nem as marcações na tela.
 
             Na primeira vez, o app pede o endereço do servidor (o mesmo que vocês abrem no navegador).
+
+            Quando sair versão nova, o app avisa: a versão instalada (Setup ou AppImage) se atualiza pelo botão **Atualizar**; a portátil mostra o link pra baixar.

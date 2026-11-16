@@ -8,11 +8,13 @@
 // - o modo desenho (Ctrl+Shift+D): você rabisca direto na sua tela, e quem assiste vê
 //   o traço na transmissão, ao vivo;
 // - o mouse de quem assiste aparecendo na sua tela, e o controle remoto: quem você
-//   deixar mexe no seu mouse e teclado (Ctrl+Shift+X tira o controle na hora).
+//   deixar mexe no seu mouse e teclado (Ctrl+Shift+X tira o controle na hora);
+// - o aviso de versão nova do app (instalado: botão de atualizar; portátil: link).
 const { app, BrowserWindow, Menu, Notification, desktopCapturer, dialog, globalShortcut, ipcMain, screen, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { createInput } = require('./input');
+const { createUpdates } = require('./updates');
 
 if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
 
@@ -38,6 +40,11 @@ let identity = { hue: 200 }; // a sua cor na sala
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 let controller = null; // quem está controlando agora: { name }
 let picker = null; // seletor de tela aberto: { win, finish }
+const updates = createUpdates({
+  getWindow: () => mainWindow,
+  send: (state) => toPage('desktop:update', state),
+  icon: ICON,
+});
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
 let picked = null; // última escolha do seletor: { kind, displayId }
 let serverLoadFailed = false; // a última tentativa de abrir o servidor falhou
@@ -157,6 +164,9 @@ function createMainWindow() {
     if (isServerUrl(url)) return;
     event.preventDefault();
     if (/^https?:/i.test(url)) shell.openExternal(url);
+  });
+  webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) updates.pageGone();
   });
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
@@ -521,6 +531,11 @@ ipcMain.on('desktop:control', (event, msg) => {
 
 ipcMain.on('desktop:version', (event) => { event.returnValue = app.getVersion(); });
 
+// Aviso de atualização: a sala pede o estado atual (e passa a receber as mudanças) e
+// o botão do aviso instala ou abre a página pra baixar.
+ipcMain.handle('desktop:update-listen', (event) => (fromServer(event) ? updates.listen() : null));
+ipcMain.handle('desktop:update', (event) => fromServer(event) && updates.act());
+
 ipcMain.on('desktop:identity', (event, data) => {
   if (fromServer(event) && data && Number.isInteger(data.hue)) identity = { hue: data.hue };
 });
@@ -685,6 +700,7 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     createMainWindow();
+    if (!SELF_TEST) updates.start();
     if (!globalShortcut.register(DRAW_SHORTCUT, toggleDrawMode)) {
       console.error(`O atalho ${DRAW_SHORTCUT} já é usado por outro programa: o modo desenho fica sem atalho.`);
     }

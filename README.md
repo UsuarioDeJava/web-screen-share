@@ -416,7 +416,9 @@ que o navegador não faz:
   Compartilhando só uma janela, as marcações aparecem só pra quem assiste.
 - **Também transmitindo pelo OBS**: com o app aberto na sala com o mesmo nick do OBS,
   quando a sua transmissão do OBS entra no ar o app abre essa camada sozinho, no
-  monitor principal (o seu quadro do OBS, "Você", ganha a etiqueta **na sua tela**).
+  monitor principal. (A sua própria transmissão do OBS não abre sozinha na sala, pra
+  não gastar internet à toa; pra ver como ela está chegando, clique em **Assistir** ao
+  lado do seu nome, e o quadro "Você" mostra a etiqueta **na sua tela**.)
   Pra escolher o monitor que o OBS está capturando, ou desligar, use o botão **OBS** da
   sala: a janela dele ganha a opção **Marcações na sua tela**, e o app lembra a escolha.
   As marcações caem no lugar certo quando a cena do OBS é a captura do monitor ocupando
@@ -435,12 +437,14 @@ que o navegador não faz:
 - **Mouse de quem assiste**: transmitindo pelo app (ou pelo OBS, com as marcações na
   tela ligadas), quando alguém passa o mouse por cima da sua transmissão, aparece na
   sua tela uma setinha na cor da pessoa, com a letrinha do nick (como o avatar da
-  sala), sem nome; cada pessoa com uma cor diferente. Quem assiste desliga o próprio
-  mouse no botão da setinha, no rodapé da lista de pessoas; quem transmite desliga
-  todos no painel **Mouse e controle** (o botão da setinha no seu quadro da sala).
-- **Controle remoto** (desligado por padrão): no painel **Mouse e controle**, você
-  clica em **Permitir** do lado de uma pessoa (uma por vez) e ela ganha o botão 🎮 em
-  cima da sua transmissão. Com ele ligado, o mouse dela mexe no seu mouse de verdade
+  sala), sem nome; cada pessoa com uma cor diferente. O botão da setinha, embaixo da
+  lista de pessoas, abre o painel **Mouse e controle**: ali quem assiste desliga o
+  próprio mouse, e quem transmite desliga o de todo mundo.
+- **Controle remoto** (desligado por padrão): enquanto você transmite, cada pessoa da
+  lista da sala ganha um botão 🎮; clique nele e confirme em **Permitir?** (uma pessoa
+  por vez; dá também pelo painel **Mouse e controle**). A pessoa ganha o botão 🎮 em
+  cima da sua transmissão, e o 🎮 dela na sua lista fica aceso (clicar nele tira o
+  controle). Com ele ligado, o mouse dela mexe no seu mouse de verdade
   (clique, botão direito, rodinha) e, com o mouse dela em cima da transmissão, o
   teclado dela digita no seu PC, pela posição das teclas (com o mesmo layout dos dois
   lados, ex.: ABNT2, sai igualzinho). Enquanto isso, um aviso fica na sua tela, e
@@ -454,6 +458,13 @@ que o navegador não faz:
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.
 - A transmissão e a voz continuam firmes com o app minimizado, e a barra de tarefas
   pisca quando chega mensagem no chat com o app em segundo plano.
+- **Aviso de versão nova**: o app procura atualização ao abrir e a cada 6 horas. Na
+  versão instalada (Setup), o aviso no topo da sala tem o botão **Atualizar**: ele
+  baixa a versão nova (com o progresso no aviso e na barra de tarefas), instala e abre
+  o app de novo sozinho. Na versão portátil, o aviso traz o link pra baixar a nova.
+  **Depois** esconde o aviso até o app abrir de novo (fica o link **Atualizar o app**
+  no rodapé da lista). A 1.4.0 é a primeira com isso: de uma versão anterior, baixe a
+  nova na mão uma última vez.
 
 Instalação: baixe o `Web-Screen-Share-Setup-<versão>.exe` (ou o `Portable`, que roda
 sem instalar) na [página de Releases](https://github.com/UsuarioDeJava/web-screen-share/releases/latest)
@@ -468,7 +479,8 @@ Atalhos do app: **Ctrl+Shift+D** modo desenho e **Ctrl+Shift+X** tirar o control
 (os dois valem com qualquer programa na frente), **F11** tela cheia, **Ctrl+R**/**F5**
 recarregar, **Ctrl + +/−/0** zoom, **F12** ferramentas de desenvolvedor.
 
-Também sai uma versão pra Linux (`.AppImage`), sem o som do PC, sem as marcações, o
+Também sai uma versão pra Linux (`.AppImage`, que se atualiza pelo botão como a
+instalada), sem o som do PC, sem as marcações, o
 mouse de quem assiste e o controle remoto na tela (lá não dá pra tirar a camada da
 captura). O código do app fica na pasta
 `desktop/`, e o GitHub Actions gera os instaladores a cada mudança nela

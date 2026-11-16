@@ -349,14 +349,16 @@
   const streamKey = (user) => `${user.kind === 'obs' ? 'obs' : 'web'}:${user.name}`;
   let pinnedKey = null; // transmissão fixada em destaque (uma só)
 
-  function prefsFor(key) {
+  // watching: a transmissão abre sozinha ao entrar no ar (a sua própria do OBS, não:
+  // pra ver, é o Assistir na lista).
+  function prefsFor(key, watching = true) {
     const saved = streamPrefs.get(key);
     if (saved && (saved.endedAt == null || Date.now() - saved.endedAt < RESUME_WINDOW_MS)) {
       saved.endedAt = null;
       return saved;
     }
     if (pinnedKey === key) pinnedKey = null;
-    const prefs = { watching: true, muted: true, volume: 1, quality: DEFAULT_QUALITY, endedAt: null };
+    const prefs = { watching, muted: true, volume: 1, quality: DEFAULT_QUALITY, endedAt: null };
     streamPrefs.set(key, prefs);
     return prefs;
   }
@@ -487,6 +489,8 @@
       if (u.voice) li.append(voiceIndicator(u));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
       if (entry.obs) li.append(el('span', 'tag tag-obs', 'OBS'));
+      const grant = controlGrantButton(u);
+      if (grant) li.append(grant);
       const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
       const watched = tiles.find((s) => s.watching);
       const unwatched = tiles.filter((s) => !s.watching);
@@ -494,7 +498,7 @@
       if (unwatched.length) {
         const btn = el('button', 'watch-btn');
         btn.type = 'button';
-        btn.title = `Assistir a tela de ${u.name}`;
+        btn.title = u.id === myId ? 'Ver a sua própria transmissão do OBS' : `Assistir a tela de ${u.name}`;
         btn.setAttribute('aria-label', btn.title);
         btn.append(icon('eye'), 'Assistir');
         btn.addEventListener('click', (e) => {
@@ -507,7 +511,7 @@
       }
       if (tiles.length) {
         li.tabIndex = 0;
-        li.title = watched ? `Ir para a tela de ${u.name}` : `Assistir a tela de ${u.name}`;
+        li.title = watched ? `Ir para a tela de ${u.name}` : u.id === myId ? 'Ver a sua própria transmissão do OBS' : `Assistir a tela de ${u.name}`;
         const go = () => (watched ? focusTile(watched.id) : resume());
         li.addEventListener('click', go);
         li.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
@@ -521,7 +525,8 @@
     const live = list.filter((entry) => entry.live).length;
     liveCountEl.textContent = live ? `${live} ao vivo` : '';
     peopleCountEl.textContent = list.length;
-    const unwatched = [...streams.values()].some((s) => !s.watching);
+    controlTargetsShown = myControlStream();
+    const unwatched = [...streams.values()].some((s) => !s.watching && !s.mine);
     btnPeople.classList.toggle('has-unwatched', unwatched);
     btnPeople.title = unwatched
       ? 'Pessoas na sala (tem transmissão que você parou de assistir)'
@@ -563,9 +568,12 @@
   function renderEmpty(count) {
     emptyEl.hidden = count > 0;
     if (count) return;
-    if ([...streams.values()].some((s) => !s.watching)) {
+    if ([...streams.values()].some((s) => !s.watching && !s.mine)) {
       emptyTitle.textContent = 'Você não está assistindo nenhuma transmissão';
       emptyHint.textContent = 'Tem transmissão no ar: abra a lista de pessoas e clique em Assistir.';
+    } else if ([...streams.values()].some((s) => s.mine)) {
+      emptyTitle.textContent = 'A sua transmissão do OBS está no ar';
+      emptyHint.textContent = 'Pra ver como ela está chegando, clique em Assistir ao lado do seu nome, na lista da sala.';
     } else {
       emptyTitle.textContent = defaultEmptyTitle;
       if (canShare) emptyHint.innerHTML = defaultEmptyHint;
@@ -689,12 +697,6 @@
       overlayTag.title = 'Quando alguém apontar, desenhar ou reagir na sua transmissão, aparece também na sua tela de verdade';
       overlayTag.hidden = true;
       meta.prepend(overlayTag);
-      if (window.wssDesktop) {
-        const btnPanel = iconButton('pointer', 'Mouse e controle');
-        btnPanel.classList.add('panel-btn');
-        btnPanel.addEventListener('click', () => openControlPanel());
-        meta.append(btnPanel);
-      }
       base.bar.append(meta);
       selfTile = { ...base, viewers, overlayTag };
       // Quem transmite também pode apontar na própria tela, pra quem está assistindo.
@@ -1323,12 +1325,14 @@
     const base = createTile(user.name, isMine ? 'Você' : user.name, user.kind);
     const key = streamKey(user);
     // Toda transmissão nova começa tocando sem som (inclusive a sua do OBS, cujo som
-    // voltaria pro OBS pelo áudio do PC); uma que voltou fica como você deixou.
-    const prefs = prefsFor(key);
+    // voltaria pro OBS pelo áudio do PC); uma que voltou fica como você deixou. A sua do
+    // OBS nem abre sozinha: assistir a própria transmissão só gasta internet.
+    const prefs = prefsFor(key, !isMine);
     const s = {
       ...base,
       id: user.id,
       key,
+      mine: Boolean(isMine),
       prefs,
       name: user.name,
       since: user.since || Date.now() + serverOffset,
@@ -1386,9 +1390,6 @@
       btnControl.hidden = true;
       tools.append(btnControl);
     }
-    // No seu próprio quadro do OBS (no app): o painel do mouse e do controle.
-    const btnPanel = isMine && window.wssDesktop ? iconButton('pointer', 'Mouse e controle') : null;
-    if (btnPanel) tools.append(btnPanel);
     tools.append(btnFull, btnClose);
 
     const stats = el('pre', 'tile-stats');
@@ -1473,7 +1474,6 @@
       enableCursorShare(s);
       enableControl(s);
     }
-    if (btnPanel) btnPanel.addEventListener('click', () => openControlPanel());
 
     if (isMine && window.wssDesktop) {
       s.overlayTag = el('span', 'tag tag-overlay', 'na sua tela');
@@ -3078,6 +3078,7 @@
     desktop.obs(live).then((result) => {
       if (obsOverlayWanted === live) obsOverlay = live && Boolean(result && result.overlay);
       renderObsOverlayTag();
+      checkControlTargets();
     }).catch(() => {});
   }
 
@@ -3120,6 +3121,7 @@
     desktop.setObsDisplay(e.target.value).then((result) => {
       if (obsOverlayWanted) obsOverlay = Boolean(result && result.overlay);
       renderObsOverlayTag();
+      checkControlTargets();
     }).catch(() => {});
   });
 
@@ -3128,12 +3130,14 @@
     desktop.sharing(true).then((result) => {
       desktopOverlay = Boolean(result && result.overlay) && Boolean(localStream);
       renderSelfTile();
+      checkControlTargets();
     }).catch(() => {});
   }
 
   function stopDesktopOverlay() {
     desktopOverlay = false;
     if (desktop) desktop.sharing(false).catch(() => {});
+    checkControlTargets();
   }
 
   // Modo desenho do app (Ctrl+Shift+D): o que você rabisca na sua tela de verdade vai pra
@@ -3175,6 +3179,79 @@
     $('desktop-download').hidden = isTouch;
   }
 
+  // ---------- aviso de versão nova do app ----------
+
+  // O app procura versão nova ao abrir e a cada 6 horas. Instalado: "Atualizar" baixa,
+  // instala e reabre o app. Portátil: "Baixar" abre a página da versão nova. "Depois"
+  // esconde o aviso até o app abrir de novo (fica o link no rodapé da lista).
+  const appUpdateEl = $('app-update');
+  const APP_UPDATE_LATER = 'wss-app-update-later';
+  let appUpdate = null;
+
+  function appUpdateLater() {
+    try { return sessionStorage.getItem(APP_UPDATE_LATER); } catch { return null; }
+  }
+
+  function renderAppUpdate() {
+    const u = appUpdate;
+    const pending = Boolean(u) && (u.state === 'available' || u.state === 'error');
+    const busy = Boolean(u) && (u.state === 'downloading' || u.state === 'installing');
+    const later = pending && appUpdateLater() === u.version;
+    appUpdateEl.hidden = !(pending || busy) || later;
+    $('btn-app-update-link').hidden = !later;
+    if (!u || appUpdateEl.hidden) return;
+    const button = $('btn-app-update');
+    const bar = $('app-update-bar');
+    let text;
+    if (u.state === 'available' && u.mode === 'install') {
+      text = `Saiu a versão ${u.version} do app (você está na ${u.current}).`;
+      button.textContent = 'Atualizar';
+      button.title = 'Baixa a versão nova, instala e abre o app de novo';
+    } else if (u.state === 'available') {
+      text = `Saiu a versão ${u.version} do app (você está na ${u.current}). Baixe a nova e use no lugar desta.`;
+      button.textContent = 'Baixar';
+      button.title = 'Abre a página da versão nova no navegador';
+    } else if (u.state === 'downloading') {
+      text = `Baixando a versão ${u.version}… ${u.percent || 0}%`;
+    } else if (u.state === 'installing') {
+      text = `Instalando a versão ${u.version}. O app fecha e abre de novo sozinho.`;
+    } else {
+      text = `Não deu pra atualizar sozinho. Baixe a versão ${u.version} pela página.`;
+      button.textContent = 'Baixar';
+      button.title = 'Abre a página da versão nova no navegador';
+    }
+    $('app-update-text').textContent = text;
+    appUpdateEl.querySelector('.update-actions').hidden = busy;
+    appUpdateEl.classList.toggle('is-busy', u.state === 'installing');
+    bar.hidden = !busy;
+    bar.firstElementChild.style.width = u.state === 'downloading' ? `${u.percent || 0}%` : '';
+  }
+
+  function runAppUpdate() {
+    if (!appUpdate) return;
+    if (appUpdate.state === 'available' && appUpdate.mode === 'install') {
+      const busyWith = localStream ? 'transmitindo' : voice.joined ? 'na voz' : null;
+      if (busyWith && !window.confirm(`Você está ${busyWith}. Pra atualizar, o app fecha e abre de novo quando terminar de baixar. Atualizar agora?`)) return;
+    }
+    try { sessionStorage.removeItem(APP_UPDATE_LATER); } catch {}
+    desktop.update().catch(() => {});
+  }
+
+  if (desktop && typeof desktop.onUpdate === 'function') {
+    desktop.onUpdate((data) => {
+      if (!data || typeof data.state !== 'string') return;
+      appUpdate = data;
+      renderAppUpdate();
+    });
+    $('btn-app-update').addEventListener('click', runAppUpdate);
+    $('btn-app-update-link').addEventListener('click', runAppUpdate);
+    $('btn-app-update-later').addEventListener('click', () => {
+      try { sessionStorage.setItem(APP_UPDATE_LATER, appUpdate.version); } catch {}
+      if (!appUpdateLater()) appUpdateEl.hidden = true; // sem sessionStorage: só esconde
+      else renderAppUpdate();
+    });
+  }
+
   // ---------- mouse de quem assiste e controle remoto ----------
 
   const controlDialog = $('control-dialog');
@@ -3187,14 +3264,17 @@
     showCursors = localStorage.getItem('wss-show-cursors') !== '0';
   } catch {}
 
+  // O botão de mouse embaixo da lista abre o painel "Mouse e controle"; o ícone mostra se
+  // o seu mouse aparece pra quem transmite.
   function renderCursorButton() {
     setIcon(btnCursor, shareCursor ? 'pointer' : 'pointerOff', shareCursor
-      ? 'O seu mouse aparece na tela de quem transmite pelo app (clique pra esconder)'
-      : 'O seu mouse não aparece pra quem transmite (clique pra mostrar)');
+      ? 'Mouse e controle (o seu mouse aparece na tela de quem transmite pelo app)'
+      : 'Mouse e controle (o seu mouse não aparece pra quem transmite)');
     btnCursor.setAttribute('aria-pressed', String(shareCursor));
   }
-  btnCursor.addEventListener('click', () => {
-    shareCursor = !shareCursor;
+  btnCursor.addEventListener('click', () => openControlPanel());
+  $('share-cursor').addEventListener('change', (e) => {
+    shareCursor = e.target.checked;
     try { localStorage.setItem('wss-cursor', shareCursor ? '1' : '0'); } catch {}
     renderCursorButton();
   });
@@ -3257,14 +3337,15 @@
   }
 
   async function openControlPanel() {
-    if (!desktop) return;
-    if (!desktopCaps && typeof desktop.caps === 'function') desktopCaps = await desktop.caps().catch(() => null);
+    if (desktop && !desktopCaps && typeof desktop.caps === 'function') desktopCaps = await desktop.caps().catch(() => null);
     renderControlPanel();
     if (!controlDialog.open) controlDialog.showModal();
   }
 
   function renderControlPanel() {
+    $('share-cursor').checked = shareCursor;
     $('show-cursors').checked = showCursors;
+    if (!desktop) return; // no navegador, só a chave do seu mouse
     const note = $('control-note');
     const list = $('control-list');
     const stream = myControlStream();
@@ -3293,6 +3374,64 @@
     if (!people.length) list.replaceChildren(el('li', 'control-empty', 'Ninguém mais na sala.'));
   }
 
+  // Na lista da sala, em cada pessoa: deixar ela controlar o seu PC. Só aparece no app,
+  // com a sua tela inteira no ar (pelo app ou pelo OBS com as marcações na sua tela).
+  // Dar o controle pede um segundo clique ("Permitir?"); tirar é na hora.
+  let controlTargetsShown = null; // a transmissão controlável quando a lista foi desenhada
+  let grantAsk = null; // { id, timer }: esperando o clique de confirmação
+
+  function controlGrantButton(u) {
+    if (!desktop || !me || u.id === me.id || u.kind === 'obs') return null;
+    const active = Boolean(controlGrant) && controlGrant.to === u.id;
+    if (!active && !(desktopCaps && desktopCaps.control && myControlStream())) return null;
+    const asking = !active && grantAsk && grantAsk.id === u.id;
+    const btn = el('button', `grant-btn${active ? ' active' : ''}${asking ? ' asking' : ''}`);
+    btn.type = 'button';
+    btn.append(icon('gamepad'));
+    if (asking) btn.append(el('span', null, 'Permitir?'));
+    btn.title = active
+      ? `${u.name} está controlando o seu mouse e teclado. Clique pra tirar (ou Ctrl+Shift+X)`
+      : asking
+        ? `Clique de novo pra deixar ${u.name} controlar o seu mouse e teclado`
+        : `Deixar ${u.name} controlar o seu mouse e teclado`;
+    btn.setAttribute('aria-label', btn.title);
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (active) {
+        revokeControl();
+        return;
+      }
+      if (asking) {
+        clearTimeout(grantAsk.timer);
+        grantAsk = null;
+        grantControl(u);
+        return;
+      }
+      if (grantAsk) clearTimeout(grantAsk.timer);
+      grantAsk = {
+        id: u.id,
+        timer: setTimeout(() => {
+          grantAsk = null;
+          renderUsers();
+        }, 4000),
+      };
+      renderUsers();
+    });
+    return btn;
+  }
+
+  // A sua transmissão passou a dar (ou deixou de dar) pra controlar: redesenha a lista.
+  function checkControlTargets() {
+    if (me && myControlStream() !== controlTargetsShown) renderUsers();
+  }
+
+  if (desktop && typeof desktop.caps === 'function') {
+    desktop.caps().then((caps) => {
+      desktopCaps = caps;
+      if (me) renderUsers();
+    }).catch(() => {});
+  }
+
   $('show-cursors').addEventListener('change', (e) => {
     showCursors = e.target.checked;
     try { localStorage.setItem('wss-show-cursors', showCursors ? '1' : '0'); } catch {}
@@ -3312,7 +3451,7 @@
       controlGrant = { to: user.id, name: user.name, stream };
       desktop.controlState({ on: true, name: user.name, hue: nameHue(user.name) });
       chatNote(`${user.name} pode controlar o seu mouse e teclado (Ctrl+Shift+X tira)`);
-      renderControlPanel();
+      renderUsers(); // acende o 🎮 na lista (e atualiza o painel, se estiver aberto)
     });
   }
 
@@ -3343,6 +3482,8 @@
     stopControlling();
     controlAllowed.clear();
     controlGrant = null;
+    if (grantAsk) clearTimeout(grantAsk.timer);
+    grantAsk = null;
     for (const s of streams.values()) renderControlButton(s);
   }
 
@@ -3478,7 +3619,7 @@
       if (controlGrant) chatNote(`${controlGrant.name} não controla mais o seu PC`);
       controlGrant = null;
       if (desktop && typeof desktop.controlState === 'function') desktop.controlState({ on: false });
-      if (controlDialog.open) renderControlPanel();
+      renderUsers(); // apaga o 🎮 na lista (e atualiza o painel, se estiver aberto)
       return;
     }
     const from = controlAllowed.get(stream);

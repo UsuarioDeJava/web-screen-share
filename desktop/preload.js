@@ -26,6 +26,12 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
       ? { on: true, name: String(data.name || ''), hue: Number(data.hue) || 0 } : { on: false }),
     control: (msg) => ipcRenderer.send('desktop:control', msg),
     onControlRevoke: (callback) => ipcRenderer.on('desktop:control-revoke', () => callback()),
+    // Versão nova do app: o estado agora e as mudanças; update() é o botão do aviso.
+    onUpdate: (callback) => {
+      ipcRenderer.on('desktop:update', (_event, data) => callback(data));
+      ipcRenderer.invoke('desktop:update-listen').then((data) => { if (data) callback(data); }, () => {});
+    },
+    update: () => ipcRenderer.invoke('desktop:update'),
   });
 } else {
   contextBridge.exposeInMainWorld('setupBridge', {

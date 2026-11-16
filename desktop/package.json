@@ -1,7 +1,7 @@
 {
   "name": "web-screen-share-desktop",
   "productName": "Web Screen Share",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "App de desktop do Web Screen Share: a sala do seu servidor, com as marcações na tela de verdade e o som do PC.",
   "author": {
     "name": "Web Screen Share"
@@ -29,10 +29,19 @@
     "files": [
       "main.js",
       "input.js",
+      "updates.js",
       "preload.js",
       "picker-preload.js",
       "overlay-preload.js",
       "pages/**"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "UsuarioDeJava",
+        "repo": "web-screen-share",
+        "releaseType": "release"
+      }
     ],
     "win": {
       "target": [
@@ -60,6 +69,7 @@
     }
   },
   "dependencies": {
+    "electron-updater": "6.8.12",
     "koffi": "3.3.6"
   }
 }
