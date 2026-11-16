@@ -815,6 +815,25 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   100% { opacity: 0; }
 }
 
+/* Desenho ao vivo (Alt + arrastar), por cima só da imagem. */
+.fx-draw {
+  position: absolute;
+  overflow: visible;
+  filter: drop-shadow(0 0 3px var(--ping)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+}
+.fx-draw path {
+  fill: none;
+  stroke: var(--ping);
+  stroke-width: clamp(3px, 0.45cqi, 7px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fx-draw.fading { animation: fx-fade-out 0.8s ease-in 2.4s forwards; }
+@keyframes fx-fade-out {
+  to { opacity: 0; }
+}
+.alt-down .tile-media { cursor: crosshair; }
+
 .fx-flash { position: absolute; inset: 0; background: #fff; animation: fx-flash 0.5s ease-out forwards; }
 @keyframes fx-flash {
   from { opacity: 0.75; }
@@ -955,6 +974,49 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.7);
   transform: translateX(-50%);
 }
+
+/* ---------- voz ---------- */
+
+.voice-bar { display: flex; align-items: center; gap: 6px; }
+.voice-bar.is-joined {
+  padding: 2px 3px 2px 6px;
+  border: 1px solid rgba(52, 217, 135, 0.35);
+  border-radius: 12px;
+  background: rgba(52, 217, 135, 0.07);
+  box-shadow: 0 0 20px -10px rgba(52, 217, 135, 0.8);
+}
+.voice-join .icon { color: var(--ok); }
+.voice-people {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 9px 0 2px;
+  border: 0;
+  background: none;
+}
+.voice-people .avatar {
+  width: 26px;
+  height: 26px;
+  margin-right: -7px;
+  border: 2px solid var(--bg);
+  font-size: 11px;
+}
+.voice-more { margin-left: 11px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--ok), 0 0 14px 2px rgba(52, 217, 135, 0.8) !important; }
+.voice-controls { display: inline-flex; align-items: center; gap: 2px; }
+.voice-controls .icon-btn.is-off { background: rgba(255, 59, 92, 0.14); color: #ff7b93; }
+.voice-hangup { color: #ff7b93; }
+.voice-hangup:hover { background: var(--live); color: #fff; }
+
+.voice-list { margin: 0; padding: 0 8px 4px; list-style: none; }
+.voice-member { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 10px; }
+.voice-member:hover { background: rgba(255, 255, 255, 0.04); }
+.voice-member .avatar { width: 24px; height: 24px; font-size: 11px; }
+.voice-member-name { flex: 1; min-width: 0; overflow: hidden; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.voice-member-icon svg, .user-voice svg { width: 15px; height: 15px; }
+.voice-member-icon, .user-voice { color: var(--ok); }
+.voice-member-icon.is-off, .user-voice.is-off { color: #ff7b93; }
+.voice-volume { width: 64px; margin: 0; }
 
 /* ---------- chat ---------- */
 
@@ -1263,22 +1325,18 @@ kbd {
   /* No celular a lista já fica numa faixa no topo, com o estado da conexão. */
   .people-btn,
   .topbar-conn { display: none !important; }
+
+  /* A lista "Na voz" fica pra telas maiores; aqui a faixa mostra quem está na voz. */
+  .voice-section { display: none; }
 }
 
 /* Telas estreitas: botões do topo só com o ícone, e as janelas quase da largura toda. */
 @media (max-width: 560px) {
   .btn-label { display: none; }
+  .topbar h2, .share-hint { display: none; }
+  .topbar-actions { gap: 6px; }
+  .voice-people .avatar:nth-child(n + 4) { display: none; }
   .topbar-actions .btn { width: 40px; padding: 0; }
-  .topbar h2 { font-size: 15px; }
-  .share-hint {
-    display: -webkit-box;
-    max-width: 52vw;
-    overflow: hidden;
-    font-size: 11px;
-    line-height: 1.3;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
   .dialog { width: calc(100% - 16px); max-height: calc(100% - 16px); }
   .dialog-card { padding: 14px 14px 16px; }
   .dialog-actions .btn { flex: 1; }
@@ -1305,4 +1363,5 @@ kbd {
   .fx-reaction { bottom: 30% !important; animation: fx-life 2.6s linear forwards !important; }
   .fx-ping { animation: fx-life 3s linear forwards !important; }
   .fx-ping-ring { display: none; }
+  .fx-draw.fading { animation: fx-fade-out 0.8s ease-in 2.4s forwards !important; }
 }

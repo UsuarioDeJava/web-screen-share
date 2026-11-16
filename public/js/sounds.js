@@ -14,6 +14,10 @@ window.RoomSounds = (() => {
     message: [[880, 0, 0.1, { type: 'triangle', gain: 0.07 }], [1318.51, 0.06, 0.14, { type: 'triangle', gain: 0.05 }]],
     mention: [[987.77, 0, 0.12, { type: 'triangle' }], [1318.51, 0.1, 0.12, { type: 'triangle' }], [1760, 0.2, 0.22, { type: 'triangle' }]],
     ping: [[1046.5, 0, 0.16, { slideTo: 1567.98, gain: 0.05 }]],
+    voiceJoin: [[440, 0, 0.12, { slideTo: 660, gain: 0.07 }], [880, 0.1, 0.18, { gain: 0.06 }]],
+    voiceLeave: [[660, 0, 0.12, { slideTo: 440, gain: 0.07 }], [330, 0.1, 0.2, { gain: 0.06 }]],
+    mute: [[392, 0, 0.08, { type: 'triangle', gain: 0.06 }]],
+    unmute: [[587.33, 0, 0.08, { type: 'triangle', gain: 0.06 }]],
   };
 
   function context() {

@@ -35,6 +35,10 @@
           <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/></svg></span>
         </button>
       </div>
+      <div id="voice-section" class="voice-section" hidden>
+        <div class="sidebar-section">Na voz — <span id="voice-count">0</span></div>
+        <ul id="voice-list" class="voice-list"></ul>
+      </div>
       <div class="sidebar-section">Na sala — <span id="user-count">0</span></div>
       <ul id="user-list" class="user-list"></ul>
       <div class="sidebar-foot">
@@ -70,6 +74,15 @@
         </div>
         <div class="topbar-actions">
           <span id="share-hint" class="share-hint" hidden></span>
+          <div id="voice-bar" class="voice-bar">
+            <button id="voice-people" class="voice-people" type="button" hidden></button>
+            <button id="btn-voice" class="btn voice-join" type="button" title="Entrar no chat de voz (V)"></button>
+            <span id="voice-controls" class="voice-controls" hidden>
+              <button id="btn-mic" class="icon-btn" type="button"></button>
+              <button id="btn-deafen" class="icon-btn" type="button"></button>
+              <button id="btn-voice-leave" class="icon-btn voice-hangup" type="button"></button>
+            </span>
+          </div>
           <button id="btn-chat" class="btn chat-btn" type="button" title="Chat (C)" aria-controls="chat" aria-expanded="false">
             <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
             <span class="btn-label">Chat</span>
@@ -182,6 +195,8 @@
         <dt><kbd>S</kbd></dt><dd>Salvar um print da transmissão</dd>
         <dt><kbd>1</kbd> … <kbd>6</kbd></dt><dd>Reagir: 🔥 😂 😮 👏 ❤️ 💀</dd>
         <dt><kbd>Alt</kbd> + clique</dt><dd>Apontar um lugar na tela pra todo mundo (no celular: toque e segure)</dd>
+        <dt><kbd>Alt</kbd> + arrastar</dt><dd>Desenhar na tela, ao vivo pra todo mundo (no celular: segure e arraste)</dd>
+        <dt><kbd>V</kbd></dt><dd>Entrar na voz / ligar e desligar o microfone</dd>
         <dt><kbd>C</kbd></dt><dd>Abrir/fechar o chat</dd>
         <dt><kbd>Enter</kbd></dt><dd>Em tela cheia: escrever no chat sem sair dela</dd>
         <dt><kbd>?</kbd></dt><dd>Esta lista</dd>

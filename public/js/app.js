@@ -25,6 +25,11 @@
     pip: '<path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     bellOff: '<path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/>',
+    headphones: '<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>',
+    headphonesOff: '<path d="M21 14h-1.343"/><path d="M9.128 3.47A9 9 0 0 1 21 12v3.343"/><path d="m2 2 20 20"/><path d="M20.414 20.414A2 2 0 0 1 19 21h-1a2 2 0 0 1-2-2v-3"/><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 2.636-6.364"/>',
+    mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
+    micOff: '<path d="m2 2 20 20M18.89 13.23A7.12 7.12 0 0 0 19 12v-2M5 10v2a7 7 0 0 0 12 5M15 9.34V5a3 3 0 0 0-5.68-1.33M9 9v3a3 3 0 0 0 5.12 2.12M12 19v3"/>',
+    phoneOff: '<path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91M22 2 2 22"/>',
     broadcast: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
   };
 
@@ -94,6 +99,15 @@
   const chatError = $('chat-error');
   const btnSounds = $('btn-sounds');
   const keysDialog = $('keys-dialog');
+  const btnVoice = $('btn-voice');
+  const voiceControls = $('voice-controls');
+  const voicePeople = $('voice-people');
+  const btnMic = $('btn-mic');
+  const btnDeafen = $('btn-deafen');
+  const btnVoiceLeave = $('btn-voice-leave');
+  const voiceSection = $('voice-section');
+  const voiceCountEl = $('voice-count');
+  const voiceListEl = $('voice-list');
   const sounds = window.RoomSounds;
 
   const socket = io();
@@ -297,8 +311,17 @@
         users.get(me.id).sharing = true;
         socket.emit('share', true, shareStartedAt + serverOffset);
       }
+      if (voice.joined) {
+        users.get(me.id).voice = voiceState();
+        socket.emit('voice:join', voiceState());
+      }
       showApp();
       loadChat(res.chat || []);
+      if (voice.joined) {
+        for (const u of users.values()) {
+          if (u.id !== me.id && u.voice && shouldOffer(u.id)) connectVoice(u.id);
+        }
+      }
       for (const u of users.values()) {
         if (u.sharing && u.id !== me.id) addStreamTile(u);
       }
@@ -336,6 +359,8 @@
 
   function leaveRoomLocally() {
     me = null;
+    // Continua "na voz": ao reconectar, as conexões de voz são refeitas.
+    for (const id of [...voicePeers.keys()]) closeVoicePeer(id);
     for (const id of [...outgoing.keys()]) closeOutgoing(id);
     for (const id of [...streams.keys()]) removeStreamTile(id);
     users.clear();
@@ -343,6 +368,7 @@
   }
 
   btnLeave.addEventListener('click', () => {
+    leaveVoice();
     streamPrefs.clear();
     pinnedKey = null;
     chatSeenId = null;
@@ -390,6 +416,10 @@
       announceLive(user.name, '');
     }
     if (!user.sharing && before && before.sharing) removeStreamTile(user.id, { ended: true });
+    if (Boolean(user.voice) !== Boolean(before && before.voice)) {
+      if (user.voice) onVoiceJoined(user);
+      else onVoiceLeft(user.id);
+    }
     renderUsers();
   });
 
@@ -397,6 +427,7 @@
     if (!me || id === me.id) return;
     const gone = users.get(id);
     if (gone && gone.kind !== 'obs') announceLeave(gone.name);
+    closeVoicePeer(id);
     users.delete(id);
     removeStreamTile(id, { ended: true });
     closeOutgoing(id);
@@ -445,7 +476,10 @@
     userListEl.replaceChildren(...list.map((entry) => {
       const u = entry.user;
       const li = el('li', entry.live ? 'user is-live' : 'user');
-      li.append(avatar(u.name), el('span', 'user-name', u.name));
+      const face = avatar(u.name);
+      if (u.voice) face.dataset.voiceId = u.id;
+      li.append(face, el('span', 'user-name', u.name));
+      if (u.voice) li.append(voiceStateIcon(u.voice, 'user-voice'));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
       if (entry.obs) li.append(el('span', 'tag tag-obs', 'OBS'));
       const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
@@ -483,6 +517,7 @@
     btnPeople.title = unwatched
       ? 'Pessoas na sala (tem transmissão que você parou de assistir)'
       : 'Pessoas na sala';
+    renderVoice();
   }
 
   function renderShareButton() {
@@ -642,7 +677,7 @@
       base.bar.append(meta);
       selfTile = { ...base, viewers };
       // Quem transmite também pode apontar na própria tela, pra quem está assistindo.
-      enablePing(base.media, base.video, () => me && me.id);
+      enableMarkup(base, () => me && me.id);
       gridInner.prepend(base.tile);
       layoutGrid();
       renderUptimes();
@@ -668,7 +703,10 @@
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30 } },
-        audio: true,
+        // Sem isso, o áudio do sistema leva junto a voz dos outros e o som das outras
+        // transmissões que tocam nesta página (eco pra quem assiste). Navegador antigo
+        // ignora.
+        audio: { restrictOwnAudio: true },
         systemAudio: 'include',
         selfBrowserSurface: 'exclude',
       });
@@ -795,6 +833,10 @@
 
   async function handleSignal(from, data, address) {
     if (!me || !data) return;
+    if (data.voice) {
+      await handleVoiceSignal(from, data, address);
+      return;
+    }
     if (data.stream === me.id) await handleAsBroadcaster(from, data, address);
     else if (data.stream === from) await handleAsViewer(from, data, address);
   }
@@ -1385,7 +1427,7 @@
       base.video.addEventListener('enterpictureinpicture', () => btnPip.classList.add('active'));
       base.video.addEventListener('leavepictureinpicture', () => btnPip.classList.remove('active'));
     }
-    enablePing(base.media, base.video, () => s.id);
+    enableMarkup(s, () => s.id);
 
     streams.set(user.id, s);
     gridInner.append(s.tile);
@@ -1850,7 +1892,8 @@
     const target = fxTarget(stream);
     if (!target || !REACTIONS.includes(emoji)) return;
     const { fx } = target;
-    while (fx.childElementCount >= 40) fx.firstElementChild.remove();
+    const old = fx.querySelectorAll('.fx-reaction');
+    for (let i = 0; i <= old.length - 30; i += 1) old[i].remove();
     const item = el('span', 'fx-reaction');
     item.append(el('span', 'fx-emoji', emoji), el('span', 'fx-who', name));
     item.style.left = `${10 + Math.random() * 80}%`;
@@ -1868,53 +1911,218 @@
     return { left: (width - vw * scale) / 2, top: (height - vh * scale) / 2, width: vw * scale, height: vh * scale };
   }
 
-  // Ponto da imagem (de 0 a 1) debaixo do clique; null nas faixas pretas.
-  function videoPoint(video, clientX, clientY) {
+  // Ponto da imagem (de 0 a 1) debaixo do ponteiro; null nas faixas pretas. Com clamp,
+  // o ponto mais perto dentro da imagem (pra um traço que passa da borda).
+  function videoPoint(video, clientX, clientY, clamp = false) {
     const r = video.getBoundingClientRect();
     const box = contentBox(video, r.width, r.height);
-    const x = (clientX - r.left - box.left) / box.width;
-    const y = (clientY - r.top - box.top) / box.height;
+    let x = (clientX - r.left - box.left) / box.width;
+    let y = (clientY - r.top - box.top) / box.height;
+    if (clamp) {
+      x = Math.min(1, Math.max(0, x));
+      y = Math.min(1, Math.max(0, y));
+    }
     return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
   }
 
-  // Alt+clique no vídeo (no celular: tocar e segurar) marca um ponto pra todo mundo
-  // que está vendo aquela transmissão, inclusive quem transmite.
-  function enablePing(media, video, streamId) {
+  // ---------- desenho ao vivo ----------
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const STROKE_MAX = 1200; // números por traço ([x, y, x, y...]: 600 pontos)
+  let strokeCounter = 0;
+  let altGesture = false;
+
+  // Traço suave: curvas que passam pelo meio entre os pontos.
+  function strokePath(pts) {
+    const f = (v) => v.toFixed(4);
+    if (pts.length < 2) return '';
+    const start = `M${f(pts[0])} ${f(pts[1])}`;
+    if (pts.length === 2) return `${start}L${f(pts[0])} ${f(pts[1])}`;
+    let d = start;
+    for (let i = 2; i < pts.length - 2; i += 2) {
+      d += `Q${f(pts[i])} ${f(pts[i + 1])} ${f((pts[i] + pts[i + 2]) / 2)} ${f((pts[i + 1] + pts[i + 3]) / 2)}`;
+    }
+    return `${d}L${f(pts[pts.length - 2])} ${f(pts[pts.length - 1])}`;
+  }
+
+  // O desenho fica em cima só da imagem (sem as faixas pretas), em coordenadas de 0 a 1:
+  // acompanha o quadro se ele mudar de tamanho.
+  function createStrokeView(target, hue) {
+    const { fx, video } = target;
+    const width = fx.clientWidth || 1;
+    const height = fx.clientHeight || 1;
+    const box = contentBox(video, width, height);
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'fx-draw');
+    svg.setAttribute('viewBox', '0 0 1 1');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.left = `${(box.left / width) * 100}%`;
+    svg.style.top = `${(box.top / height) * 100}%`;
+    svg.style.width = `${(box.width / width) * 100}%`;
+    svg.style.height = `${(box.height / height) * 100}%`;
+    svg.style.setProperty('--ping', `hsl(${hue} 95% 64%)`);
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.append(path);
+    fx.append(svg);
+    return { svg, path, points: [], expire: null };
+  }
+
+  function drawStroke(view) {
+    view.path.setAttribute('d', strokePath(view.points));
+  }
+
+  // Terminado, o traço fica uns segundos na tela e some devagar.
+  function finishStroke(view) {
+    clearTimeout(view.expire);
+    view.svg.classList.add('fading');
+    view.svg.addEventListener('animationend', () => view.svg.remove());
+  }
+
+  function startStroke(target, streamId, clientX, clientY) {
+    const stroke = {
+      id: (++strokeCounter).toString(36),
+      stream: streamId,
+      target,
+      pending: [],
+      timer: null,
+      view: createStrokeView(target, nameHue(me.name)),
+    };
+    addStrokePoint(stroke, clientX, clientY);
+    return stroke;
+  }
+
+  function addStrokePoint(stroke, clientX, clientY) {
+    const { points } = stroke.view;
+    if (points.length >= STROKE_MAX) return;
+    const p = videoPoint(stroke.target.video, clientX, clientY, true);
+    const x = Math.round(p.x * 10000) / 10000;
+    const y = Math.round(p.y * 10000) / 10000;
+    const n = points.length;
+    if (n && Math.hypot(x - points[n - 2], y - points[n - 1]) < 0.002) return;
+    points.push(x, y);
+    stroke.pending.push(x, y);
+    drawStroke(stroke.view);
+    // Vai saindo em pedaços enquanto a pessoa desenha (uns 25 por segundo).
+    if (!stroke.timer) stroke.timer = setTimeout(() => flushStroke(stroke), 40);
+  }
+
+  function flushStroke(stroke, end = false) {
+    clearTimeout(stroke.timer);
+    stroke.timer = null;
+    const message = (points, last) => ({ stream: stroke.stream, id: stroke.id, points, end: last });
+    while (stroke.pending.length > 128) socket.emit('draw', message(stroke.pending.splice(0, 128), false));
+    if (stroke.pending.length || end) socket.emit('draw', message(stroke.pending.splice(0), end));
+  }
+
+  function endStroke(stroke) {
+    flushStroke(stroke, true);
+    finishStroke(stroke.view);
+  }
+
+  const remoteStrokes = new Map(); // "transmissão|nome|id" -> traço
+
+  socket.on('draw', ({ stream, id, points, end, name }) => {
+    const target = fxTarget(stream);
+    if (!target || !Array.isArray(points)) return;
+    const key = `${stream}|${name}|${id}`;
+    let view = remoteStrokes.get(key);
+    if (!view) {
+      if (!points.length) return;
+      view = createStrokeView(target, nameHue(name));
+      remoteStrokes.set(key, view);
+    }
+    view.points.push(...points);
+    drawStroke(view);
+    clearTimeout(view.expire);
+    const done = () => {
+      remoteStrokes.delete(key);
+      finishStroke(view);
+    };
+    if (end) done();
+    else view.expire = setTimeout(done, 5000); // quem desenhava caiu no meio do traço
+  });
+
+  // Alt + clique aponta e Alt + arrastar desenha, ao vivo, pra todo mundo que está vendo
+  // a transmissão (inclusive quem transmite, que também pode marcar a própria tela). No
+  // celular: tocar e segurar aponta; segurar e arrastar desenha.
+  function enableMarkup(target, streamId) {
+    const { media, video } = target;
+    let gesture = null;
+    const outside = (node) => node.closest('.tile-tools, .tile-stats');
     const ping = (clientX, clientY) => {
       const point = videoPoint(video, clientX, clientY);
       const id = streamId();
       if (point && id && me) socket.emit('ping', { stream: id, x: point.x, y: point.y });
     };
-    const outside = (target) => target.closest('.tile-tools, .tile-stats');
-    media.addEventListener('click', (e) => {
-      if (!e.altKey || outside(e.target)) return;
-      e.preventDefault();
-      ping(e.clientX, e.clientY);
-    });
-    let press = null;
-    const cancel = () => {
-      if (press) clearTimeout(press.timer);
+    const finish = (g, cancelled) => {
+      clearTimeout(g.timer);
+      if (gesture === g) gesture = null;
+      if (g.stroke) endStroke(g.stroke);
+      else if (g.armed && !cancelled) ping(g.x, g.y);
     };
     media.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'touch' || outside(e.target)) return;
-      cancel();
-      const current = { x: e.clientX, y: e.clientY, fired: false };
-      current.timer = setTimeout(() => {
-        current.fired = true;
-        ping(current.x, current.y);
-        if (navigator.vibrate) navigator.vibrate(15);
-      }, 450);
-      press = current;
+      if (!me || outside(e.target)) return;
+      if (gesture) finish(gesture, true);
+      const g = { id: e.pointerId, touch: e.pointerType === 'touch', x: e.clientX, y: e.clientY, armed: false, stroke: null, timer: null };
+      if (g.touch) {
+        g.timer = setTimeout(() => {
+          g.armed = true;
+          if (navigator.vibrate) navigator.vibrate(15);
+        }, 450);
+      } else {
+        if (!e.altKey || e.button !== 0) return;
+        e.preventDefault();
+        g.armed = true;
+        altGesture = true;
+        try { media.setPointerCapture(e.pointerId); } catch {}
+      }
+      gesture = g;
     });
     media.addEventListener('pointermove', (e) => {
-      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) cancel();
+      const g = gesture;
+      if (!g || e.pointerId !== g.id) return;
+      const dist = Math.hypot(e.clientX - g.x, e.clientY - g.y);
+      if (!g.armed) {
+        if (dist > 12) finish(g, true); // o dedo andou antes de segurar: é rolagem
+        return;
+      }
+      if (!g.stroke) {
+        const id = streamId();
+        if (dist < 6 || !id) return;
+        g.stroke = startStroke(target, id, g.x, g.y);
+      }
+      const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+      for (const ev of coalesced.length ? coalesced : [e]) addStrokePoint(g.stroke, ev.clientX, ev.clientY);
     });
-    media.addEventListener('pointerup', cancel);
-    media.addEventListener('pointercancel', cancel);
+    media.addEventListener('pointerup', (e) => {
+      if (gesture && e.pointerId === gesture.id) finish(gesture, false);
+    });
+    media.addEventListener('pointercancel', (e) => {
+      if (gesture && e.pointerId === gesture.id) finish(gesture, true);
+    });
+    // Segurando o dedo pra desenhar, a tela não rola nem abre o menu do navegador.
+    media.addEventListener('touchmove', (e) => {
+      if (gesture && gesture.armed) e.preventDefault();
+    }, { passive: false });
     media.addEventListener('contextmenu', (e) => {
-      if (press && press.fired) e.preventDefault();
+      if (gesture && gesture.touch) e.preventDefault();
     });
   }
+
+  // Com o Alt apertado, o cursor vira uma mira em cima dos vídeos.
+  const setAltDown = (on) => document.body.classList.toggle('alt-down', on);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Alt') setAltDown(true);
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key !== 'Alt') return;
+    setAltDown(false);
+    // Soltar o Alt depois de apontar/desenhar não abre o menu do navegador (Windows).
+    if (altGesture) e.preventDefault();
+    altGesture = false;
+  });
+  window.addEventListener('blur', () => setAltDown(false));
 
   socket.on('ping', ({ stream, x, y, name }) => {
     const target = fxTarget(stream);
@@ -2271,6 +2479,12 @@
       return;
     }
     const lower = key.toLowerCase();
+    if (lower === 'v') {
+      e.preventDefault();
+      if (voice.joined) toggleMic();
+      else joinVoice();
+      return;
+    }
     if (lower === 'c' && !fullscreenTile()) {
       e.preventDefault();
       setChat(!chatOpen, { focus: true });
@@ -2309,6 +2523,397 @@
     }
   });
   renderSoundsButton();
+
+  // ---------- chat de voz ----------
+
+  // O áudio vai direto entre cada par de pessoas na voz (pelo TURN do servidor quando
+  // precisa), com o mesmo relay de sinalização das transmissões. Em cada par, quem tem
+  // o id menor faz a oferta, pra os dois não ligarem um pro outro ao mesmo tempo.
+  const voice = { joined: false, joining: false, stream: null, muted: false, deafened: false, noMic: false, meter: null, speakingAt: 0 };
+  const voicePeers = new Map(); // id -> { pc, sid, pending, audio, speakingAt, retryTimer }
+  const voiceRows = new Map(); // id -> linha da pessoa na lista "Na voz"
+  const voiceAudio = el('div');
+  voiceAudio.hidden = true;
+  document.body.append(voiceAudio);
+  let voiceVolumes = {}; // nick -> volume da voz dessa pessoa (só pra você)
+  try { voiceVolumes = JSON.parse(localStorage.getItem('wss-voice-volumes') || '{}') || {}; } catch {}
+
+  const voiceState = () => ({ muted: voice.muted, deafened: voice.deafened });
+  const shouldOffer = (peerId) => Boolean(me) && me.id < peerId;
+  const micTrack = () => (voice.stream ? voice.stream.getAudioTracks()[0] || null : null);
+  const micOn = () => !voice.muted && !voice.deafened;
+
+  function applyMic() {
+    if (voice.stream) voice.stream.getAudioTracks().forEach((t) => { t.enabled = micOn(); });
+  }
+
+  function applyPeerVolume(id) {
+    const peer = voicePeers.get(id);
+    const user = users.get(id);
+    if (!peer || !peer.audio) return;
+    const volume = user ? voiceVolumes[user.name] : undefined;
+    peer.audio.volume = Number.isFinite(volume) ? volume : 1;
+    peer.audio.muted = voice.deafened;
+  }
+
+  function setVoiceVolume(name, value, slider) {
+    voiceVolumes[name] = value;
+    try { localStorage.setItem('wss-voice-volumes', JSON.stringify(voiceVolumes)); } catch {}
+    slider.style.setProperty('--fill', `${Math.round(value * 100)}%`);
+    slider.title = `Volume: ${Math.round(value * 100)}%`;
+    for (const [id] of voicePeers) {
+      const user = users.get(id);
+      if (user && user.name === name) applyPeerVolume(id);
+    }
+  }
+
+  async function joinVoice() {
+    if (voice.joined || voice.joining || !me) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast('O chat de voz precisa de HTTPS (ou localhost) pra usar o microfone.');
+      return;
+    }
+    voice.joining = true;
+    renderVoice();
+    sounds.unlock();
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (err) {
+      if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+        voice.joining = false;
+        renderVoice();
+        showToast('O navegador não liberou o microfone. Libere no cadeado ao lado do endereço e tente de novo.');
+        return;
+      }
+      showToast('Não achei um microfone: você entrou na voz só pra ouvir.');
+    }
+    voice.joining = false;
+    if (!me) {
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      renderVoice();
+      return;
+    }
+    voice.joined = true;
+    voice.stream = stream;
+    voice.noMic = !stream;
+    if (voice.noMic) voice.muted = true;
+    applyMic();
+    startMeter();
+    users.get(me.id).voice = voiceState();
+    socket.emit('voice:join', voiceState());
+    for (const u of users.values()) {
+      if (u.id !== me.id && u.voice && shouldOffer(u.id)) connectVoice(u.id);
+    }
+    sounds.play('voiceJoin');
+    renderUsers();
+  }
+
+  function leaveVoice() {
+    if (!voice.joined) return;
+    voice.joined = false;
+    if (me) {
+      socket.emit('voice:leave');
+      const self = users.get(me.id);
+      if (self) self.voice = null;
+    }
+    for (const id of [...voicePeers.keys()]) closeVoicePeer(id);
+    stopMeter();
+    if (voice.stream) voice.stream.getTracks().forEach((t) => t.stop());
+    voice.stream = null;
+    voice.noMic = false;
+    sounds.play('voiceLeave');
+    renderUsers();
+  }
+
+  function sendVoiceState() {
+    applyMic();
+    for (const id of voicePeers.keys()) applyPeerVolume(id);
+    if (me) {
+      const self = users.get(me.id);
+      if (self) self.voice = voiceState();
+      socket.emit('voice:state', voiceState());
+    }
+    renderUsers();
+  }
+
+  // Ligar o microfone também volta a ouvir (como no Discord).
+  function toggleMic() {
+    if (!voice.joined || voice.noMic) return;
+    if (micOn()) {
+      voice.muted = true;
+    } else {
+      voice.muted = false;
+      voice.deafened = false;
+    }
+    sounds.play(micOn() ? 'unmute' : 'mute');
+    sendVoiceState();
+  }
+
+  function toggleDeafen() {
+    if (!voice.joined) return;
+    voice.deafened = !voice.deafened;
+    sounds.play(voice.deafened ? 'mute' : 'unmute');
+    sendVoiceState();
+  }
+
+  function closeVoicePeer(id) {
+    const peer = voicePeers.get(id);
+    if (!peer) return;
+    voicePeers.delete(id);
+    clearTimeout(peer.retryTimer);
+    peer.pc.close();
+    if (peer.audio) {
+      peer.audio.srcObject = null;
+      peer.audio.remove();
+    }
+  }
+
+  function createVoicePeer(id, sid, iceServers) {
+    const pc = new RTCPeerConnection({ iceServers });
+    const peer = { pc, sid, pending: [], audio: null, speakingAt: 0, retryTimer: null };
+    voicePeers.set(id, peer);
+    const current = () => voicePeers.get(id) === peer;
+    pc.onicecandidate = (e) => {
+      if (current() && e.candidate) send(id, { voice: true, sid, type: 'candidate', candidate: e.candidate });
+    };
+    pc.ontrack = (e) => {
+      if (!current()) return;
+      if (!peer.audio) {
+        peer.audio = el('audio');
+        peer.audio.autoplay = true;
+        voiceAudio.append(peer.audio);
+      }
+      peer.audio.srcObject = e.streams[0] || new MediaStream([e.track]);
+      applyPeerVolume(id);
+      peer.audio.play().catch(() => {});
+    };
+    pc.onconnectionstatechange = () => {
+      if (!current()) return;
+      // Caiu: quem fez a oferta liga de novo; o outro lado só espera.
+      if (pc.connectionState === 'failed' && shouldOffer(id)) {
+        clearTimeout(peer.retryTimer);
+        peer.retryTimer = setTimeout(() => {
+          if (current() && voice.joined) connectVoice(id);
+        }, 2000);
+      }
+    };
+    return peer;
+  }
+
+  async function connectVoice(id) {
+    closeVoicePeer(id);
+    const iceServers = await iceServersPromise;
+    if (!voice.joined || !me || !users.has(id) || voicePeers.has(id)) return;
+    const peer = createVoicePeer(id, ++sidCounter, iceServers);
+    const track = micTrack();
+    if (track) peer.pc.addTransceiver(track, { direction: 'sendrecv', streams: [voice.stream] });
+    else peer.pc.addTransceiver('audio', { direction: 'sendrecv' });
+    const offer = await peer.pc.createOffer();
+    if (voicePeers.get(id) !== peer) return;
+    await peer.pc.setLocalDescription(offer);
+    send(id, { voice: true, sid: peer.sid, type: 'offer', sdp: peer.pc.localDescription });
+  }
+
+  async function handleVoiceSignal(from, data, address) {
+    if (!voice.joined) return;
+    if (data.type === 'offer') {
+      const iceServers = await iceServersPromise;
+      if (!voice.joined) return;
+      closeVoicePeer(from);
+      const peer = createVoicePeer(from, data.sid, iceServers);
+      await peer.pc.setRemoteDescription(data.sdp);
+      const track = micTrack();
+      if (track) peer.pc.addTrack(track, voice.stream);
+      await flushPending(peer);
+      const answer = await peer.pc.createAnswer();
+      if (voicePeers.get(from) !== peer) return;
+      await peer.pc.setLocalDescription(answer);
+      send(from, { voice: true, sid: data.sid, type: 'answer', sdp: peer.pc.localDescription });
+      return;
+    }
+    const peer = voicePeers.get(from);
+    if (!peer || data.sid !== peer.sid) return;
+    if (data.type === 'answer') {
+      await peer.pc.setRemoteDescription(data.sdp);
+      await flushPending(peer);
+    } else if (data.type === 'candidate') {
+      await addCandidate(peer, data.candidate, address);
+    }
+  }
+
+  // Alguém entrou ou saiu da voz (um aviso só, mesmo que a pessoa tenha caído e voltado).
+  function onVoiceJoined(user) {
+    if (!voice.joined) return;
+    const quiet = Date.now() < quietUntil || Date.now() - (rejoinedAt.get(user.name) || 0) < 15000;
+    if (!quiet) sounds.play('voiceJoin');
+    if (shouldOffer(user.id)) connectVoice(user.id);
+  }
+
+  function onVoiceLeft(id) {
+    closeVoicePeer(id);
+    if (voice.joined) sounds.play('voiceLeave');
+  }
+
+  // ---- quem está falando: o seu microfone e o nível do áudio que chega de cada um
+
+  function startMeter() {
+    stopMeter();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!voice.stream || !AudioCtx) return;
+    try {
+      const ctx = new AudioCtx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      ctx.createMediaStreamSource(voice.stream).connect(analyser);
+      voice.meter = { ctx, analyser, buffer: new Float32Array(analyser.fftSize) };
+    } catch {
+      voice.meter = null;
+    }
+  }
+
+  function stopMeter() {
+    if (!voice.meter) return;
+    voice.meter.ctx.close().catch(() => {});
+    voice.meter = null;
+  }
+
+  function micLevel() {
+    const m = voice.meter;
+    if (!m) return 0;
+    m.analyser.getFloatTimeDomainData(m.buffer);
+    let sum = 0;
+    for (const v of m.buffer) sum += v * v;
+    return Math.sqrt(sum / m.buffer.length);
+  }
+
+  // Cada navegador conta o horário dessas medições de um jeito: aceita os dois.
+  const freshSource = (src) => Math.min(Math.abs(Date.now() - src.timestamp), Math.abs(performance.now() - src.timestamp)) < 1000;
+  const SPEAKING_HOLD_MS = 400;
+
+  function pollSpeaking() {
+    const now = performance.now();
+    const speaking = new Set();
+    if (voice.joined && me) {
+      if (micOn() && micLevel() > 0.03) voice.speakingAt = now;
+      if (now - voice.speakingAt < SPEAKING_HOLD_MS) speaking.add(me.id);
+      for (const [id, peer] of voicePeers) {
+        for (const receiver of peer.pc.getReceivers()) {
+          if (!receiver.track || receiver.track.kind !== 'audio' || !receiver.getSynchronizationSources) continue;
+          for (const src of receiver.getSynchronizationSources()) {
+            if (src.audioLevel > 0.03 && freshSource(src)) peer.speakingAt = now;
+          }
+        }
+        if (now - peer.speakingAt < SPEAKING_HOLD_MS) speaking.add(id);
+      }
+    }
+    for (const node of document.querySelectorAll('[data-voice-id]')) {
+      node.classList.toggle('speaking', speaking.has(node.dataset.voiceId));
+    }
+  }
+
+  setInterval(pollSpeaking, 120);
+
+  // ---- tela
+
+  function voiceStateIcon(state, className) {
+    const off = state.deafened || state.muted;
+    const node = icon(state.deafened ? 'headphonesOff' : state.muted ? 'micOff' : 'mic');
+    node.classList.add(className);
+    node.classList.toggle('is-off', off);
+    node.title = state.deafened ? 'Na voz, sem ouvir nem falar' : state.muted ? 'Na voz, com o microfone desligado' : 'Na voz';
+    return node;
+  }
+
+  function voiceMembers() {
+    const myId = me && me.id;
+    return [...users.values()]
+      .filter((u) => u.voice && u.kind !== 'obs')
+      .sort((a, b) => (b.id === myId) - (a.id === myId) || a.name.localeCompare(b.name));
+  }
+
+  function voiceRow(u) {
+    let row = voiceRows.get(u.id);
+    if (!row || row.name !== u.name) {
+      const li = el('li', 'voice-member');
+      const face = avatar(u.name);
+      face.dataset.voiceId = u.id;
+      const state = el('span', 'voice-member-state');
+      li.append(face, el('span', 'voice-member-name', u.name), state);
+      row = { li, state, name: u.name, slider: null };
+      voiceRows.set(u.id, row);
+    }
+    row.state.replaceChildren(voiceStateIcon(u.voice, 'voice-member-icon'));
+    // Volume da voz de cada pessoa, só pra você (no iPhone o navegador não deixa).
+    const wantSlider = voice.joined && me && u.id !== me.id && canSetVolume;
+    if (wantSlider && !row.slider) {
+      const slider = el('input', 'volume voice-volume');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.setAttribute('aria-label', `Volume da voz de ${u.name}`);
+      slider.addEventListener('input', () => setVoiceVolume(u.name, Number(slider.value) / 100, slider));
+      row.slider = slider;
+      row.li.append(slider);
+    } else if (!wantSlider && row.slider) {
+      row.slider.remove();
+      row.slider = null;
+    }
+    if (row.slider && document.activeElement !== row.slider) {
+      const volume = Number.isFinite(voiceVolumes[u.name]) ? voiceVolumes[u.name] : 1;
+      row.slider.value = String(Math.round(volume * 100));
+      row.slider.style.setProperty('--fill', `${row.slider.value}%`);
+      row.slider.title = `Volume: ${row.slider.value}%`;
+    }
+    return row.li;
+  }
+
+  function renderVoice() {
+    const members = me ? voiceMembers() : [];
+    btnVoice.hidden = voice.joined;
+    voiceControls.hidden = !voice.joined;
+    btnVoice.disabled = voice.joining || !me;
+    btnVoice.replaceChildren(icon('headphones'), el('span', 'btn-label', voice.joining ? 'Entrando…' : 'Voz'));
+    btnVoice.setAttribute('aria-label', 'Entrar no chat de voz');
+    const on = micOn();
+    setIcon(btnMic, on ? 'mic' : 'micOff', voice.noMic ? 'Sem microfone: só ouvindo' : on ? 'Desligar o microfone (V)' : 'Ligar o microfone (V)');
+    btnMic.classList.toggle('is-off', !on);
+    btnMic.disabled = voice.noMic;
+    setIcon(btnDeafen, voice.deafened ? 'headphonesOff' : 'headphones', voice.deafened ? 'Voltar a ouvir a voz' : 'Parar de ouvir a voz (ensurdecer)');
+    btnDeafen.classList.toggle('is-off', voice.deafened);
+    setIcon(btnVoiceLeave, 'phoneOff', 'Sair da voz');
+    $('voice-bar').classList.toggle('is-joined', voice.joined);
+
+    voicePeople.hidden = !members.length;
+    const faces = members.slice(0, 4).map((u) => {
+      const face = avatar(u.name);
+      face.dataset.voiceId = u.id;
+      return face;
+    });
+    if (members.length > 4) faces.push(el('span', 'voice-more', `+${members.length - 4}`));
+    voicePeople.replaceChildren(...faces);
+    voicePeople.title = members.length ? `Na voz: ${members.map((u) => u.name).join(', ')}` : '';
+    voicePeople.setAttribute('aria-label', voicePeople.title || 'Ninguém na voz');
+
+    voiceSection.hidden = !members.length;
+    voiceCountEl.textContent = members.length;
+    for (const id of [...voiceRows.keys()]) {
+      if (!members.some((u) => u.id === id)) voiceRows.delete(id);
+    }
+    const rows = members.map(voiceRow);
+    // Só reordena se mudou (mexer nas linhas soltaria o volume no meio do arrasto).
+    const same = rows.length === voiceListEl.children.length && rows.every((li, i) => voiceListEl.children[i] === li);
+    if (!same) voiceListEl.replaceChildren(...rows);
+  }
+
+  btnVoice.addEventListener('click', joinVoice);
+  btnMic.addEventListener('click', toggleMic);
+  btnDeafen.addEventListener('click', toggleDeafen);
+  btnVoiceLeave.addEventListener('click', leaveVoice);
+  voicePeople.addEventListener('click', () => setSidebar(true, true));
+  renderVoice();
 
   renderShareButton();
 })();

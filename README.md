@@ -375,14 +375,30 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    elas ficam salvas em `chat.json`, na pasta de dados, e continuam lá depois de
    atualizar o app. Em tela cheia, as mensagens novas aparecem por cima do vídeo e o
    **Enter** abre um campo pra responder sem sair da tela cheia.
-10. **Apontar na tela**: **Alt + clique** num ponto do vídeo (no celular: tocar e
-    segurar) mostra um sinal com o seu nome naquele ponto, pra todo mundo que está
-    vendo a transmissão, inclusive quem transmite (que também pode apontar na própria
-    tela, pra mostrar algo pra quem assiste).
-11. **Atalhos** (lista completa no rodapé da lista de pessoas, ou tecla **?**): valem
+10. **Apontar e desenhar na tela**: **Alt + clique** num ponto do vídeo (no celular:
+    tocar e segurar) mostra um sinal com o seu nome naquele ponto; **Alt + arrastar**
+    (no celular: segurar e arrastar) desenha, na sua cor, pra circular ou riscar
+    alguma coisa. O traço aparece pros outros ao vivo, enquanto você ainda está
+    desenhando, e some sozinho uns segundos depois de soltar. Vale pra todo mundo que
+    está vendo a transmissão, inclusive quem transmite (que também pode marcar a
+    própria tela, pra mostrar algo pra quem assiste).
+11. **Chat de voz** (botão **Voz** no topo, ou tecla **V**): o navegador pede o
+    microfone e você passa a ouvir e falar com quem está na voz. No topo ficam as
+    carinhas de quem está na voz (acende verde em quem está falando) e, com você na
+    voz, os botões de **microfone** (tecla **V**), **ensurdecer** (para de ouvir a voz
+    e desliga o microfone) e **sair da voz**. Na lista de pessoas aparece quem está na
+    voz, com o estado do microfone, e um **volume pra cada pessoa** (só pra você; fica
+    guardado neste navegador). Se a sua conexão cair (ou o app for atualizado), você
+    volta pra voz sozinho, do jeito que estava. Sem microfone, dá pra entrar só pra
+    ouvir. O áudio vai direto entre as pessoas (pelo TURN do servidor quando precisa),
+    com cancelamento de eco e de ruído do navegador. Quem transmite a tela com o áudio
+    do sistema e está na voz: o app pede pro navegador deixar de fora da captura o som
+    desta página (a voz dos outros e as outras transmissões), mas nem todo navegador
+    atende; se alguém ouvir o próprio eco, quem transmite deve usar fone de ouvido.
+12. **Atalhos** (lista completa no rodapé da lista de pessoas, ou tecla **?**): valem
     pro quadro debaixo do mouse (ou o em tela cheia, o fixado ou o único na tela):
     **M** som, **F** tela cheia, **P** fixar, **S** print, **1** a **6** reações,
-    **C** chat.
+    **C** chat, **V** voz/microfone.
 
 ## Observações
 

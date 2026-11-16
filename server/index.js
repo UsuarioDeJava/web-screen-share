@@ -245,11 +245,15 @@ function uniqueName(name) {
 }
 
 // since: quando a transmissão começou (hora do servidor), pro tempo ao vivo nos quadros.
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt }) => {
+// voice: quem está no chat de voz, com o microfone/fone ligado ou não.
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (sharing) user.since = since || startedAt || null;
+  if (voice) user.voice = voice;
   return user;
 };
+
+const voiceState = (raw) => ({ muted: Boolean(raw && raw.muted), deafened: Boolean(raw && raw.deafened) });
 
 // ---------- chat, reações e "apontar" ----------
 
@@ -451,6 +455,44 @@ io.on('connection', (socket) => {
     if (!user || !msg || !REACTIONS.includes(msg.emoji) || !isLive(msg.stream)) return;
     if (!allow(socket, 'react', 12, 3000)) return;
     io.to(ROOM).emit('react', { stream: msg.stream, emoji: msg.emoji, name: user.name });
+  });
+
+  // Chat de voz: o áudio vai direto entre as pessoas (pelo relay de sinalização); aqui
+  // só fica quem está na voz e se está mudo, pra todo mundo ver.
+  socket.on('voice:join', (state) => {
+    const user = users.get(socket.id);
+    if (!user || !allow(socket, 'voice', 20, 10000)) return;
+    const first = !user.voice;
+    user.voice = voiceState(state);
+    if (first) logEvent(`${user.name} entrou na voz`);
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
+  socket.on('voice:state', (state) => {
+    const user = users.get(socket.id);
+    if (!user || !user.voice || !allow(socket, 'voice', 20, 10000)) return;
+    user.voice = voiceState(state);
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
+  socket.on('voice:leave', () => {
+    const user = users.get(socket.id);
+    if (!user || !user.voice) return;
+    user.voice = null;
+    logEvent(`${user.name} saiu da voz`);
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+  });
+
+  // Desenho ao vivo por cima da transmissão: o traço chega em pedaços (pontos de 0 a 1,
+  // [x, y, x, y...]) enquanto a pessoa ainda está desenhando.
+  socket.on('draw', (msg) => {
+    const user = users.get(socket.id);
+    if (!user || !msg || !isLive(msg.stream) || typeof msg.id !== 'string' || msg.id.length > 32) return;
+    const { points } = msg;
+    if (!Array.isArray(points) || points.length > 128 || points.length % 2) return;
+    if (!points.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)) return;
+    if (!allow(socket, 'draw', 80, 2000)) return;
+    socket.to(ROOM).emit('draw', { stream: msg.stream, id: msg.id, points, end: Boolean(msg.end), name: user.name });
   });
 
   // "Olha aqui": um ponto na imagem (x e y de 0 a 1), pra todo mundo que está vendo.
