@@ -3312,6 +3312,44 @@
     desktop.update().catch(() => {});
   }
 
+  // "Verificar atualização" (rodapé da lista, no app): procura agora, sem precisar reabrir
+  // o app. Aproveita e confere se o servidor já está numa versão mais nova que esta página.
+  const btnCheckUpdate = $('btn-check-update');
+  async function checkUpdatesNow() {
+    btnCheckUpdate.disabled = true;
+    btnCheckUpdate.textContent = 'Verificando…';
+    let serverNew = false;
+    try {
+      const res = await fetch('/version', { cache: 'no-store' });
+      const { version } = await res.json();
+      serverNew = Boolean(version && pageVersion && version !== pageVersion);
+      if (serverNew) updateBanner.hidden = false;
+    } catch {}
+    const found = (await desktop.checkUpdate().catch(() => null)) || { result: 'error' };
+    btnCheckUpdate.disabled = false;
+    btnCheckUpdate.textContent = 'Verificar atualização';
+    let text;
+    if (found.result === 'available') {
+      try { sessionStorage.removeItem(APP_UPDATE_LATER); } catch {} // mesmo se tinha clicado em "Depois"
+      renderAppUpdate();
+      text = `Saiu a versão ${found.version} do app: o aviso está no topo.`;
+    } else if (found.result === 'busy') {
+      text = 'A versão nova do app já está sendo baixada.';
+    } else if (found.result === 'current') {
+      text = `O app está atualizado (versão ${found.current}).`;
+    } else if (found.result === 'off') {
+      text = 'Rodando do código-fonte: aqui não tem atualização automática.';
+    } else {
+      text = 'Não deu pra verificar o app agora (sem internet?).';
+    }
+    if (serverNew) text += ' E o servidor tem versão nova: clique em Recarregar, no topo.';
+    showToast(text);
+  }
+  if (desktop && typeof desktop.checkUpdate === 'function') {
+    btnCheckUpdate.hidden = false;
+    btnCheckUpdate.addEventListener('click', checkUpdatesNow);
+  }
+
   if (desktop && typeof desktop.onUpdate === 'function') {
     desktop.onUpdate((data) => {
       if (!data || typeof data.state !== 'string') return;

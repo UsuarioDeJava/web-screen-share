@@ -673,6 +673,7 @@ async function selfTestKeys() {
 // o botão do aviso instala ou abre a página pra baixar.
 ipcMain.handle('desktop:update-listen', (event) => (fromServer(event) ? updates.listen() : null));
 ipcMain.handle('desktop:update', (event) => fromServer(event) && updates.act());
+ipcMain.handle('desktop:update-check', (event) => (fromServer(event) ? updates.check() : null));
 
 ipcMain.on('desktop:identity', (event, data) => {
   if (fromServer(event) && data && Number.isInteger(data.hue)) identity = { hue: data.hue };

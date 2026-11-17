@@ -485,7 +485,9 @@ que o navegador não faz:
   baixa a versão nova (com o progresso no aviso e na barra de tarefas), instala e abre
   o app de novo sozinho. Na versão portátil, o aviso traz o link pra baixar a nova.
   **Depois** esconde o aviso até o app abrir de novo (fica o link **Atualizar o app**
-  no rodapé da lista). A 1.4.0 é a primeira com isso: de uma versão anterior, baixe a
+  no rodapé da lista). Pra procurar na hora, sem reabrir o app: **Verificar atualização**,
+  no rodapé da lista (ele também avisa se o servidor já tem versão nova e a página
+  precisa ser recarregada). A 1.4.0 é a primeira com isso: de uma versão anterior, baixe a
   nova na mão uma última vez.
 
 Instalação: baixe o `Web-Screen-Share-Setup-<versão>.exe` (ou o `Portable`, que roda

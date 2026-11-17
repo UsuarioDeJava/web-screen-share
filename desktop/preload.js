@@ -35,6 +35,8 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
       ipcRenderer.invoke('desktop:update-listen').then((data) => { if (data) callback(data); }, () => {});
     },
     update: () => ipcRenderer.invoke('desktop:update'),
+    // "Verificar atualização": procura agora e diz o que achou.
+    checkUpdate: () => ipcRenderer.invoke('desktop:update-check'),
   });
 } else {
   contextBridge.exposeInMainWorld('setupBridge', {

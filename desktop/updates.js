@@ -105,17 +105,26 @@ function createUpdates({ getWindow, send, icon }) {
     return match ? match[1] : null;
   }
 
+  // Procura versão nova. Devolve o que achou (pro botão "Verificar atualização" da sala):
+  // available (o aviso já está no topo), current, busy (baixando), error ou off (sem
+  // atualização automática: rodando do código-fonte).
   async function check() {
-    if (!mode || state.state === 'downloading' || state.state === 'installing') return;
+    const current = app.getVersion();
+    if (!mode) return { result: 'off', current };
+    if (state.state === 'downloading' || state.state === 'installing') return { result: 'busy', version: state.version, current };
     try {
+      let version = null;
       if (mode === 'install') {
-        await getUpdater().checkForUpdates();
+        const found = await getUpdater().checkForUpdates();
+        version = found && found.updateInfo ? found.updateInfo.version : null;
       } else {
-        const version = await latestVersion();
-        if (version && isNewer(version, app.getVersion()) && version !== state.version) set({ state: 'available', version });
+        version = await latestVersion();
+        if (version && isNewer(version, current) && version !== state.version) set({ state: 'available', version });
       }
+      return version && isNewer(version, current) ? { result: 'available', version, current } : { result: 'current', current };
     } catch (err) {
       console.error('Procurar atualização:', err && err.message);
+      return { result: 'error', current };
     }
   }
 
