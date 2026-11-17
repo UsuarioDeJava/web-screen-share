@@ -1304,6 +1304,16 @@ kbd {
 }
 .tile-tools .control-btn.active { background: rgba(255, 176, 65, 0.25); color: #ffcf85; box-shadow: inset 0 0 0 1px rgba(255, 176, 65, 0.5); }
 
+/* Controlando com os botões escondidos: nada por cima da transmissão, pra clicar em
+   qualquer canto da tela de lá (em tela cheia, nem a barra nem o chat). */
+.tile.hud-hidden .tile-tools,
+.tile.hud-hidden .tile-stats,
+.tile.hud-hidden .react-pop,
+.tile.hud-hidden .fs-chat,
+.tile:fullscreen.hud-hidden .tile-bar { display: none !important; }
+.tile.is-controlling.hud-hidden .tile-media::after { content: none; }
+.tile-actions .hud-show-btn { color: #ffcf85; }
+
 /* ---------- janelas (OBS, teste de conexão) ---------- */
 
 .dialog {

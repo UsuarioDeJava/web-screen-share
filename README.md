@@ -469,7 +469,12 @@ que o navegador não faz:
   dela. No navegador, isso só funciona com a transmissão em tela cheia. Ctrl+Alt+Del e
   Win+L o Windows não deixa nenhum programa pegar. Só funciona transmitindo a tela
   inteira (ou o OBS capturando um monitor) e não mexe em janelas abertas como
-  administrador (o Windows não deixa).
+  administrador (o Windows não deixa). Quem controla pode esconder tudo que fica por
+  cima da transmissão (os botões, o aviso e, em tela cheia, a barra e o chat), pra
+  clicar em qualquer canto da tela de lá: o botão do olho riscado, em cima do quadro, ou
+  **Ctrl+Shift+H** (esse atalho fica com quem controla, não vai pra lá). Pra mostrar de
+  novo: **Ctrl+Shift+H** ou o botão do olho na barra de baixo do quadro; parar de
+  controlar também mostra.
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
   **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.

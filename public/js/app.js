@@ -18,6 +18,7 @@
     info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.53 13.53 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/>',
     pin: '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>',
     pinOff: '<path d="M12 17v5"/><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"/><path d="m2 2 20 20"/><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"/>',
     smile: '<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
@@ -1443,6 +1444,14 @@
     }
     // Controle remoto: só aparece quando quem transmite deixou você mexer.
     const btnControl = isMine ? null : iconButton('gamepad', `Controlar o mouse e o teclado de ${user.name}`);
+    // Controlando: esconde tudo que fica por cima da transmissão (pra clicar em qualquer
+    // canto da tela de lá). Volta pelo botão na barra de baixo ou Ctrl+Shift+H.
+    const btnHudHide = btnControl ? iconButton('eyeOff', 'Esconder os botões de cima da transmissão (Ctrl+Shift+H)') : null;
+    if (btnHudHide) {
+      btnHudHide.classList.add('hud-btn');
+      btnHudHide.hidden = true;
+      tools.append(btnHudHide);
+    }
     if (btnControl) {
       btnControl.classList.add('control-btn');
       btnControl.hidden = true;
@@ -1472,6 +1481,12 @@
     const btnShot = iconButton('camera', 'Salvar um print da transmissão (S)');
     btnShot.classList.add('shot-btn');
     actions.append(btnReact, btnShot);
+    const btnHudShow = btnControl ? iconButton('eye', 'Mostrar os botões em cima da transmissão (Ctrl+Shift+H)') : null;
+    if (btnHudShow) {
+      btnHudShow.classList.add('hud-show-btn');
+      btnHudShow.hidden = true;
+      actions.prepend(btnHudShow);
+    }
     const reactPop = el('div', 'react-pop');
     reactPop.hidden = true;
     REACTIONS.forEach((emoji, i) => {
@@ -1483,7 +1498,7 @@
     });
     base.tile.append(reactPop);
     base.bar.append(actions, audio);
-    Object.assign(s, { qualitySelect, btnStats, btnPin, btnPip, btnControl, stats, audio, btnMute, slider, btnReact, reactPop });
+    Object.assign(s, { qualitySelect, btnStats, btnPin, btnPip, btnControl, btnHudHide, btnHudShow, stats, audio, btnMute, slider, btnReact, reactPop });
 
     btnMute.addEventListener('click', () => {
       s.muted = !s.muted;
@@ -1527,6 +1542,8 @@
       base.video.addEventListener('leavepictureinpicture', () => btnPip.classList.remove('active'));
     }
     enableMarkup(s, () => s.id);
+    if (btnHudHide) btnHudHide.addEventListener('click', () => setHudHidden(true));
+    if (btnHudShow) btnHudShow.addEventListener('click', () => setHudHidden(false));
     if (btnControl) {
       btnControl.addEventListener('click', () => toggleControlling(s));
       enableCursorShare(s);
@@ -3881,6 +3898,8 @@
   const controlAllowed = new Map(); // transmissão -> nick de quem deixou você controlar
   let controlling = null; // transmissão que você está controlando agora
   let controlHover = false; // o mouse está em cima dela (o teclado só vai pra lá assim)
+  let hudHidden = false; // os botões de cima da transmissão controlada estão escondidos
+  let hudKeyDown = false; // o H do Ctrl+Shift+H ainda apertado (a repetição não conta)
   const controlKeys = new Set();
   const controlButtons = new Set();
 
@@ -3901,7 +3920,24 @@
     s.btnControl.classList.toggle('active', controlling === s.id);
     setIcon(s.btnControl, 'gamepad', controlling === s.id ? 'Parar de controlar' : `Controlar o mouse e o teclado de ${from || ''}`);
     s.tile.classList.toggle('is-controlling', controlling === s.id);
+    const hud = controlling === s.id && hudHidden;
+    s.tile.classList.toggle('hud-hidden', hud);
+    s.btnHudHide.hidden = controlling !== s.id;
+    s.btnHudShow.hidden = !hud;
   }
+
+  // Esconde (ou mostra) tudo que fica por cima da transmissão que você controla: os
+  // botões, o aviso, e em tela cheia a barra e o chat. Nada fica por cima do vídeo.
+  function setHudHidden(hidden) {
+    hudHidden = Boolean(hidden) && Boolean(controlling);
+    const s = controlling && streams.get(controlling);
+    if (s) renderControlButton(s);
+  }
+
+  // Ctrl+Shift+H: fica aqui (não vai pra lá, mesmo com o teclado inteiro indo).
+  const hudKeys = () => ['ControlLeft', 'ControlRight'].some((k) => controlKeys.has(k))
+    && ['ShiftLeft', 'ShiftRight'].some((k) => controlKeys.has(k))
+    && !['AltLeft', 'AltRight'].some((k) => controlKeys.has(k));
 
   function sendControl(msg) {
     if (controlling) socket.emit('control:input', { stream: controlling, ...msg });
@@ -3921,6 +3957,7 @@
     const s = streams.get(controlling);
     controlling = null;
     controlHover = false;
+    hudHidden = false;
     syncKeyCapture();
     if (s) renderControlButton(s);
   }
@@ -3933,6 +3970,7 @@
     stopControlling();
     if (!controlAllowed.has(s.id)) return;
     controlling = s.id;
+    hudHidden = false;
     renderControlButton(s);
   }
 
@@ -3941,8 +3979,17 @@
   function forwardKey(code, down) {
     if (down) {
       if (!controlling || !controlHover) return false;
+      if (code === 'KeyH' && (hudKeyDown || hudKeys())) {
+        if (!hudKeyDown) setHudHidden(!hudHidden);
+        hudKeyDown = true;
+        return true;
+      }
       controlKeys.add(code);
       sendControl({ kind: 'key', code, down: true });
+      return true;
+    }
+    if (code === 'KeyH' && hudKeyDown) {
+      hudKeyDown = false;
       return true;
     }
     if (!controlKeys.delete(code)) return false;
@@ -4041,12 +4088,23 @@
   // Controlando e com o mouse em cima da transmissão, as teclas vão pro PC de lá (os
   // atalhos da sala ficam de fora).
   window.addEventListener('keydown', (e) => {
+    // Com o mouse fora da transmissão, o Ctrl+Shift+H também esconde/mostra os botões.
+    if (controlling && !controlHover && e.code === 'KeyH' && e.ctrlKey && e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!e.repeat) setHudHidden(!hudHidden);
+      return;
+    }
     if (!controlling || !controlHover || e.isComposing) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.code) forwardKey(e.code, true);
   }, true);
   window.addEventListener('keyup', (e) => {
+    if (e.code === 'KeyH' && hudKeyDown) {
+      forwardKey('KeyH', false);
+      return;
+    }
     if (!controlling || !controlKeys.has(e.code)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
