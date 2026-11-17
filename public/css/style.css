@@ -332,6 +332,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 .tile-media.mirror-cursor, .alt-down .tile-media.mirror-cursor { cursor: none; }
 .mouse-cursor { position: absolute; z-index: 20; width: 0; height: 0; pointer-events: none; }
+.mouse-cursor.peer-cursor { z-index: 4; transition: left 70ms linear, top 70ms linear; }
 .mouse-cursor svg { position: absolute; left: -2px; top: -2px; width: 26px; height: 26px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
 .mouse-cursor svg path { fill: var(--c); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
 .mouse-cursor .cursor-badge {

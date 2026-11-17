@@ -365,7 +365,6 @@
       for (const u of res.users) users.set(u.id, u);
       indexProfiles();
       sendDesktopIdentity();
-      cursorStreamsSent = '[]'; // o servidor começa sem saber (reconectou)
       // Reconexão no meio de uma transmissão: continua transmitindo.
       if (localStream) {
         users.get(me.id).sharing = true;
@@ -493,6 +492,7 @@
     if (gone && gone.kind !== 'obs') announceLeave(gone.name);
     closeVoicePeer(id);
     users.delete(id);
+    clearPeerCursors((key) => key.endsWith(`|${id}`));
     removeStreamTile(id, { ended: true });
     closeOutgoing(id);
     renderUsers();
@@ -592,7 +592,6 @@
     renderVoice();
     syncObsOverlay();
     if (controlDialog.open) renderControlPanel();
-    syncCursorStreams();
   }
 
   function renderShareButton() {
@@ -3315,9 +3314,9 @@
 
   // A cor e a foto ficam salvas neste navegador (como o nick) e vão pro servidor a cada
   // entrada na sala. A foto: PNG/JPG/WebP viram um quadrado de 256 px; GIF vai do jeito
-  // que está (animado), até 2 MB.
+  // que está (animado), até 5 MB.
   const profileDialog = $('profile-dialog');
-  const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+  const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
   const HUE_SWATCHES = [0, 20, 40, 55, 80, 120, 155, 180, 200, 220, 250, 275, 300, 330];
   let hueSendTimer = null;
 
@@ -3341,7 +3340,7 @@
     badge.classList.toggle('has-photo', Boolean(photo));
   }
 
-  // A foto fica no IndexedDB (cabe um GIF de 2 MB, o localStorage não aguenta bem).
+  // A foto fica no IndexedDB (cabe um GIF de 5 MB, o localStorage não aguenta bem).
   const photoStore = {
     db: null,
     open() {
@@ -3387,7 +3386,7 @@
   async function preparePhoto(file) {
     const gif = file.type === 'image/gif' || (!file.type && /\.gif$/i.test(file.name));
     if (gif) {
-      if (file.size > PHOTO_MAX_BYTES) throw new Error('Esse GIF passa de 2 MB. Escolha um menor.');
+      if (file.size > PHOTO_MAX_BYTES) throw new Error('Esse GIF passa de 5 MB. Escolha um menor.');
       return file; // do jeito que veio, animado
     }
     if (!/^image\/(png|jpeg|webp)$/.test(file.type) && !/\.(png|jpe?g|webp)$/i.test(file.name)) {
@@ -3415,7 +3414,7 @@
     if (!me) return { error: 'Entre na sala primeiro.' };
     const data = blob ? await blob.arrayBuffer() : null;
     const res = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 20000);
+      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 60000);
       socket.emit('avatar', data, (reply) => {
         clearTimeout(timer);
         resolve(reply || { error: 'Não deu pra mandar a foto.' });
@@ -3616,11 +3615,17 @@
     s.media.addEventListener('pointermove', (e) => {
       const active = shareCursor && e.pointerType !== 'touch' && controlling !== s.id && s.watching;
       const point = active ? videoPoint(s.video, e.clientX, e.clientY) : null;
-      // Quem transmite vê o seu mouse (o app dela mostra): aqui ele fica igual. Em cima
-      // dos botões do quadro, volta o mouse normal.
-      const mirror = point && cursorsShownOn(s.id) && !e.target.closest('.tile-tools, .tile-audio, .tile-stats, button, select, input');
+      // Os outros veem o seu mouse como uma setinha com a sua foto: aqui ele fica igual.
+      // Em cima dos botões do quadro, volta o mouse normal.
+      const mirror = point && !e.target.closest('.tile-tools, .tile-audio, .tile-stats, button, select, input');
       mirrorCursor(s, mirror ? e : null);
-      if (!active) return;
+      if (!active) {
+        if (inside) {
+          inside = false;
+          queue({ gone: true }); // desligou "mostrar o meu mouse": some pros outros
+        }
+        return;
+      }
       if (point) {
         inside = true;
         queue({ x: round4(point.x), y: round4(point.y) });
@@ -3635,14 +3640,6 @@
       inside = false;
       queue({ gone: true });
     });
-  }
-
-  // O app de quem transmite está mostrando o mouse de quem assiste nessa transmissão?
-  function cursorsShownOn(streamId) {
-    for (const u of users.values()) {
-      if (Array.isArray(u.cursors) && u.cursors.includes(streamId)) return true;
-    }
-    return false;
   }
 
   function mirrorCursor(s, e) {
@@ -3663,37 +3660,73 @@
     s.media.classList.add('mirror-cursor');
   }
 
+  // A sua cor ou foto mudou (ou a de alguém): repinta as setinhas na tela.
   function renderMyCursors() {
-    if (!me) return;
-    for (const s of streams.values()) {
-      if (s.myCursor) paintCursor(s.myCursor, me.name);
+    if (me) {
+      for (const s of streams.values()) {
+        if (s.myCursor) paintCursor(s.myCursor, me.name);
+      }
+    }
+    for (const c of peerCursors.values()) paintCursor(c.node, c.name);
+  }
+
+  // O mouse dos outros em cima das transmissões que você está vendo (e, transmitindo
+  // pelo app, na sua tela de verdade).
+  const peerCursors = new Map(); // `${transmissão}|${pessoa}` -> { node, name, timer }
+
+  function removePeerCursor(key) {
+    const c = peerCursors.get(key);
+    if (!c) return;
+    peerCursors.delete(key);
+    clearTimeout(c.timer);
+    c.node.remove();
+  }
+
+  function clearPeerCursors(match = () => true) {
+    for (const key of [...peerCursors.keys()]) {
+      if (match(key)) removePeerCursor(key);
     }
   }
 
-  // Transmitindo pelo app: avisa a sala em quais transmissões suas o mouse de quem assiste
-  // aparece na sua tela (pra quem assiste ver o próprio mouse igual).
-  let cursorStreamsSent = '[]';
-  function syncCursorStreams() {
-    if (!desktop || !me) return;
-    const list = [];
-    if (showCursors) {
-      if (desktopOverlay && localStream) list.push(me.id);
-      const obsId = obsOverlay ? myObsStreamId() : null;
-      if (obsId) list.push(obsId);
+  function showPeerCursor({ stream, id, name, x, y, gone }) {
+    const key = `${stream}|${id}`;
+    const target = gone ? null : fxTarget(stream);
+    if (!target || !Number.isFinite(x) || !Number.isFinite(y)) {
+      removePeerCursor(key);
+      return;
     }
-    const key = JSON.stringify(list);
-    if (key === cursorStreamsSent) return;
-    cursorStreamsSent = key;
-    socket.emit('cursors', { streams: list });
+    const { fx, video } = target;
+    const width = fx.clientWidth;
+    const height = fx.clientHeight;
+    if (!width || !height) return;
+    let c = peerCursors.get(key);
+    if (c && (c.node.parentNode !== fx || c.name !== name)) {
+      removePeerCursor(key);
+      c = null;
+    }
+    if (!c) {
+      c = { node: cursorNode(), name, timer: null };
+      c.node.classList.add('peer-cursor');
+      paintCursor(c.node, name);
+      fx.append(c.node);
+      peerCursors.set(key, c);
+    }
+    const box = contentBox(video, width, height);
+    c.node.style.left = `${((box.left + x * box.width) / width) * 100}%`;
+    c.node.style.top = `${((box.top + y * box.height) / height) * 100}%`;
+    clearTimeout(c.timer);
+    c.timer = setTimeout(() => removePeerCursor(key), 4000); // parou de chegar: some
   }
 
-  socket.on('cursor', ({ stream, id, name, x, y, gone }) => {
-    if (!showCursors || typeof name !== 'string') return;
+  socket.on('cursor', (msg) => {
+    if (!showCursors || !msg || typeof msg.name !== 'string' || typeof msg.id !== 'string') return;
+    const { stream, id, name, x, y, gone } = msg;
     const photo = profileAvatars.get(name);
     toDesktopOverlay(stream, {
       type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name),
       avatar: photo ? new URL(photo, window.location.href).href : null,
     });
+    showPeerCursor(msg);
   });
 
   // ---- quem transmite: dar e tirar o controle
@@ -3796,7 +3829,6 @@
   // A sua transmissão passou a dar (ou deixou de dar) pra controlar: redesenha a lista.
   function checkControlTargets() {
     if (me && myControlStream() !== controlTargetsShown) renderUsers();
-    syncCursorStreams();
   }
 
   if (desktop && typeof desktop.caps === 'function') {
@@ -3809,7 +3841,7 @@
   $('show-cursors').addEventListener('change', (e) => {
     showCursors = e.target.checked;
     try { localStorage.setItem('wss-show-cursors', showCursors ? '1' : '0'); } catch {}
-    syncCursorStreams();
+    if (!showCursors) clearPeerCursors();
   });
   controlDialog.addEventListener('click', (e) => {
     if (e.target === controlDialog) controlDialog.close();

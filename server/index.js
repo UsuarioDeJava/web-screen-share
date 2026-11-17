@@ -51,7 +51,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Fotos de perfil (PNG, JPG, WebP ou GIF animado), guardadas na memória pelo hash do
 // conteúdo enquanto alguém usa: o endereço nunca muda pra mesma foto, então o navegador
 // guarda em cache. Quem entra manda a foto de novo (ela fica salva no navegador).
-const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const avatars = new Map(); // hash -> { buf, type, refs }
 
 function avatarType(buf) {
@@ -211,8 +211,9 @@ app.get('/status', (req, res) => {
 const webServer = useHttps
   ? https.createServer({ cert: fs.readFileSync(TLS_CERT), key: fs.readFileSync(TLS_KEY) }, app)
   : http.createServer(app);
-// Mensagens de até 3 MB: a foto de perfil (até 2 MB) vai pelo socket.
-const io = new Server(webServer, { maxHttpBufferSize: 3e6 });
+// Mensagens de até 8 MB: a foto de perfil (até 5 MB) vai pelo socket (e, sem WebSocket,
+// em base64, uns 33% maior).
+const io = new Server(webServer, { maxHttpBufferSize: 8e6 });
 
 // Uma porta só pra tudo, pra não precisar publicar outra no Docker/CasaOS: conexões
 // que começam com uma mensagem STUN/TURN (magic cookie nos bytes 4-7) vão pro TURN
@@ -279,15 +280,13 @@ function uniqueName(name) {
 
 // since: quando a transmissão começou (hora do servidor), pro tempo ao vivo nos quadros.
 // voice: quem está no chat de voz, com o microfone/fone ligado ou não.
-// hue/avatar: a cor e a foto que a pessoa escolheu. cursors: as transmissões dela em
-// que o mouse de quem assiste aparece na tela (no app), pra quem assiste ver igual.
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, avatar, cursors }) => {
+// hue/avatar: a cor e a foto que a pessoa escolheu.
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, avatar }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (sharing) user.since = since || startedAt || null;
   if (voice) user.voice = voice;
   if (Number.isInteger(hue)) user.hue = hue;
   if (avatar) user.avatar = `/avatar/${avatar}`;
-  if (cursors && cursors.length) user.cursors = cursors;
   return user;
 };
 
@@ -510,7 +509,7 @@ io.on('connection', (socket) => {
     if (data != null) {
       const buf = Buffer.isBuffer(data) ? data : data instanceof ArrayBuffer ? Buffer.from(data) : null;
       if (!buf || !buf.length) return reply({ error: 'Não deu pra ler a foto.' });
-      if (buf.length > AVATAR_MAX_BYTES) return reply({ error: 'A foto passa de 2 MB.' });
+      if (buf.length > AVATAR_MAX_BYTES) return reply({ error: 'A foto passa de 5 MB.' });
       const type = avatarType(buf);
       if (!type) return reply({ error: 'Use uma foto PNG, JPG, WebP ou GIF.' });
       hash = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
@@ -523,17 +522,6 @@ io.on('connection', (socket) => {
     else delete user.avatar;
     socket.to(ROOM).emit('user:updated', publicUser(user));
     reply({ ok: true, avatar: hash ? `/avatar/${hash}` : null });
-  });
-
-  // Quem transmite pelo app avisa em quais transmissões dela o mouse de quem assiste
-  // aparece (a camada na tela ligada, com "mostrar o mouse de quem assiste").
-  socket.on('cursors', (msg) => {
-    const user = users.get(socket.id);
-    if (!user || !msg || !Array.isArray(msg.streams) || !allow(socket, 'cursors', 20, 10000)) return;
-    const streams = [...new Set(msg.streams)].filter((id) => typeof id === 'string' && ownsStream(user, id)).slice(0, 4);
-    if (JSON.stringify(streams) === JSON.stringify(user.cursors || [])) return;
-    user.cursors = streams;
-    socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
   socket.on('chat:send', (raw, ack) => {
@@ -631,17 +619,10 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('draw:clear', { stream: msg.stream, name: user.name });
   });
 
-  // Quem transmite essa transmissão (a pessoa, ou quem está na sala com o nick do OBS).
-  const streamOwners = (id) => {
-    const user = users.get(id);
-    if (user) return user.sharing ? [user] : [];
-    const stream = obs && obs.list().find((s) => s.id === id);
-    return stream ? [...users.values()].filter((u) => u.name === stream.name) : [];
-  };
   const unit = (v) => Number.isFinite(v) && v >= 0 && v <= 1;
 
-  // Mouse de quem assiste passando por cima da transmissão: vai só pra quem transmite
-  // (o app mostra na tela dela).
+  // Mouse de quem assiste passando por cima da transmissão: vai pra sala toda (quem
+  // assiste vê nos quadros; quem transmite, pelo app, vê na tela dela).
   socket.on('cursor', (msg) => {
     const user = users.get(socket.id);
     if (!user || !msg || typeof msg.stream !== 'string') return;
@@ -650,9 +631,7 @@ io.on('connection', (socket) => {
     const out = msg.gone
       ? { stream: msg.stream, id: socket.id, name: user.name, gone: true }
       : { stream: msg.stream, id: socket.id, name: user.name, x: msg.x, y: msg.y };
-    for (const owner of streamOwners(msg.stream)) {
-      if (owner.id !== socket.id) io.to(owner.id).emit('cursor', out);
-    }
+    socket.to(ROOM).emit('cursor', out);
   });
 
   // Controle remoto: quem transmite (pelo app) deixa UMA pessoa mexer no mouse e teclado.
