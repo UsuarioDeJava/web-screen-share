@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { createInput } = require('./input');
 const { createUpdates } = require('./updates');
+const { createKeyHook } = require('./keyhook');
 
 if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
 
@@ -40,6 +41,8 @@ let identity = { hue: 200 }; // a sua cor na sala
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 let controller = null; // quem está controlando agora: { name }
 let picker = null; // seletor de tela aberto: { win, finish }
+let keyHook; // gancho de teclado (Windows): undefined até a primeira vez, null se não tem
+let keysWanted = false; // você está controlando alguém, com o mouse em cima da transmissão
 const updates = createUpdates({
   getWindow: () => mainWindow,
   send: (state) => toPage('desktop:update', state),
@@ -166,8 +169,11 @@ function createMainWindow() {
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
   webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) updates.pageGone();
+    if (!details.isMainFrame || details.isSameDocument) return;
+    updates.pageGone();
+    setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
+  webContents.on('render-process-gone', () => setKeyCapture(false));
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
     serverLoadFailed = true;
@@ -181,8 +187,11 @@ function createMainWindow() {
   });
   webContents.on('did-finish-load', async () => {
     if (SELF_TEST) {
-      console.log(`SELF-TEST OK: ${webContents.getURL().split('?')[0]}`);
-      app.exit(0);
+      const keys = await selfTestKeys();
+      console.log(`SELF-TEST ${keys === 'ok' ? 'OK' : `TECLADO: ${keys}`}: ${webContents.getURL().split('?')[0]}`);
+      // 3: o gancho de teclado nem instala (erro de verdade); 4: instalou, mas a tecla de
+      // teste não chegou (pode ser a máquina do teste, que não deixa simular tecla).
+      app.exit(keys === 'ok' ? 0 : keys === 'no-hook' ? 3 : 4);
       return;
     }
     if (failure) {
@@ -623,6 +632,43 @@ ipcMain.on('desktop:control', (event, msg) => {
 
 ipcMain.on('desktop:version', (event) => { event.returnValue = app.getVersion(); });
 
+// Controlando alguém, com o mouse em cima da transmissão e o app na frente: TODAS as
+// teclas (Win, Alt+Tab, Alt+F4...) vão pra lá, pelo gancho de teclado (Windows). Tirou o
+// mouse de cima ou foi pra outra janela, o teclado volta a ser seu.
+function setKeyCapture(on) {
+  keysWanted = Boolean(on);
+  if (keysWanted && keyHook === undefined) {
+    keyHook = createKeyHook({
+      shouldCapture: () => keysWanted && Boolean(mainWindow) && !mainWindow.isDestroyed() && mainWindow.isFocused(),
+      onKey: (code, down) => toPage('desktop:captured-key', { code, down }),
+    });
+  }
+  if (!keyHook) return false;
+  if (keysWanted) return keyHook.start();
+  keyHook.stop();
+  return false;
+}
+
+ipcMain.handle('desktop:capture-keys', (event, on) => (fromServer(event) ? setKeyCapture(on) : false));
+
+// Autoteste (Windows): instala o gancho, "aperta" uma tecla e vê se ele pega, com o código
+// certo. Assim um erro no gancho aparece no build, não no meio do controle.
+async function selfTestKeys() {
+  if (process.platform !== 'win32') return 'ok';
+  const seen = [];
+  const hook = createKeyHook({ shouldCapture: () => true, onKey: (code, down) => seen.push(`${down ? 'down' : 'up'}:${code}`), acceptInjected: true });
+  if (!hook || !hook.start()) return 'no-hook';
+  const device = createInput();
+  if (device) {
+    device.key('KeyQ', true);
+    device.key('KeyQ', false);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  hook.stop();
+  if (device) device.close();
+  return seen.includes('down:KeyQ') && seen.includes('up:KeyQ') ? 'ok' : `sem-tecla ${JSON.stringify(seen)}`;
+}
+
 // Aviso de atualização: a sala pede o estado atual (e passa a receber as mudanças) e
 // o botão do aviso instala ou abre a página pra baixar.
 ipcMain.handle('desktop:update-listen', (event) => (fromServer(event) ? updates.listen() : null));
@@ -801,6 +847,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     if (input) input.close();
+    if (keyHook) keyHook.stop();
   });
   app.on('window-all-closed', () => app.quit());
 }

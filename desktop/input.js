@@ -25,8 +25,21 @@ const SCAN = {
   PrintScreen: [0x37, true], AltRight: [0x38, true], Home: [0x47, true], ArrowUp: [0x48, true],
   PageUp: [0x49, true], ArrowLeft: [0x4b, true], ArrowRight: [0x4d, true], End: [0x4f, true],
   ArrowDown: [0x50, true], PageDown: [0x51, true], Insert: [0x52, true], Delete: [0x53, true],
-  ContextMenu: [0x5d, true],
+  MetaLeft: [0x5b, true], MetaRight: [0x5c, true], ContextMenu: [0x5d, true],
 };
+SCAN.OSLeft = SCAN.MetaLeft; // nome antigo da tecla do Windows (Firefox)
+SCAN.OSRight = SCAN.MetaRight;
+
+// Ao contrário: o código da tecla pela posição (o gancho de teclado do Windows conta assim).
+const BY_SCAN = new Map();
+for (const [code, [scan, extended]] of Object.entries(SCAN)) {
+  const key = `${scan}|${extended ? 1 : 0}`;
+  if (!BY_SCAN.has(key)) BY_SCAN.set(key, code);
+}
+function codeForScan(scan, extended) {
+  if (scan === 0x45) return extended ? 'NumLock' : null; // o Windows conta o NumLock como estendido (e o Pause não)
+  return BY_SCAN.get(`${scan}|${extended ? 1 : 0}`) || null;
+}
 
 // KeyboardEvent.code -> nome da tecla no X11 (xdotool).
 const XKEYS = {
@@ -39,7 +52,8 @@ const XKEYS = {
   NumpadDecimal: 'KP_Decimal', NumpadEnter: 'KP_Enter', ControlRight: 'Control_R', NumpadDivide: 'KP_Divide',
   PrintScreen: 'Print', AltRight: 'ISO_Level3_Shift', Home: 'Home', ArrowUp: 'Up', PageUp: 'Prior',
   ArrowLeft: 'Left', ArrowRight: 'Right', End: 'End', ArrowDown: 'Down', PageDown: 'Next',
-  Insert: 'Insert', Delete: 'Delete', ContextMenu: 'Menu',
+  Insert: 'Insert', Delete: 'Delete', ContextMenu: 'Menu', MetaLeft: 'Super_L', MetaRight: 'Super_R',
+  OSLeft: 'Super_L', OSRight: 'Super_R',
 };
 for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') XKEYS[`Key${c}`] = c.toLowerCase();
 for (let d = 0; d <= 9; d += 1) {
@@ -47,9 +61,6 @@ for (let d = 0; d <= 9; d += 1) {
   XKEYS[`Numpad${d}`] = `KP_${d}`;
 }
 for (let f = 1; f <= 12; f += 1) XKEYS[`F${f}`] = `F${f}`;
-
-// A tecla do Windows fica de fora: abriria o Iniciar ou bloquearia o PC (Win+L).
-const BLOCKED = new Set(['MetaLeft', 'MetaRight', 'OSLeft', 'OSRight']);
 
 function windowsInput() {
   const koffi = require('koffi');
@@ -119,7 +130,7 @@ function createInput() {
     },
     wheel: (notches) => backend.wheel(Math.max(-10, Math.min(10, notches))),
     key(code, down) {
-      if (BLOCKED.has(code) || !backend.supports(code)) return;
+      if (!backend.supports(code)) return;
       if (down) keys.add(code);
       else if (!keys.delete(code)) return;
       backend.key(code, down);
@@ -136,4 +147,4 @@ function createInput() {
   };
 }
 
-module.exports = { createInput };
+module.exports = { createInput, codeForScan };

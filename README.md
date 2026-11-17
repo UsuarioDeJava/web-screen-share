@@ -462,8 +462,12 @@ que o navegador não faz:
   mexeu no seu mouse, o controle da pessoa pausa até você parar (1,5 s depois do seu
   último movimento), e o aviso fica verde ("Você está no mouse"). No Windows, o app lê o
   Ctrl+Shift+X direto do teclado, então ele funciona mesmo se outro programa usar o
-  mesmo atalho. A tecla do Windows fica
-  bloqueada (sem abrir o Iniciar nem bloquear o PC). Só funciona transmitindo a tela
+  mesmo atalho. Todos os atalhos chegam, inclusive os da tecla do Windows: quem controla
+  pelo app (no Windows), com o mouse em cima da sua transmissão e o app na frente, manda
+  todas as teclas pra cá (Win, Alt+Tab, Alt+F4, Ctrl+Esc, Print Screen...), sem que elas
+  ajam no PC dela; tirando o mouse de cima ou indo pra outra janela, o teclado volta a ser
+  dela. No navegador, isso só funciona com a transmissão em tela cheia. Ctrl+Alt+Del e
+  Win+L o Windows não deixa nenhum programa pegar. Só funciona transmitindo a tela
   inteira (ou o OBS capturando um monitor) e não mexe em janelas abertas como
   administrador (o Windows não deixa).
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção

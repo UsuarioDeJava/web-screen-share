@@ -1287,7 +1287,7 @@ kbd {
 }
 .tile.is-controlling .tile-media { cursor: crosshair; }
 .tile.is-controlling .tile-media::after {
-  content: "Controlando · as teclas vão pra lá enquanto o mouse estiver aqui em cima";
+  content: "Controlando · com o mouse aqui em cima, todas as teclas vão pra lá (no app, até Win e Alt+Tab)";
   position: absolute;
   left: 50%;
   bottom: 8px;

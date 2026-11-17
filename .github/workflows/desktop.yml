@@ -60,6 +60,20 @@ jobs:
           test -f "dist/${{ matrix.update-info }}"
           cat "dist/${{ matrix.update-info }}"
 
+      # Windows: o app empacotado abre e o gancho de teclado (controle remoto) instala e pega
+      # uma tecla de teste. Código 3: o gancho nem instala (barra o release); 4: instalou,
+      # mas esta máquina não deixou simular a tecla (só avisa).
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:WSS_USER_DATA = Join-Path $env:RUNNER_TEMP 'wss-smoke'
+          $exe = (Resolve-Path 'dist\win-unpacked\Web Screen Share.exe').Path
+          $p = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
+          Write-Host "self-test: $($p.ExitCode)"
+          if ($p.ExitCode -eq 4) { Write-Host '::warning::O gancho de teclado instalou, mas a tecla de teste não chegou (máquina do CI).' }
+          elseif ($p.ExitCode -ne 0) { throw "self-test falhou ($($p.ExitCode))" }
+
       # O app empacotado abre e carrega a tela de configurar o servidor.
       - name: Smoke test
         if: runner.os == 'Linux'

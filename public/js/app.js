@@ -3921,6 +3921,7 @@
     const s = streams.get(controlling);
     controlling = null;
     controlHover = false;
+    syncKeyCapture();
     if (s) renderControlButton(s);
   }
 
@@ -3934,6 +3935,43 @@
     controlling = s.id;
     renderControlButton(s);
   }
+
+  // Uma tecla sua indo pro PC de lá: da página ou, no app, do gancho que pega até as
+  // teclas do Windows (Win, Alt+Tab, Alt+F4...).
+  function forwardKey(code, down) {
+    if (down) {
+      if (!controlling || !controlHover) return false;
+      controlKeys.add(code);
+      sendControl({ kind: 'key', code, down: true });
+      return true;
+    }
+    if (!controlKeys.delete(code)) return false;
+    sendControl({ kind: 'key', code, down: false });
+    return true;
+  }
+
+  // Pegar o teclado inteiro: no app, o gancho do Windows; no navegador, em tela cheia, o
+  // Keyboard Lock (só ele deixa a página receber Alt+Tab, a tecla do Windows...).
+  let keysCaptured = false;
+  const appKeys = () => Boolean(desktop) && typeof desktop.captureKeys === 'function';
+  function syncKeyCapture() {
+    const want = Boolean(controlling && controlHover && document.hasFocus());
+    if (want !== keysCaptured) {
+      keysCaptured = want;
+      if (appKeys()) desktop.captureKeys(want).catch(() => {});
+    }
+    if (!appKeys() && navigator.keyboard && typeof navigator.keyboard.lock === 'function') {
+      if (want && document.fullscreenElement) navigator.keyboard.lock().catch(() => {});
+      else navigator.keyboard.unlock();
+    }
+  }
+  if (desktop && typeof desktop.onCapturedKey === 'function') {
+    desktop.onCapturedKey((data) => {
+      if (data && typeof data.code === 'string') forwardKey(data.code, Boolean(data.down));
+    });
+  }
+  document.addEventListener('fullscreenchange', () => syncKeyCapture());
+  window.addEventListener('focus', () => syncKeyCapture());
 
   function enableControl(s) {
     const { media, video } = s;
@@ -3952,16 +3990,24 @@
       sendControl({ kind: 'move', ...pendingMove });
       pendingMove = null;
     };
-    media.addEventListener('pointerenter', () => { if (active()) controlHover = true; });
+    media.addEventListener('pointerenter', () => {
+      if (!active()) return;
+      controlHover = true;
+      syncKeyCapture();
+    });
     media.addEventListener('pointerleave', () => {
       if (!active()) return;
       controlHover = false;
+      syncKeyCapture();
       for (const code of controlKeys) sendControl({ kind: 'key', code, down: false });
       controlKeys.clear();
     });
     media.addEventListener('pointermove', (e) => {
       if (!active()) return;
-      controlHover = true;
+      if (!controlHover) {
+        controlHover = true;
+        syncKeyCapture();
+      }
       pendingMove = point(e);
       const wait = 16 - (performance.now() - lastMove);
       if (wait <= 0) flushMove();
@@ -3998,19 +4044,17 @@
     if (!controlling || !controlHover || e.isComposing) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (!e.code) return;
-    controlKeys.add(e.code);
-    sendControl({ kind: 'key', code: e.code, down: true });
+    if (e.code) forwardKey(e.code, true);
   }, true);
   window.addEventListener('keyup', (e) => {
     if (!controlling || !controlKeys.has(e.code)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    controlKeys.delete(e.code);
-    sendControl({ kind: 'key', code: e.code, down: false });
+    forwardKey(e.code, false);
   }, true);
   window.addEventListener('blur', () => {
     if (controlling) releaseControl();
+    syncKeyCapture();
   });
 
   socket.on('control:granted', ({ stream, from }) => {

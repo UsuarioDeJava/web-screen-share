@@ -26,6 +26,9 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
       ? { on: true, name: String(data.name || ''), hue: Number(data.hue) || 0 } : { on: false }),
     control: (msg) => ipcRenderer.send('desktop:control', msg),
     onControlRevoke: (callback) => ipcRenderer.on('desktop:control-revoke', () => callback()),
+    // Controlando alguém: o app pega todas as teclas (Win, Alt+Tab...) e manda pra cá.
+    captureKeys: (on) => ipcRenderer.invoke('desktop:capture-keys', Boolean(on)),
+    onCapturedKey: (callback) => ipcRenderer.on('desktop:captured-key', (_event, data) => callback(data)),
     // Versão nova do app: o estado agora e as mudanças; update() é o botão do aviso.
     onUpdate: (callback) => {
       ipcRenderer.on('desktop:update', (_event, data) => callback(data));
