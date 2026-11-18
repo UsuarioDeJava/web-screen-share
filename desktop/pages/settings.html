@@ -6,12 +6,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: http: https:">
   <title>Configurações — Web Screen Share</title>
   <link rel="stylesheet" href="common.css">
+  <link rel="stylesheet" href="../shared/fx.css">
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <header><div><p class="eyebrow">WEB SCREEN SHARE</p><h1>Configurações</h1><p class="hint">Seu perfil, a sala e o aplicativo em um só lugar.</p></div><span class="tag" id="version"></span></header>
   <nav role="tablist" aria-label="Painel do aplicativo">
     <button id="tab-profile" type="button" role="tab" aria-selected="true" aria-controls="panel-profile">Perfil</button>
+    <button id="tab-fx" type="button" role="tab" aria-selected="false" aria-controls="panel-fx" tabindex="-1">Mouse e efeitos</button>
     <button id="tab-pointer" type="button" role="tab" aria-selected="false" aria-controls="panel-pointer" tabindex="-1">Ponteiro e controle</button>
     <button id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1">Aplicativo</button>
     <button id="tab-connection" type="button" role="tab" aria-selected="false" aria-controls="panel-connection" tabindex="-1">Conexão e testes</button>
@@ -53,6 +55,10 @@
         <p id="profile-color-label" class="hint"></p>
       </section>
     </section>
+    <section id="panel-fx" role="tabpanel" aria-labelledby="tab-fx" hidden>
+      <p class="room-unavailable hint" hidden></p>
+      <section class="card"><h2>Mouse e efeitos</h2><p class="hint">Setinha, enfeite, rastro, clique, ping (Alt + clique) e pincel (Alt + arrastar): quem assiste junto e quem transmite (na tela de verdade, pelo app) veem do seu jeito. Fica salvo, igual a cor e a foto.</p><div id="fx-editor"></div><p id="fx-status" class="hint" role="status"></p></section>
+    </section>
     <section id="panel-pointer" role="tabpanel" aria-labelledby="tab-pointer" hidden>
       <p class="room-unavailable hint" hidden></p>
       <section class="card"><h2>Ponteiro compartilhado</h2><label class="check"><input id="share-cursor" class="room-control" type="checkbox"> Mostrar meu ponteiro para os outros</label><p class="hint">Ao passar o mouse por uma transmissão, os participantes veem o ponteiro na sua cor, com sua foto.</p><label class="check"><input id="show-cursors" class="room-control" type="checkbox"> Mostrar o ponteiro de quem assiste</label></section>
@@ -87,6 +93,7 @@
     <button class="btn btn-primary" id="restart" type="button" hidden>Reiniciar e aplicar</button><p id="status" role="status" aria-live="polite"></p>
   </main>
   <script src="../shared/color.js"></script>
+  <script src="../shared/fx.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

@@ -46,7 +46,10 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
+// Arquivos que a sala e o app usam iguais (desktop/shared): cores e estilos do mouse.
 app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'color.js')));
+app.get('/js/fx.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.js')));
+app.get('/css/fx.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.css')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Fotos de perfil (PNG, JPG, WebP ou GIF animado), guardadas na memória pelo hash do
@@ -281,20 +284,36 @@ function uniqueName(name) {
 
 // since: quando a transmissão começou (hora do servidor), pro tempo ao vivo nos quadros.
 // voice: quem está no chat de voz, com o microfone/fone ligado ou não.
-// color/hue/avatar: a cor e a foto que a pessoa escolheu. color é a cor exata (#rrggbb);
-// hue, o tom dela (o app de antes da cor livre só entende o tom).
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, color, avatar }) => {
+// color/hue/avatar/style: a cor, a foto e o estilo do mouse e das marcações que a pessoa
+// escolheu. color é a cor exata (#rrggbb); hue, o tom dela (o app de antes da cor livre
+// só entende o tom).
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, color, avatar, style }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (sharing) user.since = since || startedAt || null;
   if (voice) user.voice = voice;
   if (Number.isInteger(hue)) user.hue = hue;
   if (color) user.color = color;
   if (avatar) user.avatar = `/avatar/${avatar}`;
+  if (style) user.style = style;
   return user;
 };
 
 const cleanHue = (raw) => (Number.isInteger(raw) && raw >= 0 && raw < 360 ? raw : null);
 const cleanColor = (raw) => (typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : null);
+
+// Estilo do mouse e das marcações (setinha, enfeite, rastro, clique, ping, pincel...). O
+// que cada valor quer dizer fica com a página (public/js/fx.js, que ignora o que não
+// conhece); aqui só confere o formato: chaves conhecidas, textos curtos.
+const STYLE_KEYS = ['skin', 'size', 'deco', 'aura', 'trail', 'click', 'ping', 'emoji', 'pingSound', 'brush', 'width'];
+function cleanStyle(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const key of STYLE_KEYS) {
+    if (typeof raw[key] === 'string' && /^[a-z0-9-]{1,16}$/i.test(raw[key])) out[key] = raw[key];
+  }
+  if (typeof raw.name === 'boolean') out.name = raw.name;
+  return Object.keys(out).length ? out : null;
+}
 
 const voiceState = (raw) => ({ muted: Boolean(raw && raw.muted), deafened: Boolean(raw && raw.deafened) });
 
@@ -473,6 +492,8 @@ io.on('connection', (socket) => {
     if (hue !== null) user.hue = hue;
     const color = cleanColor(payload.color);
     if (color) user.color = color;
+    const style = cleanStyle(payload.style);
+    if (style) user.style = style;
     users.set(socket.id, user);
     logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
@@ -495,16 +516,24 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
-  // Perfil: a cor escolhida (null volta pra cor automática do nick).
+  // Perfil: a cor escolhida (null volta pra cor automática do nick) e/ou o estilo do
+  // mouse e das marcações (null volta pro padrão). Só muda o que veio na mensagem.
   socket.on('profile', (msg) => {
     const user = users.get(socket.id);
-    if (!user || !msg || !allow(socket, 'profile', 20, 10000)) return;
-    const hue = cleanHue(msg.hue);
-    if (hue === null) delete user.hue;
-    else user.hue = hue;
-    const color = cleanColor(msg.color);
-    if (color === null) delete user.color;
-    else user.color = color;
+    if (!user || !msg || typeof msg !== 'object' || !allow(socket, 'profile', 20, 10000)) return;
+    if ('hue' in msg || 'color' in msg) {
+      const hue = cleanHue(msg.hue);
+      if (hue === null) delete user.hue;
+      else user.hue = hue;
+      const color = cleanColor(msg.color);
+      if (color === null) delete user.color;
+      else user.color = color;
+    }
+    if ('style' in msg) {
+      const style = cleanStyle(msg.style);
+      if (style) user.style = style;
+      else delete user.style;
+    }
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 

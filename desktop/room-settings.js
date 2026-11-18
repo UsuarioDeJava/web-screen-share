@@ -228,6 +228,8 @@ async function applyRoomAction(command) {
           });
         }
       } finally { if (panel?.open && !wasOpen) panel.close(); }
+    } else if (command.type === 'style') {
+      throw new Error('Atualize o servidor da sala pra escolher o estilo do mouse e das marcações.');
     } else throw new Error('Configuração não reconhecida.');
     return { ok: true };
   } finally {
@@ -239,6 +241,8 @@ async function applyRoomAction(command) {
 
 function validateRoomAction(value) {
   if (!value || typeof value !== 'object') throw new Error('Configuração inválida.');
+  // Estilo do mouse e das marcações: só valores do catálogo (o resto vira o padrão).
+  if (value.type === 'style' && value.style && typeof value.style === 'object' && !Array.isArray(value.style)) return { type: value.type, style: normalizeStyle(value.style) };
   if (value.type === 'cursor' && ['share', 'show'].includes(value.field) && typeof value.enabled === 'boolean') return { type: value.type, field: value.field, enabled: value.enabled };
   if (value.type === 'sounds' && typeof value.enabled === 'boolean') return { type: value.type, enabled: value.enabled };
   if (value.type === 'obs-display' && typeof value.value === 'string' && (value.value === 'off' || /^-?\d{1,20}$/.test(value.value))) return { type: value.type, value: value.value };
@@ -254,6 +258,8 @@ function validateRoomAction(value) {
   }
   throw new Error('Configuração inválida. Fotos devem ser PNG, JPG, WebP ou GIF com até 5 MB.');
 }
+
+const { normalize: normalizeStyle } = require('./shared/fx');
 
 function createRoomSettings({ getContents, isServer }) {
   const lanes = new Map();

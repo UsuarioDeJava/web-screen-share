@@ -60,6 +60,14 @@ foto não muda. A imagem Docker inclui esse módulo compartilhado e o instalador
 `shared/**`. Para usar o novo contrato e o diagnóstico de vídeo na sala remota, atualize
 também os arquivos do servidor/interface; as mudanças não são publicadas automaticamente.
 
+O estilo do mouse e das marcações (setinhas, enfeites, rastros, cliques, pings, pincéis,
+o editor com prévia e os pacotes) fica em `desktop/shared/fx.js` e `fx.css`, servidos à
+sala em `/js/fx.js` e `/css/fx.css` e usados direto pela camada (`overlay.html`) e pelas
+Configurações (aba Mouse e efeitos). O servidor só confere o formato do estilo
+(`cleanStyle`); o catálogo e a validação dos valores (`normalize`) ficam no fx.js. Nas
+páginas do app vale CSP sem `unsafe-inline`: nada de atributo `style` em HTML montado por
+string (use atributos SVG ou `element.style`).
+
 ## Tela cheia e diagnóstico gráfico
 
 O padrão continua sendo a tela cheia nativa. No Windows também estão disponíveis:

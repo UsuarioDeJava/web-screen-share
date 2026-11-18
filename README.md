@@ -415,6 +415,27 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     no chat, nos quadros, nos rabiscos e no mouse, e ficam salvas no navegador como o
     nick: na próxima vez elas já entram junto. As fotos ficam só na memória do servidor
     enquanto a pessoa está na sala.
+14. **Mouse e efeitos** (aba no **Perfil**; no app, em **Configurações**): deixe o seu
+    mouse e as suas marcações do seu jeito, com uma **prévia ao vivo** pra testar
+    (mexer, clicar, Alt + clique, arrastar, rodinha) e **pacotes prontos** (Neon,
+    Fofura, Realeza, Retrô, Festa, Aventura, Anjinho, Diabinho, Alienígena):
+    - **Setinha**: clássica, do PC, redonda, pixel, mãozinha, mira, lápis, espadinha ou
+      varinha, em três **tamanhos**.
+    - **Enfeite** (coroa, cartola, chapéu de festa, auréola, chifrinhos, orelhas de
+      gato, lacinho, florzinha, anteninhas), **efeito** na setinha (brilho, arco-íris,
+      pulsando), **rastro** (brilhinhos, bolinhas, arco-íris, corações, bolhas, fogo) e
+      o seu **nome junto** do mouse.
+    - **Clique e rodinha**: mini mouse, ondinha, estrelinhas, confete, quadrinhos
+      ("CLICK!") ou nenhuma.
+    - **Ping** (Alt + clique): clássico, alvo, alerta, seta caindo, pulso ou um **emoji**
+      (👀 🎯 🔥 ⭐ 💥 ❤️ 😂 👉 🎉 💀), com o **som** que você escolher (ou sem som).
+    - **Pincel** (Alt + arrastar): normal, neon, tracejado, giz, marca-texto, arco-íris
+      ou rastro que some, em três **espessuras**.
+
+    Todo mundo vê do seu jeito: quem assiste junto, nos quadros, e quem transmite, na
+    tela de verdade (pelo app 1.6 ou mais novo). Fica salvo como a cor e a foto. No seu
+    próprio mouse, a setinha é o cursor do sistema (sem atraso) e o resto vem junto
+    logo atrás; o efeito animado na setinha (arco-íris, pulsando) só os outros veem.
 
 ## App de desktop (Windows)
 
@@ -571,7 +592,6 @@ install && npm start`.
   **Configurações do programa** → adicione o `Web Screen Share.exe` → **Tecnologia do
   monitor: Atualização fixa** (na AMD, no Adrenalin: **Jogos** → o app → FreeSync
   desligado).
-- Ideias pro futuro (skins do mouse, enfeites, estilos de clique, ping e pincel): veja
-  [IDEIAS.md](IDEIAS.md).
+- Ideias pro futuro: veja [IDEIAS.md](IDEIAS.md).
 - Desenvolvimento do app (rodar do código, testes, opções de diagnóstico): veja
   [DEVELOPMENT.md](DEVELOPMENT.md).
