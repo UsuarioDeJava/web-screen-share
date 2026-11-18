@@ -16,12 +16,29 @@ const path = require('path');
 const { createInput } = require('./input');
 const { createUpdates } = require('./updates');
 const { createKeyHook } = require('./keyhook');
+const { createBorderlessFullscreen } = require('./borderless-fullscreen');
+const { normalizePreferences, startupPreferences } = require('./preferences');
+const { createActivityLog } = require('./activity-log');
+const { createSettingsPanel } = require('./settings-panel');
+const { createRoomSettings } = require('./room-settings');
 
+// Perfil e opções gráficas precisam estar definidos antes de app.ready.
 if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
+
+let config = { server: null, trusted: {}, bounds: null, maximized: false, obsDisplay: null, desktop: normalizePreferences() };
+loadConfig();
+const activePreferences = startupPreferences(config.desktop);
+if (!activePreferences.hardwareAcceleration) app.disableHardwareAcceleration();
+const activity = createActivityLog({ enabled: activePreferences.logging, limit: activePreferences.logLimit });
+const log = (category, message, level = 'info', direction = 'local') => activity.add({ category, message, level, direction });
 
 const PAGES = path.join(__dirname, 'pages');
 const ICON = path.join(PAGES, 'icon.png');
 const SELF_TEST = process.argv.includes('--self-test');
+// Diagnóstico no Windows: ampliar o vídeo dentro da janela, sem entrar no
+// fullscreen nativo. Mantém a aceleração de hardware no seu estado normal.
+const WINDOWED_FULLSCREEN_TEST = process.platform === 'win32' && activePreferences.fullscreen === 'windowed';
+const BORDERLESS_FULLSCREEN = process.platform === 'win32' && activePreferences.fullscreen === 'borderless';
 // A camada por cima da tela só existe onde dá pra tirá-la da captura (senão quem
 // assiste veria as marcações duas vezes): Windows 10 2004 ou mais novo, e macOS.
 const OVERLAY_SUPPORTED = process.platform === 'win32' || process.platform === 'darwin' || process.env.WSS_FORCE_OVERLAY === '1';
@@ -31,8 +48,8 @@ const DRAW_SHORTCUT = 'CommandOrControl+Shift+D';
 const REVOKE_SHORTCUT = 'CommandOrControl+Shift+X';
 const PERMISSIONS = new Set(['media', 'display-capture', 'fullscreen', 'clipboard-sanitized-write', 'notifications']);
 
-let config = { server: null, trusted: {}, bounds: null, maximized: false, obsDisplay: null };
 let mainWindow = null;
+let borderlessFullscreen = null;
 let overlay = null;
 let overlayOwner = null; // de quem é a camada aberta: 'share' (tela escolhida no app) ou 'obs'
 let obsWanted = false; // a sua transmissão do OBS está no ar (com você na sala pelo app)
@@ -54,16 +71,20 @@ let picked = null; // última escolha do seletor: { kind, displayId }
 let serverLoadFailed = false; // a última tentativa de abrir o servidor falhou
 let failure = null; // { message, timer }: aviso de falha esperando a página de erro carregar
 const declined = new Set(); // certificados recusados nesta sessão
+let pendingPreferences = { ...activePreferences };
+let settingsPanel;
 
 // ---------- configuração ----------
 
-const configFile = () => path.join(app.getPath('userData'), 'config.json');
+function configFile() { return path.join(app.getPath('userData'), 'config.json'); }
 
 function loadConfig() {
   try {
     config = { ...config, ...JSON.parse(fs.readFileSync(configFile(), 'utf8')) };
   } catch {}
   if (!config.trusted || typeof config.trusted !== 'object') config.trusted = {};
+  config.desktop = normalizePreferences(config.desktop);
+  if (config.pendingServer) { config.server = config.pendingServer; delete config.pendingServer; }
   if (process.env.WSS_SERVER) config.server = normalizeServer(process.env.WSS_SERVER);
 }
 
@@ -71,8 +92,10 @@ function saveConfig() {
   try {
     fs.mkdirSync(app.getPath('userData'), { recursive: true });
     fs.writeFileSync(configFile(), JSON.stringify(config, null, 2));
+    return true;
   } catch (err) {
     console.error('Não deu pra salvar a configuração:', err.message);
+    return false;
   }
 }
 
@@ -143,6 +166,8 @@ function createMainWindow() {
     icon: ICON,
     backgroundColor: '#07080d',
     autoHideMenuBar: true,
+    frame: !BORDERLESS_FULLSCREEN,
+    thickFrame: !BORDERLESS_FULLSCREEN,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -151,14 +176,29 @@ function createMainWindow() {
       // Transmissão e voz continuam firmes com a janela minimizada ou atrás de outras.
       backgroundThrottling: false,
       autoplayPolicy: 'no-user-gesture-required',
+      disableHtmlFullscreenWindowResize: WINDOWED_FULLSCREEN_TEST || BORDERLESS_FULLSCREEN,
+      additionalArguments: BORDERLESS_FULLSCREEN ? ['--wss-borderless-window'] : [],
     },
   });
   if (config.maximized) mainWindow.maximize();
   mainWindow.once('ready-to-show', () => {
-    if (!SELF_TEST) mainWindow.show();
+    if (!SELF_TEST) {
+      mainWindow.show();
+      if (process.argv.includes('--settings')) openSettings();
+    }
   });
 
   const { webContents } = mainWindow;
+  if (BORDERLESS_FULLSCREEN) {
+    borderlessFullscreen = createBorderlessFullscreen(mainWindow, screen,
+      (state) => { toPage('desktop:window-state', state); log('system', state.fullscreen ? 'Tela cheia sem bordas ativada.' : 'Janela restaurada.'); });
+    mainWindow.on('enter-html-full-screen', () => borderlessFullscreen.set('html', true));
+    mainWindow.on('leave-html-full-screen', () => borderlessFullscreen.set('html', false));
+    mainWindow.on('focus', () => borderlessFullscreen.focus(true));
+    mainWindow.on('blur', () => borderlessFullscreen.focus(false));
+    mainWindow.on('maximize', () => borderlessFullscreen.publish());
+    mainWindow.on('unmaximize', () => borderlessFullscreen.publish());
+  }
   // Links (do chat, do README...) abrem no navegador; nada sai do servidor aqui dentro.
   webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
@@ -172,12 +212,14 @@ function createMainWindow() {
   webContents.on('did-start-navigation', (details) => {
     if (!details.isMainFrame || details.isSameDocument) return;
     updates.pageGone();
+    if (borderlessFullscreen) borderlessFullscreen.exit();
     setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
   webContents.on('render-process-gone', () => setKeyCapture(false));
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
     serverLoadFailed = true;
+    log('error', `Falha ao carregar o servidor: ${description} (${code}).`, 'error');
     // Trocar de página enquanto o Chromium ainda monta a página de erro deixa a janela
     // sem desenhar: espera ela terminar de carregar (ou um tempo, se não vier).
     if (failure) clearTimeout(failure.timer);
@@ -187,6 +229,9 @@ function createMainWindow() {
     };
   });
   webContents.on('did-finish-load', async () => {
+    await webContents.insertCSS(fs.readFileSync(path.join(PAGES, 'window.css'), 'utf8'));
+    if (borderlessFullscreen) borderlessFullscreen.publish();
+    log('connection', isServerUrl(webContents.getURL()) ? 'Página da sala carregada.' : 'Tela de configuração carregada.');
     if (SELF_TEST) {
       const keys = await selfTestKeys();
       console.log(`SELF-TEST ${keys === 'ok' ? 'OK' : `TECLADO: ${keys}`}: ${webContents.getURL().split('?')[0]}`);
@@ -205,20 +250,33 @@ function createMainWindow() {
     if (!ok) showSetup('Esse endereço abriu, mas não é um servidor do Web Screen Share.');
   });
   webContents.on('render-process-gone', (event, details) => {
+    log('error', `Processo da interface encerrado: ${details.reason}, código ${details.exitCode}.`, 'error');
+    if (borderlessFullscreen) borderlessFullscreen.exit();
     obsWanted = false;
     closeOverlay();
     if (details.reason !== 'clean-exit') openServer();
   });
   webContents.on('before-input-event', (event, input) => handleShortcut(event, input));
+  mainWindow.on('unresponsive', () => log('error', 'A interface deixou de responder.', 'warn'));
+  mainWindow.on('responsive', () => log('system', 'A interface voltou a responder.'));
+  webContents.on('console-message', (event) => {
+    if (event.level === 'warning' || event.level === 'error') {
+      log('error', event.message || 'Aviso da interface.', event.level === 'error' ? 'error' : 'warn');
+    }
+  });
 
   mainWindow.on('focus', () => mainWindow.flashFrame(false));
   mainWindow.on('close', () => {
-    config.maximized = mainWindow.isMaximized();
-    if (!config.maximized && !mainWindow.isMinimized()) config.bounds = mainWindow.getBounds();
+    const restore = borderlessFullscreen && borderlessFullscreen.restoreState;
+    config.maximized = restore ? restore.maximized : mainWindow.isMaximized();
+    if (restore) config.bounds = restore.bounds;
+    else if (!config.maximized && !mainWindow.isMinimized()) config.bounds = mainWindow.getBounds();
     saveConfig();
   });
   mainWindow.on('closed', () => {
+    if (settingsPanel) settingsPanel.close();
     mainWindow = null;
+    borderlessFullscreen = null;
     closeOverlay();
     app.quit();
   });
@@ -234,13 +292,82 @@ function handleShortcut(event, input) {
   let handled = true;
   if (key === 'f5' || (ctrl && !input.shift && key === 'r')) webContents.reload();
   else if (ctrl && input.shift && key === 'r') webContents.reloadIgnoringCache();
-  else if (key === 'f11') mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  else if (key === 'f11') {
+    if (borderlessFullscreen) {
+      if (borderlessFullscreen.active) exitBorderlessFullscreen();
+      else borderlessFullscreen.set('window', true);
+    } else if (WINDOWED_FULLSCREEN_TEST) {
+      if (mainWindow.isMaximized()) mainWindow.unmaximize();
+      else mainWindow.maximize();
+    } else mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  }
+  else if (key === 'escape' && borderlessFullscreen && borderlessFullscreen.active) exitBorderlessFullscreen();
+  else if (ctrl && (key === ',' || input.code === 'Comma')) openSettings();
   else if (key === 'f12' || (ctrl && input.shift && key === 'i')) webContents.toggleDevTools();
   else if (ctrl && (key === '=' || key === '+')) webContents.setZoomLevel(Math.min(webContents.getZoomLevel() + 0.5, 4));
   else if (ctrl && key === '-') webContents.setZoomLevel(Math.max(webContents.getZoomLevel() - 0.5, -3));
   else if (ctrl && key === '0') webContents.setZoomLevel(0);
   else handled = false;
   if (handled) event.preventDefault();
+}
+
+function exitBorderlessFullscreen() {
+  if (!borderlessFullscreen) return;
+  borderlessFullscreen.exit();
+  mainWindow.webContents.executeJavaScript('document.fullscreenElement ? document.exitFullscreen() : undefined').catch(() => {});
+}
+
+ipcMain.on('desktop:window-action', (event, action) => {
+  if (!BORDERLESS_FULLSCREEN || (!fromServer(event) && !fromSetup(event))) return;
+  if (action === 'close') mainWindow.close();
+  else if (action === 'minimize') mainWindow.minimize();
+  else if (action === 'maximize' && !borderlessFullscreen.active) {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  }
+});
+
+function openSettings(section = 'profile') {
+  if (borderlessFullscreen && borderlessFullscreen.active) exitBorderlessFullscreen();
+  if (settingsPanel) settingsPanel.open(section);
+}
+ipcMain.on('desktop:settings-open', (event, section) => {
+  if (fromServer(event) || fromSetup(event)) openSettings(section);
+});
+ipcMain.on('desktop:activity', (event, entry) => {
+  if (fromServer(event)) activity.add(entry);
+});
+
+function settingsState() {
+  const restartRequired = Boolean(config.pendingServer)
+    || pendingPreferences.fullscreen !== activePreferences.fullscreen
+    || pendingPreferences.hardwareAcceleration !== activePreferences.hardwareAcceleration;
+  return {
+    server: config.pendingServer || config.server, activeServer: config.server,
+    preferences: pendingPreferences, active: activePreferences, restartRequired, log: activity.snapshot(),
+    environment: {
+      app: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome,
+      platform: `${process.platform} ${process.arch}`,
+      displays: screen.getAllDisplays().map((d) => `${d.label || `Monitor ${d.id}`}: ${Math.round(d.size.width * d.scaleFactor)}×${Math.round(d.size.height * d.scaleFactor)} · ${Math.round(d.displayFrequency)} Hz · escala ${Math.round(d.scaleFactor * 100)}%`),
+    },
+  };
+}
+
+function saveSettings(value) {
+  const server = normalizeServer(value && value.server);
+  if (!server) return { ok: false, error: 'Informe um endereço HTTP ou HTTPS válido.' };
+  const preferences = normalizePreferences(value.preferences);
+  if (process.platform !== 'win32' && preferences.fullscreen !== 'native') return { ok: false, error: 'Este modo de tela cheia está disponível no Windows.' };
+  const previous = { ...config };
+  config.desktop = preferences;
+  if (server === config.server) delete config.pendingServer;
+  else config.pendingServer = server;
+  if (!saveConfig()) { config = previous; return { ok: false, error: 'Não foi possível salvar as configurações.' }; }
+  pendingPreferences = preferences;
+  activity.configure(preferences);
+  if (!preferences.overlay) closeOverlay();
+  log('system', 'Configurações do aplicativo salvas.');
+  return { ok: true };
 }
 
 // ---------- seletor de tela/janela ----------
@@ -356,7 +483,7 @@ function openObsOverlay() {
 }
 
 function openOverlay(display, owner) {
-  if (!OVERLAY_SUPPORTED || !display) return false;
+  if (!OVERLAY_SUPPORTED || !display || !pendingPreferences.overlay) return false;
   closeOverlay();
   overlay = new BrowserWindow({
     ...display.bounds,
@@ -688,6 +815,7 @@ ipcMain.on('desktop:identity', (event, data) => {
 
 ipcMain.handle('desktop:sharing', (event, on) => {
   if (!fromServer(event)) return { overlay: false };
+  log('stream', on ? 'Captura local iniciada.' : 'Captura local encerrada.');
   if (!on) {
     closeOverlay('share');
     if (obsWanted && !overlay) openObsOverlay();
@@ -751,6 +879,7 @@ ipcMain.handle('setup:connect', (event, raw) => {
   const origin = normalizeServer(raw);
   if (!origin) return { error: 'Endereço inválido. Exemplo: https://meu-nas.tail1234.ts.net:3100' };
   config.server = origin;
+  delete config.pendingServer;
   saveConfig();
   openServer();
   return { ok: true };
@@ -811,7 +940,25 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId('com.webscreenshare.desktop');
     Menu.setApplicationMenu(null);
-    loadConfig();
+    const roomSettings = createRoomSettings({ getContents: () => mainWindow?.webContents, isServer: isServerUrl });
+    settingsPanel = createSettingsPanel({
+      getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity,
+      room: roomSettings,
+      restart: () => {
+        for (const name of ['WSS_SERVER', 'WSS_DISABLE_HARDWARE_ACCELERATION', 'WSS_WINDOWED_FULLSCREEN', 'WSS_BORDERLESS_FULLSCREEN']) delete process.env[name];
+        setImmediate(() => { app.relaunch(); app.quit(); });
+        return { ok: true };
+      },
+      checkUpdate: async () => {
+        const roomState = await roomSettings.read().catch(() => null);
+        if (roomState?.available) return roomSettings.action({ type: 'check-updates' });
+        if (!updates.mode) return { message: 'Executando pelo código-fonte. Atualizações automáticas estão desativadas.' };
+        await updates.check();
+        const state = updates.listen();
+        return { message: state.state === 'available' ? `Versão ${state.version} disponível. Use o aviso da sala para atualizar.` : state.state === 'error' ? 'Não foi possível verificar atualização. Consulte o aviso da sala.' : 'Verificação concluída. Consulte o aviso de atualização da sala.' };
+      },
+    });
+    log('system', `App ${app.getVersion()} iniciado · Electron ${process.versions.electron} · tela cheia ${activePreferences.fullscreen} · aceleração ${activePreferences.hardwareAcceleration ? 'ativada' : 'desativada'}.`);
     if (SELF_TEST) {
       setTimeout(() => {
         console.log('SELF-TEST FAIL: a janela não carregou');
@@ -839,9 +986,11 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     screen.on('display-metrics-changed', (event, display) => {
+      if (borderlessFullscreen) borderlessFullscreen.position();
       if (overlay && overlay.displayId === display.id) overlay.setBounds(display.bounds);
     });
     screen.on('display-removed', (event, display) => {
+      if (borderlessFullscreen) borderlessFullscreen.position();
       if (overlay && overlay.displayId === display.id) closeOverlay();
     });
 
@@ -857,5 +1006,6 @@ if (!app.requestSingleInstanceLock()) {
     if (input) input.close();
     if (keyHook) keyHook.stop();
   });
+  app.on('child-process-gone', (_event, details) => log('error', `Processo ${details.type}: ${details.reason}, código ${details.exitCode}.`, 'error'));
   app.on('window-all-closed', () => app.quit());
 }
