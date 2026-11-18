@@ -1,0 +1,35 @@
+/* Controles locais da janela sem bordas; não depende da versão do servidor. */
+html[data-wss-borderless] body { box-sizing: border-box; padding-top: 32px; }
+html[data-wss-borderless][data-wss-fullscreen] body { padding-top: 0; }
+#wss-window-bar {
+  position: fixed; inset: 0 0 auto; height: 32px; z-index: 2147483647;
+  display: flex; align-items: center; background: #10121c; color: #eef0f8;
+  font: 12px "Segoe UI", sans-serif; user-select: none; app-region: drag;
+}
+#wss-window-bar span { flex: 1; padding-left: 12px; }
+#wss-window-bar button {
+  app-region: no-drag; width: 46px; height: 32px; border: 0; border-radius: 0;
+  padding: 0; margin: 0; background: transparent; color: inherit; font: 16px "Segoe UI", sans-serif;
+}
+#wss-window-bar button:hover { background: #303342; }
+#wss-window-bar button:last-child:hover { background: #c42b1c; }
+html[data-wss-fullscreen] #wss-window-bar { display: none; }
+.wss-settings-fallback {
+  position: fixed; right: 16px; bottom: 14px; z-index: 1000; padding: 8px 12px;
+  border: 1px solid #353d57; border-radius: 8px; background: #171d2c; color: #dbe2fc;
+  cursor: pointer; font: 12px "Segoe UI", sans-serif;
+}
+html[data-wss-borderless] .wss-settings-fallback,
+html:has(:fullscreen) .wss-settings-fallback,
+html[data-wss-fullscreen] .wss-settings-fallback { display: none; }
+html[data-wss-settings-unified] .sidebar-links,
+html[data-wss-settings-unified] #btn-cursor,
+html[data-wss-settings-unified] #btn-sounds,
+html[data-wss-settings-unified] #btn-obs { display: none !important; }
+/* O adaptador reutiliza a lógica dos diálogos na página conectada. */
+html[data-wss-settings-adapter] #profile-dialog,
+html[data-wss-settings-adapter] #control-dialog,
+html[data-wss-settings-adapter] #diag-dialog { visibility: hidden !important; }
+html[data-wss-settings-adapter] #profile-dialog::backdrop,
+html[data-wss-settings-adapter] #control-dialog::backdrop,
+html[data-wss-settings-adapter] #diag-dialog::backdrop { background: transparent !important; backdrop-filter: none !important; }
