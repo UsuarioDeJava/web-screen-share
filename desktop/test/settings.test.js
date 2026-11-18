@@ -55,7 +55,8 @@ test('ações da sala aceitam só comandos conhecidos e fotos limitadas', () => 
   assert.throws(() => validateRoomAction({ type: 'color', color: 'url(javascript:bad)' }));
   assert.throws(() => validateRoomAction({ type: 'cursor', field: 'share', enabled: 'false' }));
   assert.throws(() => validateRoomAction({ type: 'photo', mime: 'text/html', data: 'YQ==' }));
-  assert.deepEqual(validateRoomAction({ type: 'color', color: '#12ab34', unrelated: 'ignorar' }), { type: 'color', color: '#12ab34' });
+  assert.deepEqual(validateRoomAction({ type: 'color', color: '#12AB34', unrelated: 'ignorar' }), { type: 'color', color: '#12ab34', commit: true });
+  assert.deepEqual(validateRoomAction({ type: 'color', color: '#12ab34', commit: false }), { type: 'color', color: '#12ab34', commit: false });
   assert.deepEqual(validateRoomAction({ type: 'obs-display', value: 'off' }), { type: 'obs-display', value: 'off' });
   assert.throws(() => validateRoomAction({ type: 'obs-display', value: 'qualquer monitor' }));
 });

@@ -422,6 +422,21 @@ Além do navegador, dá pra usar o app de desktop. Ele abre a mesma sala do seu
 servidor (então tudo que muda no servidor chega nele sem reinstalar) e acrescenta o
 que o navegador não faz:
 
+- **Configurações** (a engrenagem ao lado do seu nome, clique no seu avatar/nome ou
+  **Ctrl+,**): uma janela só com **Perfil** (foto e cor, com o mesmo seletor da sala),
+  **Ponteiro e controle** (mostrar o seu mouse, ver o de quem assiste, sons, quem pode
+  controlar), **Aplicativo** (modo de tela cheia, aceleração de hardware, marcações na
+  tela, registro de atividade, versões e **Verificar atualização**), **Conexão e
+  testes** (endereço do servidor e o teste de conexão), **OBS e overlays** (endereço
+  do OBS e o monitor das marcações), **Log em tempo real** (quem entrou e saiu,
+  transmissões, conexões e erros, com busca, filtros e exportação em JSON; nada de
+  conteúdo do chat ou da mídia) e **Atalhos**. A sala continua conectada enquanto
+  você mexe; servidor, tela cheia e aceleração valem depois de **Reiniciar e aplicar**.
+- **Tela cheia "sem bordas"** (Configurações → Aplicativo, no Windows): em vez da tela
+  cheia nativa, a janela cobre o monitor inteiro sem moldura (Esc/F11 voltam ao
+  tamanho de antes). Pra quem sentir o vídeo ou o mouse engasgando na tela cheia
+  nativa. Também tem o modo "vídeo ampliado dentro da janela". O padrão continua sendo
+  a nativa.
 - **Marcações na sua tela de verdade**: transmitindo a tela inteira pelo app, quando
   alguém aponta (Alt + clique), desenha (Alt + arrastar) ou reage na sua transmissão,
   aparece também no seu monitor, por cima de tudo (até de jogo em tela cheia "sem
@@ -558,3 +573,5 @@ install && npm start`.
   desligado).
 - Ideias pro futuro (skins do mouse, enfeites, estilos de clique, ping e pincel): veja
   [IDEIAS.md](IDEIAS.md).
+- Desenvolvimento do app (rodar do código, testes, opções de diagnóstico): veja
+  [DEVELOPMENT.md](DEVELOPMENT.md).

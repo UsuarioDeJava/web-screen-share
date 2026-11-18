@@ -48,9 +48,62 @@ async function readRoomSettings(section) {
     }));
     const controlNote = $('control-note') && !$('control-note').hidden ? $('control-note').textContent : '';
     if (controls?.open && !controlWasOpen) controls.close();
+    // Cor: a escolhida (#rrggbb), a de antes da cor livre (só o tom), a automática do nick,
+    // a que aparece agora no mouse/marcações, as recentes e as que mais aparecem na foto.
+    const name = $('me-name').textContent.trim();
+    const hslHex = (h, s, l) => {
+      const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+      const f = (n) => { const k = (n + h / 30) % 12; return Math.round((l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255).toString(16).padStart(2, '0'); };
+      return `#${f(0)}${f(8)}${f(4)}`;
+    };
+    let autoHue = 0;
+    for (const ch of name) autoHue = (autoHue * 31 + ch.codePointAt(0)) >>> 0;
+    autoHue %= 360;
+    const savedColor = String(localStorage.getItem('wss-color') || '').toLowerCase();
+    const color = /^#[0-9a-f]{6}$/.test(savedColor) ? savedColor : null;
+    const savedHue = parseInt(localStorage.getItem('wss-hue'), 10);
+    const legacyHue = !color && savedHue >= 0 && savedHue < 360 ? savedHue : null;
+    let recent = [];
+    try { recent = JSON.parse(localStorage.getItem('wss-color-recent') || '[]').filter((c) => /^#[0-9a-f]{6}$/.test(c)).slice(0, 8); } catch {}
+    let photoColors = [];
+    if (photo) {
+      try {
+        const image = new Image();
+        image.src = photo;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = 48;
+        canvas.height = 48;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(image, 0, 0, 48, 48);
+        const { data } = ctx.getImageData(0, 0, 48, 48);
+        const buckets = new Map();
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] < 128) continue;
+          const key = ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4);
+          const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+          b.n += 1; b.r += data[i]; b.g += data[i + 1]; b.b += data[i + 2];
+          buckets.set(key, b);
+        }
+        const ranked = [...buckets.values()].map((b) => {
+          const rgb = [b.r / b.n, b.g / b.n, b.b / b.n];
+          const max = Math.max(...rgb) / 255;
+          const sat = max ? (max - Math.min(...rgb) / 255) / max : 0;
+          return { rgb, score: b.n * (0.3 + sat) * (max < 0.15 ? 0.15 : 1) };
+        }).sort((a, b) => b.score - a.score);
+        const picked = [];
+        for (const { rgb } of ranked) {
+          if (picked.every((p) => Math.hypot(p[0] - rgb[0], p[1] - rgb[1], p[2] - rgb[2]) > 64)) picked.push(rgb);
+          if (picked.length === 6) break;
+        }
+        photoColors = picked.map((rgb) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`);
+      } catch {}
+    }
     return {
-      available: true, name: $('me-name').textContent.trim(), photo,
-      color: localStorage.getItem('wss-color') || null,
+      available: true, name, photo,
+      color, legacyHue, recent, photoColors,
+      autoFill: `hsl(${autoHue} 45% 42%)`,
+      markColor: color || hslHex(legacyHue === null ? autoHue : legacyHue, 95, 64),
       shareCursor: localStorage.getItem('wss-cursor') !== '0',
       showCursors: localStorage.getItem('wss-show-cursors') !== '0',
       sounds: window.RoomSounds ? window.RoomSounds.enabled : localStorage.getItem('wss-sounds') !== '0',
@@ -94,7 +147,9 @@ async function applyRoomAction(command) {
         if (!field) throw new Error('Cor personalizada indisponível nesta versão do servidor.');
         field.value = command.color;
         field.dispatchEvent(new Event('input', { bubbles: true }));
-        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        // commit: confirmar (manda na hora e entra nas recentes). Sem, é a cor "ao vivo"
+        // enquanto você arrasta no seletor (a sala manda depois de 300 ms parada).
+        if (command.commit) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       }
     } else if (command.type === 'photo' || command.type === 'photo-remove') {
       const profile = $('profile-dialog');
@@ -171,7 +226,9 @@ function validateRoomAction(value) {
   if (value.type === 'sounds' && typeof value.enabled === 'boolean') return { type: value.type, enabled: value.enabled };
   if (value.type === 'obs-display' && typeof value.value === 'string' && (value.value === 'off' || /^-?\d{1,20}$/.test(value.value))) return { type: value.type, value: value.value };
   if (value.type === 'control' && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 80 && typeof value.grant === 'boolean') return { type: value.type, name: value.name, grant: value.grant };
-  if (value.type === 'color' && (value.color === null || /^#[0-9a-f]{6}$/i.test(value.color))) return { type: value.type, color: value.color };
+  if (value.type === 'color' && (value.color === null || /^#[0-9a-f]{6}$/i.test(value.color))) {
+    return { type: value.type, color: value.color === null ? null : value.color.toLowerCase(), commit: value.commit !== false };
+  }
   if (['photo-remove', 'diagnostics', 'check-updates'].includes(value.type)) return { type: value.type };
   if (value.type === 'photo' && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(value.mime)
     && typeof value.data === 'string' && value.data.length <= 6990510 && /^[A-Za-z0-9+/]*={0,2}$/.test(value.data)

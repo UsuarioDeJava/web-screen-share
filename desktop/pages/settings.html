@@ -23,7 +23,35 @@
     <section id="panel-profile" role="tabpanel" aria-labelledby="tab-profile">
       <p class="room-unavailable hint" hidden></p>
       <section class="card"><h2>Seu perfil na sala</h2><div class="user-preview"><span id="profile-initial" class="user-initial">?</span><img id="profile-photo" alt="Sua foto de perfil" hidden><div><strong id="profile-name">Entre na sala</strong><p class="hint">A foto e a cor aparecem na lista, no chat e no seu ponteiro.</p></div></div><div class="actions"><button id="choose-photo" type="button" class="btn btn-primary room-control">Escolher foto</button><button id="remove-photo" type="button" class="btn room-control">Remover foto</button><input id="profile-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></div><p class="hint">PNG, JPG, WebP ou GIF animado, até 5 MB. O perfil é salvo nesta sala neste PC.</p></section>
-      <section class="card"><h2>Cor do perfil e ponteiro</h2><div id="color-presets" class="color-presets"></div><div class="actions"><input id="profile-color" type="color" value="#8590ff" aria-label="Cor personalizada" class="room-control"><button id="apply-color" type="button" class="btn room-control">Aplicar cor</button><button id="auto-color" type="button" class="btn room-control">Cor automática</button></div><p id="profile-color-label" class="hint"></p></section>
+      <section class="card"><h2>Cor do perfil e ponteiro</h2>
+        <div class="color-choices">
+          <button id="color-auto" class="color-big room-control" type="button" title="Automática: a cor que o seu nick já tinha" aria-label="Cor automática">
+            <svg class="color-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+          </button>
+          <button id="color-custom" class="color-big color-custom room-control" type="button" title="Cor personalizada: escolha qualquer cor" aria-label="Cor personalizada" aria-expanded="false" aria-controls="color-picker">
+            <svg class="color-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+            <svg class="color-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5.5 4 4"/><path d="M17 3a2.8 2.8 0 0 1 4 4L8 20l-5 1 1-5z"/></svg>
+          </button>
+          <div id="color-presets" class="color-presets"></div>
+        </div>
+        <div id="color-picker" class="color-picker" hidden>
+          <div id="cp-area" class="cp-area" role="slider" tabindex="0" aria-label="Saturação e brilho (use as setas)"><span class="cp-knob"></span></div>
+          <div id="cp-hue" class="cp-hue" role="slider" tabindex="0" aria-label="Tom (use as setas)" aria-valuemin="0" aria-valuemax="359"><span class="cp-knob"></span></div>
+          <div class="cp-fields">
+            <span id="cp-preview" class="cp-preview" aria-hidden="true"></span>
+            <label class="cp-field cp-field-hex"><input id="cp-hex" type="text" maxlength="7" spellcheck="false" autocomplete="off"><span>HEX</span></label>
+            <label class="cp-field"><input id="cp-r" type="number" min="0" max="255" inputmode="numeric"><span>R</span></label>
+            <label class="cp-field"><input id="cp-g" type="number" min="0" max="255" inputmode="numeric"><span>G</span></label>
+            <label class="cp-field"><input id="cp-b" type="number" min="0" max="255" inputmode="numeric"><span>B</span></label>
+            <button id="cp-eyedropper" class="cp-eyedropper" type="button" title="Conta-gotas: clique e pegue a cor de qualquer lugar da tela" aria-label="Conta-gotas" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/></svg>
+            </button>
+          </div>
+          <div id="cp-photo" class="cp-row" hidden><span class="cp-row-label">Da sua foto</span><div class="cp-chips"></div></div>
+          <div id="cp-recent" class="cp-row" hidden><span class="cp-row-label">Recentes</span><div class="cp-chips"></div></div>
+        </div>
+        <p id="profile-color-label" class="hint"></p>
+      </section>
     </section>
     <section id="panel-pointer" role="tabpanel" aria-labelledby="tab-pointer" hidden>
       <p class="room-unavailable hint" hidden></p>

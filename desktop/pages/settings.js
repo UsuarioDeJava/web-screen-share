@@ -80,6 +80,9 @@ async function load() {
     $('logging').checked = value.preferences.logging;
     $('log-limit').value = value.preferences.logLimit;
   }
+  // Os modos "sem bordas" e "vídeo ampliado na janela" só existem no Windows.
+  const windows = /^win32/.test(value.environment.platform);
+  for (const option of $('fullscreen').options) option.hidden = option.disabled = !windows && option.value !== 'native';
   pendingRestart = value.restartRequired;
   $('restart').hidden = !pendingRestart;
   $('version').textContent = `App ${value.environment.app}`;
@@ -134,28 +137,19 @@ async function refreshRoom() {
   if (!roomState.available) return;
   $('profile-name').textContent = roomState.name;
   $('profile-initial').textContent = [...roomState.name][0] || '?';
-  $('profile-initial').style.backgroundColor = roomState.color || '#5363ae';
+  const fill = roomState.color || (roomState.legacyHue !== null && roomState.legacyHue !== undefined ? `hsl(${roomState.legacyHue} 45% 42%)` : roomState.autoFill) || '#5363ae';
+  $('profile-initial').style.backgroundColor = fill;
+  $('profile-initial').style.color = roomState.color ? inkFor(roomState.color) : '#fff';
   $('profile-initial').hidden = Boolean(roomState.photo);
   $('profile-photo').hidden = !roomState.photo;
   if (roomState.photo) $('profile-photo').src = roomState.photo;
   else $('profile-photo').removeAttribute('src');
   $('remove-photo').disabled = !roomState.photo;
-  $('profile-color').value = roomState.color || '#8590ff';
-  $('profile-color-label').textContent = roomState.color ? `Cor atual: ${roomState.color.toUpperCase()}` : 'Cor automática do seu nome.';
   $('share-cursor').checked = roomState.shareCursor;
   $('show-cursors').checked = roomState.showCursors;
   $('room-sounds').checked = roomState.sounds;
   $('share-cursor').disabled = $('show-cursors').disabled = !roomState.controlsAvailable;
-  const colors = document.createDocumentFragment();
-  for (const color of roomState.presets || []) {
-    const button = document.createElement('button'); button.type = 'button';
-    button.style.backgroundColor = color; button.title = color.toUpperCase();
-    button.setAttribute('aria-label', `Usar cor ${color}`);
-    button.setAttribute('aria-pressed', color === roomState.color);
-    button.addEventListener('click', () => roomAction({ type: 'color', color }));
-    colors.append(button);
-  }
-  $('color-presets').replaceChildren(colors);
+  renderColor();
   $('control-note').textContent = roomState.controlNote || 'Escolha quem pode controlar seu mouse e teclado.';
   const people = document.createDocumentFragment();
   for (const person of roomState.controlPeople || []) {
@@ -187,8 +181,6 @@ async function roomAction(command) {
 $('share-cursor').addEventListener('change', () => roomAction({ type: 'cursor', field: 'share', enabled: $('share-cursor').checked }));
 $('show-cursors').addEventListener('change', () => roomAction({ type: 'cursor', field: 'show', enabled: $('show-cursors').checked }));
 $('room-sounds').addEventListener('change', () => roomAction({ type: 'sounds', enabled: $('room-sounds').checked }));
-$('apply-color').addEventListener('click', () => roomAction({ type: 'color', color: $('profile-color').value }));
-$('auto-color').addEventListener('click', () => roomAction({ type: 'color', color: null }));
 $('choose-photo').addEventListener('click', () => $('profile-file').click());
 $('remove-photo').addEventListener('click', () => roomAction({ type: 'photo-remove' }));
 $('profile-file').addEventListener('change', async (event) => {
@@ -263,3 +255,250 @@ $('copy-obs-url').addEventListener('click', async () => {
 });
 load().catch((error) => status(error.message, true));
 refreshRoom();
+
+// ---------- cor: o mesmo seletor da sala (estilo Discord) ----------
+// Quadrado de saturação × brilho, faixa do tom, HEX e RGB, conta-gotas, cores prontas, da
+// sua foto e recentes. A cor vai pra sala pelo adaptador: "ao vivo" enquanto você arrasta
+// (a sala espera 300 ms parada pra mandar) e confirmada ao soltar (entra nas recentes).
+const HEX_COLOR = /^#[0-9a-f]{6}$/;
+const clampByte = (v) => Math.round(Math.min(255, Math.max(0, Number(v) || 0)));
+const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const rgbToHex = (r, g, b) => `#${[r, g, b].map((v) => clampByte(v).toString(16).padStart(2, '0')).join('')}`;
+function hsvToRgb(h, s, v) {
+  const f = (n) => { const k = (n + h / 60) % 6; return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255; };
+  return [f(5), f(3), f(1)];
+}
+function rgbToHsv(r, g, b) {
+  const [R, G, B] = [r / 255, g / 255, b / 255];
+  const max = Math.max(R, G, B);
+  const d = max - Math.min(R, G, B);
+  let h = 0;
+  if (d) h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
+}
+function normalizeHex(raw) {
+  const text = String(raw == null ? '' : raw).trim().toLowerCase();
+  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(text);
+  if (rgb) return rgbToHex(rgb[1], rgb[2], rgb[3]);
+  const hex = text.replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/.test(hex)) return `#${[...hex].map((c) => c + c).join('')}`;
+  return /^[0-9a-f]{6}$/.test(hex) ? `#${hex}` : null;
+}
+function inkFor(hex) {
+  const [r, g, b] = hexToRgb(hex).map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.36 ? '#12141c' : '#ffffff';
+}
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+
+const picker = { h: 0, s: 1, v: 1 }; // o tom fica guardado mesmo no cinza/preto
+const pickerHex = () => rgbToHex(...hsvToRgb(picker.h, picker.s, picker.v));
+function pickerFrom(hex) {
+  const hsv = rgbToHsv(...hexToRgb(hex));
+  if (hsv.s > 0.001 && hsv.v > 0.001) picker.h = hsv.h;
+  picker.s = hsv.s;
+  picker.v = hsv.v;
+}
+
+function renderPicker(force = false) {
+  if ($('color-picker').hidden) return;
+  const hex = pickerHex();
+  $('cp-area').style.setProperty('--hue', `hsl(${picker.h} 100% 50%)`);
+  $('cp-area').style.setProperty('--c', hex);
+  $('cp-hue').style.setProperty('--c', `hsl(${picker.h} 100% 50%)`);
+  $('cp-area').firstElementChild.style.left = `${picker.s * 100}%`;
+  $('cp-area').firstElementChild.style.top = `${(1 - picker.v) * 100}%`;
+  $('cp-hue').firstElementChild.style.left = `${(picker.h / 360) * 100}%`;
+  $('cp-area').setAttribute('aria-valuetext', `saturação ${Math.round(picker.s * 100)}%, brilho ${Math.round(picker.v * 100)}%`);
+  $('cp-hue').setAttribute('aria-valuenow', String(Math.round(picker.h)));
+  $('cp-preview').style.background = hex;
+  const typing = force ? null : document.activeElement; // não mexe no campo que você está digitando
+  if (typing !== $('cp-hex')) $('cp-hex').value = hex.toUpperCase();
+  hexToRgb(hex).forEach((v, i) => { const field = $(['cp-r', 'cp-g', 'cp-b'][i]); if (typing !== field) field.value = String(v); });
+}
+
+function renderChips(row, colors) {
+  row.hidden = !colors.length;
+  row.querySelector('.cp-chips').replaceChildren(...colors.map((color) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'cp-chip room-control';
+    chip.style.setProperty('--sw', color);
+    chip.title = color.toUpperCase();
+    chip.setAttribute('aria-label', `Usar a cor ${color.toUpperCase()}`);
+    chip.classList.toggle('active', color === roomState.color);
+    chip.addEventListener('click', () => { pickerFrom(color); sendColor(color, true); });
+    return chip;
+  }));
+}
+
+function renderColor() {
+  if (!roomState.available) return;
+  const color = HEX_COLOR.test(roomState.color || '') ? roomState.color : null;
+  const presets = roomState.presets || [];
+  const isAuto = !color && (roomState.legacyHue === null || roomState.legacyHue === undefined);
+  const isPreset = Boolean(color) && presets.includes(color);
+  const auto = $('color-auto');
+  auto.style.setProperty('--sw', roomState.autoFill || '#5363ae');
+  auto.classList.toggle('active', isAuto);
+  auto.setAttribute('aria-pressed', String(isAuto));
+  const custom = $('color-custom');
+  const customOn = !isAuto && !isPreset;
+  const mark = roomState.markColor || color;
+  custom.classList.toggle('active', customOn);
+  custom.classList.toggle('has-color', customOn && Boolean(mark));
+  custom.setAttribute('aria-pressed', String(customOn));
+  custom.style.setProperty('--sw', customOn && mark ? mark : 'transparent');
+  custom.style.setProperty('--ink', customOn && mark ? inkFor(mark) : '#9ca6bf');
+  const known = [...$('color-presets').children].map((b) => b.dataset.color).join();
+  if (known !== presets.join()) {
+    $('color-presets').replaceChildren(...presets.map((preset) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'room-control';
+      button.dataset.color = preset;
+      button.title = preset.toUpperCase();
+      button.setAttribute('aria-label', `Cor ${preset.toUpperCase()}`);
+      button.style.setProperty('--sw', preset);
+      button.style.setProperty('--ink', inkFor(preset));
+      button.innerHTML = CHECK;
+      button.addEventListener('click', () => { pickerFrom(preset); sendColor(preset, true); });
+      return button;
+    }));
+  }
+  for (const button of $('color-presets').children) button.setAttribute('aria-pressed', String(button.dataset.color === color));
+  renderChips($('cp-photo'), roomState.photo ? roomState.photoColors || [] : []);
+  renderChips($('cp-recent'), roomState.recent || []);
+  $('profile-color-label').textContent = color ? `Cor atual: ${color.toUpperCase()}`
+    : isAuto ? 'Cor automática do seu nick.' : 'Cor escolhida antes (só o tom). Escolha outra pra trocar.';
+  renderPicker();
+}
+
+function setPickerOpen(open) {
+  $('color-picker').hidden = !open;
+  $('color-custom').setAttribute('aria-expanded', String(open));
+  if (open) pickerFrom(roomState.markColor || roomState.color || '#4d8dff');
+  renderPicker(true);
+}
+
+// Manda a cor pra sala. commit: confirmar (na hora; entra nas recentes). Sem, "ao vivo":
+// só a última de cada ~120 ms vai, uma de cada vez.
+let liveTimer = null;
+let livePending = null;
+let liveBusy = false;
+async function flushLive() {
+  liveTimer = null;
+  if (liveBusy) { liveTimer = setTimeout(flushLive, 60); return; }
+  const color = livePending;
+  livePending = null;
+  if (!color) return;
+  liveBusy = true;
+  try { await api.roomAction({ type: 'color', color, commit: false }); } catch {}
+  liveBusy = false;
+}
+async function sendColor(color, commit) {
+  if (color) { roomState.color = color; roomState.markColor = color; roomState.legacyHue = null; }
+  renderColor();
+  if (!commit) {
+    livePending = color;
+    if (!liveTimer) liveTimer = setTimeout(flushLive, 120);
+    return;
+  }
+  clearTimeout(liveTimer);
+  liveTimer = null;
+  livePending = null;
+  while (liveBusy) await new Promise((resolve) => setTimeout(resolve, 30));
+  await roomAction({ type: 'color', color, commit: true });
+}
+
+$('color-auto').addEventListener('click', () => roomAction({ type: 'color', color: null }));
+$('color-custom').addEventListener('click', () => setPickerOpen($('color-picker').hidden));
+
+function dragSlider(node, apply) {
+  const move = (e) => {
+    const r = node.getBoundingClientRect();
+    apply(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+    sendColor(pickerHex(), false);
+  };
+  node.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !roomState.available) return;
+    e.preventDefault();
+    node.focus();
+    node.setPointerCapture(e.pointerId);
+    move(e);
+  });
+  node.addEventListener('pointermove', (e) => { if (node.hasPointerCapture(e.pointerId)) move(e); });
+  const done = (e) => {
+    if (!node.hasPointerCapture(e.pointerId)) return;
+    node.releasePointerCapture(e.pointerId);
+    sendColor(pickerHex(), true);
+  };
+  node.addEventListener('pointerup', done);
+  node.addEventListener('pointercancel', done);
+}
+dragSlider($('cp-area'), (x, y) => { picker.s = x; picker.v = 1 - y; });
+dragSlider($('cp-hue'), (x) => { picker.h = Math.min(359.9, x * 360); });
+
+let keyCommit = null;
+function arrowKeys(node, apply) {
+  node.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 10 : 1;
+    const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+    if (!delta || !roomState.available) return;
+    e.preventDefault();
+    apply(...delta);
+    sendColor(pickerHex(), false);
+    clearTimeout(keyCommit);
+    keyCommit = setTimeout(() => sendColor(pickerHex(), true), 800); // entra nas recentes só onde parou
+  });
+}
+arrowKeys($('cp-area'), (dx, dy) => {
+  picker.s = Math.min(1, Math.max(0, picker.s + dx / 100));
+  picker.v = Math.min(1, Math.max(0, picker.v + dy / 100));
+});
+arrowKeys($('cp-hue'), (dx, dy) => { picker.h = (picker.h + dx + dy + 360) % 360; });
+
+// Digitando: vale assim que o código fica completo; Enter (ou sair do grupo) confirma.
+const typedColor = () => normalizeHex($('cp-hex').value);
+function rgbColor() {
+  const values = ['cp-r', 'cp-g', 'cp-b'].map((id) => $(id).value.trim());
+  if (!values.every((v) => /^\d{1,3}$/.test(v) && Number(v) <= 255)) return null;
+  return rgbToHex(...values.map(Number));
+}
+for (const [ids, read] of [[['cp-hex'], typedColor], [['cp-r', 'cp-g', 'cp-b'], rgbColor]]) {
+  let dirty = false;
+  const commit = () => {
+    const color = read();
+    if (dirty && color) { pickerFrom(color); sendColor(color, true); }
+    dirty = false;
+    renderPicker(true);
+  };
+  for (const id of ids) {
+    const field = $(id);
+    field.addEventListener('input', () => {
+      dirty = true;
+      const color = read();
+      if (!color || color === roomState.color) return;
+      pickerFrom(color);
+      sendColor(color, false);
+    });
+    field.addEventListener('focusout', (e) => { if (!ids.some((other) => $(other) === e.relatedTarget)) commit(); });
+    field.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      commit();
+      field.select();
+    });
+  }
+}
+
+// Conta-gotas: a cor de qualquer pixel da tela.
+$('cp-eyedropper').hidden = typeof window.EyeDropper !== 'function';
+$('cp-eyedropper').addEventListener('click', async () => {
+  try {
+    const { sRGBHex } = await new window.EyeDropper().open();
+    const color = normalizeHex(sRGBHex);
+    if (!color) return;
+    pickerFrom(color);
+    sendColor(color, true);
+  } catch {} // Esc: desistiu
+});
