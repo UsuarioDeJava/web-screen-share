@@ -4,4 +4,6 @@ npm-debug.log*
 .gitignore
 *.crt
 *.key
-desktop
+desktop/**
+!desktop/shared
+!desktop/shared/**

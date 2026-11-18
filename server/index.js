@@ -46,6 +46,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
+app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'color.js')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Fotos de perfil (PNG, JPG, WebP ou GIF animado), guardadas na memória pelo hash do

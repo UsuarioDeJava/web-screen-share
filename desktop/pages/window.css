@@ -33,3 +33,7 @@ html[data-wss-settings-adapter] #diag-dialog { visibility: hidden !important; }
 html[data-wss-settings-adapter] #profile-dialog::backdrop,
 html[data-wss-settings-adapter] #control-dialog::backdrop,
 html[data-wss-settings-adapter] #diag-dialog::backdrop { background: transparent !important; backdrop-filter: none !important; }
+html[data-wss-overlay-owner] .tag-overlay { display: none !important; }
+html[data-wss-overlay-owner="share"] .tile-self .tag-overlay,
+html[data-wss-overlay-owner="obs"] .tile:not(.tile-self) .tag-overlay { display: inline-flex !important; }
+html[data-wss-overlays-off] .grant-btn { display: none !important; }
