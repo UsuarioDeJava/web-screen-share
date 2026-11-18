@@ -46,7 +46,10 @@ async function captureStream(point) {
   const page = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
   const d = screen.getPrimaryDisplay();
   try {
-    await page.loadURL('data:text/html,<body></body>');
+    // Página "segura" (arquivo local): data: não tem navigator.mediaDevices.
+    const file = require('path').join(require('os').tmpdir(), 'wss-capture-diag.html');
+    fs.writeFileSync(file, '<!doctype html><body></body>');
+    await page.loadFile(file);
     const fx = point.x / d.size.width;
     const fy = point.y / d.size.height;
     return await page.webContents.executeJavaScript(`(async () => {
