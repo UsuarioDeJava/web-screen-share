@@ -1,0 +1,41 @@
+name: Capture diagnostic
+
+# Diagnóstico da camada de marcações no Windows (não gera versão nenhuma).
+on:
+  push:
+    branches:
+      - 'claude/**'
+    paths:
+      - desktop/scripts/capture-diag.js
+      - .github/workflows/capture-diag.yml
+  workflow_dispatch: {}
+
+jobs:
+  diag:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Diagnose
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'diag.json'
+          $env:DIAG_OUT = $out
+          $exe = (Resolve-Path 'node_modules\electron\dist\electron.exe').Path
+          $p = Start-Process -FilePath $exe -ArgumentList 'scripts\capture-diag.js' -Wait -PassThru
+          Write-Host "exit: $($p.ExitCode)"
+          if (Test-Path $out) { Get-Content $out } else { Write-Host 'sem resultado' }
