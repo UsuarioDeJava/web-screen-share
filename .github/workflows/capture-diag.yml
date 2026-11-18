@@ -38,6 +38,10 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP 'diag.json'
           $env:DIAG_OUT = $out
           $exe = (Resolve-Path 'node_modules\electron\dist\electron.exe').Path
-          $p = Start-Process -FilePath $exe -ArgumentList 'scripts\capture-diag.js' -Wait -PassThru
+          $log = Join-Path $env:RUNNER_TEMP 'diag.log'
+          $err = Join-Path $env:RUNNER_TEMP 'diag.err'
+          $p = Start-Process -FilePath $exe -ArgumentList 'scripts\capture-diag.js' -Wait -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
           Write-Host "exit: $($p.ExitCode)"
           if (Test-Path $out) { Get-Content $out } else { Write-Host 'sem resultado' }
+          Write-Host '--- stderr'
+          if (Test-Path $err) { Get-Content $err | Select-Object -Last 20 }

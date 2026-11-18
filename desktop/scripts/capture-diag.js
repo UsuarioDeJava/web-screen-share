@@ -57,7 +57,7 @@ async function trial(name, opts) {
   if (opts.ignore) win.setIgnoreMouseEvents(true);
   win.setAlwaysOnTop(true, 'screen-saver');
   if (opts.before) win.setContentProtection(true);
-  await win.loadURL('data:text/html,<body style="margin:0;background:rgb(255,0,0)"></body>');
+  await win.loadURL(`data:text/html,${encodeURIComponent('<body style="margin:0;background:rgb(255,0,0)"></body>')}`);
   win.showInactive();
   await sleep(700);
   if (opts.after) win.setContentProtection(true);
@@ -78,6 +78,9 @@ async function trial(name, opts) {
   const red = pixel.r > 200 && pixel.g < 60 && pixel.b < 60;
   return { name, captured: red, affinity, exStyle, direct, pixel };
 }
+
+// As janelas de teste abrem e fecham: sem isso, o app fecharia junto com a primeira.
+app.on('window-all-closed', () => {});
 
 app.whenReady().then(async () => {
   const results = [];
