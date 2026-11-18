@@ -938,6 +938,9 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
     callback(false);
     return;
   }
+  // The first HTTPS load may request trust before ready-to-show fires.
+  // Keep the parent visible so the certificate dialog can be reached.
+  if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
   const choice = dialog.showMessageBoxSync(mainWindow, {
     type: 'warning',
     buttons: ['Confiar neste servidor', 'Cancelar'],

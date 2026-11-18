@@ -1,0 +1,25 @@
+name: wss-local
+services:
+  server:
+    image: web-screen-share-local:0d59297
+    build:
+      context: ..
+      args:
+        APP_VERSION: local-0d59297
+    container_name: web-screen-share-local
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+      - "3100:3478/udp"
+    environment:
+      PORT: "3000"
+      PUBLIC_PORT: "3100"
+    volumes:
+      - server-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  server-data:
