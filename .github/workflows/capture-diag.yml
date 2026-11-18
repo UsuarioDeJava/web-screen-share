@@ -28,7 +28,9 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install
-        run: npm ci
+        run: |
+          npm ci
+          node node_modules/electron/install.js
 
       - name: Diagnose
         shell: pwsh
