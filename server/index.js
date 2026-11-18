@@ -601,7 +601,10 @@ io.on('connection', (socket) => {
     const owner = ownsStream(user, msg.stream);
     if (!owner && !allow(socket, 'draw', 80, 2000)) return;
     const out = { stream: msg.stream, id: msg.id, points, end: Boolean(msg.end), name: user.name };
-    if (owner && msg.hold) out.hold = true;
+    // hold 'alt': quem assiste ainda segura o Alt (o traço fica até soltar). true: quem
+    // transmite, no modo desenho (fica até desfazer/limpar).
+    if (msg.hold === 'alt') out.hold = 'alt';
+    else if (owner && msg.hold) out.hold = true;
     if (owner && Number.isInteger(msg.hue) && msg.hue >= -1 && msg.hue < 360) out.hue = msg.hue;
     socket.to(ROOM).emit('draw', out);
   });
@@ -619,7 +622,15 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('draw:clear', { stream: msg.stream, name: user.name });
   });
 
+  // Soltou o Alt: os rabiscos que a pessoa fez segurando o Alt somem, pra todo mundo.
+  socket.on('draw:release', () => {
+    const user = users.get(socket.id);
+    if (!user || !allow(socket, 'draw-release', 20, 5000)) return;
+    socket.to(ROOM).emit('draw:release', { name: user.name });
+  });
+
   const unit = (v) => Number.isFinite(v) && v >= 0 && v <= 1;
+  const CLICKS = new Set(['left', 'middle', 'right', 'up', 'down']);
 
   // Mouse de quem assiste passando por cima da transmissão: vai pra sala toda (quem
   // assiste vê nos quadros; quem transmite, pelo app, vê na tela dela).
@@ -631,6 +642,8 @@ io.on('connection', (socket) => {
     const out = msg.gone
       ? { stream: msg.stream, id: socket.id, name: user.name, gone: true }
       : { stream: msg.stream, id: socket.id, name: user.name, x: msg.x, y: msg.y };
+    // Clique (esquerdo, rodinha, direito) ou rolagem: vira uma animaçãozinha no mouse.
+    if (!msg.gone && CLICKS.has(msg.click)) out.click = msg.click;
     socket.to(ROOM).emit('cursor', out);
   });
 

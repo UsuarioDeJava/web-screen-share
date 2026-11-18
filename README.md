@@ -379,7 +379,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     tocar e segurar) mostra um sinal com o seu nome naquele ponto; **Alt + arrastar**
     (no celular: segurar e arrastar) desenha, na sua cor, pra circular ou riscar
     alguma coisa. O traço aparece pros outros ao vivo, enquanto você ainda está
-    desenhando, e some sozinho uns segundos depois de soltar. Vale pra todo mundo que
+    desenhando, e fica enquanto você segurar o Alt (dá pra fazer vários traços
+    seguidos); soltou o Alt, todos somem sozinhos uns segundos depois. No celular, cada
+    traço some uns segundos depois de soltar o dedo. Vale pra todo mundo que
     está vendo a transmissão, inclusive quem transmite (que também pode marcar a
     própria tela, pra mostrar algo pra quem assiste).
 11. **Chat de voz** (botão **Voz** no topo, ou tecla **V**): o navegador pede o
@@ -446,7 +448,10 @@ que o navegador não faz:
   sua tela uma setinha na cor da pessoa, com a foto de perfil dela (ou a letrinha do
   nick), sem nome; cada pessoa com uma cor diferente. Quem assiste também vê, em cima
   do quadro, o mouse de quem está assistindo junto (no app e no navegador), e o próprio
-  mouse em cima da transmissão vira essa mesma setinha: todo mundo vê a mesma coisa. O botão da setinha, embaixo da lista
+  mouse em cima da transmissão vira essa mesma setinha: todo mundo vê a mesma coisa.
+  Clicar (botão esquerdo, direito ou a rodinha) ou rolar em cima da transmissão mostra
+  uma animaçãozinha no mouse da pessoa: um mini mouse com a parte apertada acesa (e,
+  rolando, uma setinha pra cima ou pra baixo). O botão da setinha, embaixo da lista
   de pessoas, abre o painel **Mouse e controle**: ali quem assiste desliga o próprio
   mouse, e quem transmite desliga o de todo mundo.
 - **Controle remoto** (desligado por padrão): enquanto você transmite, cada pessoa da

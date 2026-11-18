@@ -493,6 +493,7 @@
     if (gone && gone.kind !== 'obs') announceLeave(gone.name);
     closeVoicePeer(id);
     users.delete(id);
+    if (gone && gone.kind !== 'obs') releaseAltStrokes(gone.name);
     clearPeerCursors((key) => key.endsWith(`|${id}`));
     removeStreamTile(id, { ended: true });
     closeOutgoing(id);
@@ -2113,10 +2114,12 @@
     view.svg.addEventListener('animationend', () => view.svg.remove());
   }
 
-  function startStroke(target, streamId, clientX, clientY) {
+  // alt: desenhando com o Alt apertado (mouse): o traço fica até soltar o Alt.
+  function startStroke(target, streamId, clientX, clientY, alt = false) {
     const stroke = {
       id: (++strokeCounter).toString(36),
       stream: streamId,
+      alt,
       target,
       pending: [],
       timer: null,
@@ -2144,14 +2147,31 @@
   function flushStroke(stroke, end = false) {
     clearTimeout(stroke.timer);
     stroke.timer = null;
-    const message = (points, last) => ({ stream: stroke.stream, id: stroke.id, points, end: last });
+    const message = (points, last) => ({ stream: stroke.stream, id: stroke.id, points, end: last, ...(stroke.alt ? { hold: 'alt' } : {}) });
     while (stroke.pending.length > 128) socket.emit('draw', message(stroke.pending.splice(0, 128), false));
     if (stroke.pending.length || end) socket.emit('draw', message(stroke.pending.splice(0), end));
   }
 
-  function endStroke(stroke) {
+  // Os seus traços com o Alt ainda apertado: ficam (aqui e pros outros) até você soltar.
+  const myAltStrokes = [];
+
+  // keep: ainda segurando o Alt. Senão o traço some como sempre (e, se era um traço com
+  // Alt, avisa que o Alt foi solto: os anteriores somem junto).
+  function endStroke(stroke, keep = false) {
     flushStroke(stroke, true);
+    if (keep && stroke.alt) {
+      myAltStrokes.push(stroke.view);
+      return;
+    }
     finishStroke(stroke.view);
+    if (stroke.alt) releaseMyAltStrokes(true);
+  }
+
+  // Soltou o Alt (ou a janela perdeu o foco): os traços somem, do mesmo jeito de sempre.
+  function releaseMyAltStrokes(force = false) {
+    if (!myAltStrokes.length && !force) return;
+    for (const view of myAltStrokes.splice(0)) finishStroke(view);
+    if (me) socket.emit('draw:release');
   }
 
   const remoteStrokes = new Map(); // "transmissão|nome|id" -> traço sendo desenhado
@@ -2162,7 +2182,7 @@
   // local: o seu próprio rabisco (do modo desenho do app), mostrado no seu quadro.
   function handleDraw({ stream, id, points, end, name, hold, hue }, local = false) {
     const color = Number.isInteger(hue) ? hue : nameHue(name);
-    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: color });
+    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: color, name, hold: hold === 'alt' ? 'alt' : undefined });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
@@ -2177,6 +2197,10 @@
     clearTimeout(view.expire);
     const done = () => {
       remoteStrokes.delete(key);
+      if (hold === 'alt') {
+        keepAltStroke(name, view);
+        return;
+      }
       if (!hold) {
         finishStroke(view);
         return;
@@ -2186,7 +2210,33 @@
       heldStrokes.get(owner).set(id, view);
     };
     if (end) done();
-    else view.expire = setTimeout(done, hold ? 60000 : 5000); // quem desenhava caiu no meio do traço
+    else view.expire = setTimeout(done, hold === true ? 60000 : 5000); // quem desenhava caiu no meio do traço
+  }
+
+  // Traços de quem assiste com o Alt ainda apertado: ficam até a pessoa soltar o Alt
+  // (draw:release) ou sair da sala. Se o aviso não vier, somem sozinhos em 2 minutos.
+  const altStrokes = new Map(); // nick -> { views, timer }
+
+  function keepAltStroke(name, view) {
+    let held = altStrokes.get(name);
+    if (!held) {
+      held = { views: [], timer: null };
+      altStrokes.set(name, held);
+    }
+    held.views.push(view);
+    clearTimeout(held.timer);
+    held.timer = setTimeout(() => releaseAltStrokes(name), 120000);
+  }
+
+  function releaseAltStrokes(name) {
+    const held = altStrokes.get(name);
+    if (held) {
+      altStrokes.delete(name);
+      clearTimeout(held.timer);
+      for (const view of held.views) finishStroke(view);
+    }
+    // Na sua tela de verdade (app), os traços dessa pessoa também somem.
+    if (desktop && me && (desktopOverlay || obsOverlay)) desktop.overlay({ type: 'draw-release', name });
   }
 
   function undoStroke(stream, name, id) {
@@ -2216,6 +2266,9 @@
   socket.on('draw', (msg) => handleDraw(msg || {}));
   socket.on('draw:undo', ({ stream, id, name }) => undoStroke(stream, name, id));
   socket.on('draw:clear', ({ stream, name }) => clearHeld(stream, name));
+  socket.on('draw:release', (msg) => {
+    if (msg && typeof msg.name === 'string') releaseAltStrokes(msg.name);
+  });
 
   // Alt + clique aponta e Alt + arrastar desenha, ao vivo, pra todo mundo que está vendo
   // a transmissão (inclusive quem transmite, que também pode marcar a própria tela). No
@@ -2229,10 +2282,11 @@
       const id = streamId();
       if (point && id && me) socket.emit('ping', { stream: id, x: point.x, y: point.y });
     };
-    const finish = (g, cancelled) => {
+    // altKey: o Alt ainda está apertado quando o traço acaba (aí ele fica até soltar).
+    const finish = (g, cancelled, altKey = false) => {
       clearTimeout(g.timer);
       if (gesture === g) gesture = null;
-      if (g.stroke) endStroke(g.stroke);
+      if (g.stroke) endStroke(g.stroke, altKey);
       else if (g.armed && !cancelled) ping(g.x, g.y);
     };
     media.addEventListener('pointerdown', (e) => {
@@ -2265,16 +2319,16 @@
       if (!g.stroke) {
         const id = streamId();
         if (dist < 6 || !id) return;
-        g.stroke = startStroke(target, id, g.x, g.y);
+        g.stroke = startStroke(target, id, g.x, g.y, !g.touch);
       }
       const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
       for (const ev of coalesced.length ? coalesced : [e]) addStrokePoint(g.stroke, ev.clientX, ev.clientY);
     });
     media.addEventListener('pointerup', (e) => {
-      if (gesture && e.pointerId === gesture.id) finish(gesture, false);
+      if (gesture && e.pointerId === gesture.id) finish(gesture, false, e.altKey);
     });
     media.addEventListener('pointercancel', (e) => {
-      if (gesture && e.pointerId === gesture.id) finish(gesture, true);
+      if (gesture && e.pointerId === gesture.id) finish(gesture, true, e.altKey);
     });
     // Segurando o dedo pra desenhar, a tela não rola nem abre o menu do navegador.
     media.addEventListener('touchmove', (e) => {
@@ -2285,8 +2339,12 @@
     });
   }
 
-  // Com o Alt apertado, o cursor vira uma mira em cima dos vídeos.
-  const setAltDown = (on) => document.body.classList.toggle('alt-down', on);
+  // Com o Alt apertado, o cursor vira uma mira em cima dos vídeos. Soltou: os rabiscos
+  // feitos com ele somem.
+  const setAltDown = (on) => {
+    document.body.classList.toggle('alt-down', on);
+    if (!on) releaseMyAltStrokes();
+  };
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Alt') setAltDown(true);
   });
@@ -3386,6 +3444,32 @@
     return node;
   }
 
+  // Mini mouse ao lado da setinha quando a pessoa clica ou rola: a parte apertada acende
+  // (esquerdo, rodinha, direito); rolando, a rodinha acende com uma setinha pra cima ou
+  // pra baixo. Clique também faz uma ondinha na ponta.
+  const CLICK_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true">'
+    + '<rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/>'
+    + '<path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/>'
+    + '<path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/>'
+    + '<path class="m-line" d="M7 1v7M1 8h12"/>'
+    + '<rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/>'
+    + '<path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/>'
+    + '<path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
+  const CLICK_KINDS = new Set(['left', 'middle', 'right', 'up', 'down']);
+
+  function showClick(node, kind) {
+    if (!node || !CLICK_KINDS.has(kind)) return;
+    const old = node.querySelector('.click-mark');
+    if (old) old.remove();
+    const mark = el('span', `click-mark click-${kind}`);
+    mark.innerHTML = CLICK_MOUSE;
+    if (kind === 'left' || kind === 'middle' || kind === 'right') mark.prepend(el('span', 'click-ripple'));
+    mark.addEventListener('animationend', (e) => {
+      if (e.target === mark) mark.remove();
+    });
+    node.append(mark);
+  }
+
   function paintCursor(node, name) {
     const photo = profileAvatars.get(name);
     const badge = node.querySelector('.cursor-badge');
@@ -3695,6 +3779,25 @@
       inside = false;
       queue({ gone: true });
     });
+    // Clique e rolagem viram a animaçãozinha no seu mouse, pros outros (e no seu, aqui).
+    const sendClick = (e, click) => {
+      if (!shareCursor || e.pointerType === 'touch' || controlling === s.id || !s.watching || !me) return;
+      if (e.target.closest('.tile-tools, .tile-audio, .tile-stats, button, select, input')) return;
+      const point = videoPoint(s.video, e.clientX, e.clientY);
+      if (!point) return;
+      socket.emit('cursor', { stream: s.id, x: round4(point.x), y: round4(point.y), click });
+      if (s.myCursor && !s.myCursor.hidden) showClick(s.myCursor, click);
+    };
+    s.media.addEventListener('pointerdown', (e) => {
+      if (e.altKey || e.button > 2) return; // Alt + clique é o "olha aqui"
+      sendClick(e, e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left');
+    });
+    let lastWheel = 0;
+    s.media.addEventListener('wheel', (e) => {
+      if (!e.deltaY || performance.now() - lastWheel < 150) return;
+      lastWheel = performance.now();
+      sendClick(e, e.deltaY < 0 ? 'up' : 'down');
+    }, { passive: true });
   }
 
   function mirrorCursor(s, e) {
@@ -3743,7 +3846,7 @@
     }
   }
 
-  function showPeerCursor({ stream, id, name, x, y, gone }) {
+  function showPeerCursor({ stream, id, name, x, y, gone, click }) {
     const key = `${stream}|${id}`;
     const target = gone ? null : fxTarget(stream);
     if (!target || !Number.isFinite(x) || !Number.isFinite(y)) {
@@ -3769,6 +3872,7 @@
     const box = contentBox(video, width, height);
     c.node.style.left = `${((box.left + x * box.width) / width) * 100}%`;
     c.node.style.top = `${((box.top + y * box.height) / height) * 100}%`;
+    if (click) showClick(c.node, click);
     clearTimeout(c.timer);
     c.timer = setTimeout(() => removePeerCursor(key), 4000); // parou de chegar: some
   }
@@ -3779,7 +3883,7 @@
     const photo = profileAvatars.get(name);
     toDesktopOverlay(stream, {
       type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name),
-      avatar: photo ? new URL(photo, window.location.href).href : null,
+      avatar: photo ? new URL(photo, window.location.href).href : null, click: msg.click,
     });
     showPeerCursor(msg);
   });

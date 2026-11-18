@@ -3,6 +3,7 @@
 const fx = document.getElementById('fx');
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const strokes = new Map(); // "nome|id" -> { svg, path, points, expire }
+const altHeld = new Map(); // nome -> { list, timer }: traços de quem ainda segura o Alt
 
 const unit = (v) => Math.min(1, Math.max(0, Number(v) || 0));
 const color = (hue) => (Number(hue) === -1 ? '#ffffff' : `hsl(${(Number(hue) || 0) % 360} 95% 64%)`);
@@ -47,7 +48,35 @@ function finishStroke(key, stroke) {
   stroke.svg.addEventListener('animationend', () => stroke.svg.remove());
 }
 
-function draw({ key, points, end, hue }) {
+// Quem assiste desenhando com o Alt apertado: o traço fica até a pessoa soltar o Alt
+// (draw-release). Se o aviso não vier, some sozinho em 2 minutos.
+function keepUntilRelease(name, key, stroke) {
+  strokes.delete(key);
+  clearTimeout(stroke.expire);
+  const who = text(name);
+  let held = altHeld.get(who);
+  if (!held) {
+    held = { list: [], timer: null };
+    altHeld.set(who, held);
+  }
+  held.list.push(stroke);
+  clearTimeout(held.timer);
+  held.timer = setTimeout(() => releaseAlt(who), 120000);
+}
+
+function releaseAlt(name) {
+  const who = text(name);
+  const held = altHeld.get(who);
+  if (!held) return;
+  altHeld.delete(who);
+  clearTimeout(held.timer);
+  for (const stroke of held.list) {
+    stroke.svg.classList.add('fading');
+    stroke.svg.addEventListener('animationend', () => stroke.svg.remove());
+  }
+}
+
+function draw({ key, points, end, hue, hold, name }) {
   if (typeof key !== 'string' || !Array.isArray(points)) return;
   let stroke = strokes.get(key);
   if (!stroke) {
@@ -69,8 +98,9 @@ function draw({ key, points, end, hue }) {
   }
   stroke.path.setAttribute('d', strokePath(stroke.points));
   clearTimeout(stroke.expire);
-  if (end) finishStroke(key, stroke);
-  else stroke.expire = setTimeout(() => finishStroke(key, stroke), 5000);
+  const done = () => (hold === 'alt' ? keepUntilRelease(name, key, stroke) : finishStroke(key, stroke));
+  if (end) done();
+  else stroke.expire = setTimeout(done, 5000);
 }
 
 function react({ emoji, name, hue }) {
@@ -277,7 +307,31 @@ function paintBadge(c, letter, avatar) {
   img.src = photo;
 }
 
-function cursor({ id, x, y, gone, letter, hue, avatar }) {
+// Clique e rolagem: um mini mouse ao lado da setinha, com a parte apertada acesa.
+const CLICK_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true">'
+  + '<rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/>'
+  + '<path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/>'
+  + '<path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/>'
+  + '<path class="m-line" d="M7 1v7M1 8h12"/>'
+  + '<rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/>'
+  + '<path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/>'
+  + '<path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
+const CLICK_KINDS = new Set(['left', 'middle', 'right', 'up', 'down']);
+
+function showClick(node, kind) {
+  if (!CLICK_KINDS.has(kind)) return;
+  const old = node.querySelector('.click-mark');
+  if (old) old.remove();
+  const mark = el('span', `click-mark click-${kind}`);
+  mark.innerHTML = CLICK_MOUSE;
+  if (kind === 'left' || kind === 'middle' || kind === 'right') mark.prepend(el('span', 'click-ripple'));
+  mark.addEventListener('animationend', (e) => {
+    if (e.target === mark) mark.remove();
+  });
+  node.append(mark);
+}
+
+function cursor({ id, x, y, gone, letter, hue, avatar, click }) {
   if (typeof id !== 'string') return;
   if (gone) {
     removeCursor(id);
@@ -300,6 +354,7 @@ function cursor({ id, x, y, gone, letter, hue, avatar }) {
     c.node.style.setProperty('--c', color(c.hue));
   }
   paintBadge(c, letter, avatar);
+  if (click) showClick(c.node, click);
   c.node.style.left = `${unit(x) * 100}%`;
   c.node.style.top = `${unit(y) * 100}%`;
   clearTimeout(c.timer);
@@ -325,6 +380,7 @@ window.overlayBridge.onEvent((event) => {
   else if (event.type === 'control') control(event);
   if (event.type === 'ping') ping(event);
   else if (event.type === 'draw') draw(event);
+  else if (event.type === 'draw-release') releaseAlt(event.name);
   else if (event.type === 'react') react(event);
   else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue);
   else if (event.type === 'draw-undo') undo();

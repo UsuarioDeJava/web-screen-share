@@ -333,6 +333,18 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tile-media.mirror-cursor, .alt-down .tile-media.mirror-cursor { cursor: none; }
 .mouse-cursor { position: absolute; z-index: 20; width: 0; height: 0; pointer-events: none; }
 .mouse-cursor.peer-cursor { z-index: 4; transition: left 70ms linear, top 70ms linear; }
+/* Clique e rolagem no mouse de alguém: um mini mouse com a parte apertada acesa. */
+.click-mark { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; animation: click-life 0.9s ease-out forwards; }
+.click-ripple { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--c); border-radius: 50%; animation: click-ripple 0.45s ease-out forwards; }
+.click-mark .click-mouse { position: absolute; left: -21px; top: -4px; width: 12px; height: 29px; overflow: visible; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75)); }
+.click-mark .m-body { fill: rgba(9, 11, 19, 0.55); stroke: #fff; stroke-width: 1.4; }
+.click-mark .m-part { fill: transparent; stroke: none; }
+.click-mark .m-line { fill: none; stroke: #fff; stroke-width: 1.1; }
+.click-mark .m-arrow { fill: none; stroke: var(--c); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.click-left .m-left, .click-right .m-right, .click-middle .m-wheel, .click-up .m-wheel, .click-down .m-wheel { fill: var(--c); }
+.click-up .m-up, .click-down .m-down { opacity: 1; }
+@keyframes click-life { 0% { opacity: 0; } 10% { opacity: 1; } 65% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes click-ripple { from { opacity: 1; transform: scale(0.4); } to { opacity: 0; transform: scale(1.7); } }
 .mouse-cursor svg { position: absolute; left: -2px; top: -2px; width: 26px; height: 26px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
 .mouse-cursor svg path { fill: var(--c); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
 .mouse-cursor .cursor-badge {
