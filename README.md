@@ -455,10 +455,10 @@ que o navegador não faz:
   nick), sem nome; cada pessoa com uma cor diferente. Quem assiste também vê, em cima
   do quadro, o mouse de quem está assistindo junto (no app e no navegador), e o próprio
   mouse em cima da transmissão vira essa mesma setinha: todo mundo vê a mesma coisa. A
-  sua setinha é o cursor do próprio sistema (uma imagem), então não tem atraso nenhum;
-  com foto em GIF, nela fica o primeiro quadro (os outros veem o GIF animado). Colada
-  na borda da janela, volta a setinha normal (o Chromium não deixa cursor grande
-  passar da borda).
+  sua setinha é o cursor do próprio sistema (uma imagem na sua cor), então não tem
+  atraso nenhum; a bolinha com a foto (GIF animado também) vem logo atrás. Bem colado
+  na borda direita ou de baixo da janela (uns 28 px), volta a setinha normal: o
+  Chromium não deixa um cursor personalizado passar da borda.
   Clicar (botão esquerdo, direito ou a rodinha) ou rolar em cima da transmissão mostra
   uma animaçãozinha no mouse da pessoa: um mini mouse com a parte apertada acesa (e,
   rolando, uma setinha pra cima ou pra baixo). O botão da setinha, embaixo da lista

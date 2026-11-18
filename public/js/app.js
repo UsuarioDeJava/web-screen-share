@@ -4191,28 +4191,26 @@
     }, { passive: true });
   }
 
-  // O seu mouse em cima da transmissão vira a mesma setinha com foto que os outros veem,
-  // como cursor de verdade do sistema (uma imagem). Antes era uma setinha desenhada pela
-  // página, que sempre chegava um ou dois quadros depois do mouse (ficava "pesado") e
-  // pulava quando a página engasgava. Num GIF, o cursor fica no primeiro quadro.
-  // A imagem tem 50 px; o Chromium não deixa cursor grande passar da borda da janela:
-  // colado na borda, volta o mouse normal.
-  const CURSOR_BOX = 50;
+  // O seu mouse em cima da transmissão vira a mesma setinha com foto que os outros veem.
+  // A setinha é o cursor de verdade do sistema (uma imagem na sua cor), sem atraso nenhum;
+  // antes ela era desenhada pela página, chegava um ou dois quadros depois do mouse
+  // (ficava "pesado") e pulava quando a página engasgava. A bolinha com a foto continua
+  // desenhada pela página (o GIF anima), seguindo o mouse com uma folguinha.
+  // 32 px no máximo: maior que isso, o Chromium volta o mouse normal perto da borda.
+  const CURSOR_BOX = 32;
   const CURSOR_HOT = 4; // onde fica a ponta (igual à setinha desenhada: ela começa 2 px antes)
   const ARROW_PATH = 'M4 2.5 19.5 13l-7 1.2-3.6 6.3z';
   const myCursor = { key: '', css: null };
 
-  function drawCursorImage(scale, color, ink, letter, img) {
+  function drawArrowImage(scale, color) {
     const canvas = document.createElement('canvas');
     canvas.width = CURSOR_BOX * scale;
     canvas.height = CURSOR_BOX * scale;
     const ctx = canvas.getContext('2d');
     ctx.scale(scale, scale);
-    // A setinha (26 px), com sombra, contorno branco.
     const arrow = new Path2D(ARROW_PATH);
-    ctx.save();
     ctx.translate(CURSOR_HOT - 2, CURSOR_HOT - 2);
-    ctx.scale(26 / 24, 26 / 24);
+    ctx.scale(26 / 24, 26 / 24); // 26 px, como a .mouse-cursor svg
     ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
     ctx.shadowBlur = 4 * scale; // a sombra não segue a escala do desenho
     ctx.shadowOffsetY = 2 * scale;
@@ -4223,69 +4221,18 @@
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#ffffff';
     ctx.stroke(arrow);
-    ctx.restore();
-    // A bolinha (22 px, borda branca de 2 px) com a foto ou a letra.
-    const cx = CURSOR_HOT + 18 + 11;
-    const cy = CURSOR_HOT + 18 + 11;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-    ctx.shadowBlur = 6 * scale;
-    ctx.shadowOffsetY = 2 * scale;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 11, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fill();
-    ctx.restore();
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, 9, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    if (img) {
-      ctx.clip();
-      const side = Math.min(img.naturalWidth, img.naturalHeight) || 1;
-      ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, cx - 9, cy - 9, 18, 18);
-    } else {
-      ctx.fillStyle = ink;
-      ctx.font = `800 11px ${getComputedStyle(document.body).fontFamily}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      if (ink === '#ffffff') {
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-        ctx.shadowBlur = 2 * scale;
-        ctx.shadowOffsetY = 1 * scale;
-      }
-      ctx.fillText(letter, cx, cy + 0.5);
-    }
-    ctx.restore();
     return canvas.toDataURL('image/png');
   }
 
-  // Monta (de novo, se a cor ou a foto mudou) a imagem do seu cursor.
-  async function buildMyCursor() {
+  // Monta (de novo, se a cor mudou) a imagem do seu cursor.
+  function buildMyCursor() {
     if (!me) return;
-    const tone = toneOf(me.name);
-    const color = markFill(tone);
-    const ink = inkFor(tone);
-    const photo = profileAvatars.get(me.name) || null;
-    const letter = ([...me.name][0] || '?').toUpperCase();
-    const key = `${color}|${ink}|${photo || letter}`;
-    if (key === myCursor.key) return;
-    myCursor.key = key;
-    let img = null;
-    if (photo) {
-      try {
-        img = new Image();
-        img.src = photo;
-        await img.decode();
-      } catch {
-        img = null;
-      }
-      if (myCursor.key !== key) return; // mudou de novo enquanto a foto carregava
-    }
+    const color = markFill(toneOf(me.name));
+    if (color === myCursor.key) return;
+    myCursor.key = color;
     const scales = [1, 2];
     if (window.devicePixelRatio > 2) scales.push(3);
-    const images = scales.map((scale) => `url("${drawCursorImage(scale, color, ink, letter, img)}") ${scale}x`);
+    const images = scales.map((scale) => `url("${drawArrowImage(scale, color)}") ${scale}x`);
     myCursor.css = `image-set(${images.join(', ')}) ${CURSOR_HOT} ${CURSOR_HOT}, auto`;
     for (const s of streams.values()) {
       if (!s.mirrorOn) continue;
@@ -4294,36 +4241,52 @@
     }
   }
 
-  function mirrorCursor(s, e) {
-    const on = Boolean(e && me);
-    if (on && !myCursor.css) buildMyCursor();
-    const css = on ? myCursor.css : null;
-    if (css === (s.mirrorCss || null)) return;
-    s.mirrorCss = css;
-    s.mirrorOn = Boolean(css);
-    s.media.classList.toggle('mirror-cursor', s.mirrorOn);
-    s.media.style.cursor = css || '';
+  // A bolinha com a foto (ou a letrinha), que segue o mouse.
+  function myBadgeNode(s) {
+    if (!s.myBadge) {
+      s.myBadge = el('div', 'mouse-cursor my-badge');
+      s.myBadge.append(el('span', 'cursor-badge'));
+      s.myBadge.hidden = true;
+      paintCursor(s.myBadge, me.name);
+      s.media.append(s.myBadge);
+    }
+    return s.myBadge;
   }
 
-  // O seu clique/rolagem: a animaçãozinha aparece onde você clicou (o cursor do sistema
-  // não carrega nada junto).
-  function showMyClick(s, e, kind) {
-    if (!me) return;
+  function mirrorCursor(s, e) {
+    const on = Boolean(e && me);
+    if (on) buildMyCursor();
+    const css = on ? myCursor.css : null;
+    if (css !== (s.mirrorCss || null)) {
+      s.mirrorCss = css;
+      s.mirrorOn = Boolean(css);
+      s.media.classList.toggle('mirror-cursor', s.mirrorOn);
+      s.media.style.cursor = css || '';
+    }
+    if (!s.mirrorOn) {
+      if (s.myBadge) s.myBadge.hidden = true;
+      return;
+    }
+    const badge = myBadgeNode(s);
     const rect = s.media.getBoundingClientRect();
-    const holder = el('div', 'mouse-cursor click-holder');
-    holder.style.left = `${e.clientX - rect.left}px`;
-    holder.style.top = `${e.clientY - rect.top}px`;
-    holder.style.setProperty('--c', markFill(toneOf(me.name)));
-    s.media.append(holder);
-    showClick(holder, kind);
-    const mark = holder.querySelector('.click-mark');
-    if (!mark) holder.remove();
-    else mark.addEventListener('animationend', (ev) => { if (ev.target === mark) holder.remove(); });
+    // Só transform: mexer a bolinha não refaz o layout nem redesenha nada.
+    badge.style.transform = `translate(${e.clientX - rect.left}px, ${e.clientY - rect.top}px)`;
+    badge.hidden = false;
+  }
+
+  // O seu clique/rolagem: a animaçãozinha vai junto da bolinha, como antes.
+  function showMyClick(s, e, kind) {
+    if (s.myBadge && !s.myBadge.hidden) showClick(s.myBadge, kind);
   }
 
   // A sua cor ou foto mudou (ou a de alguém): repinta as setinhas na tela.
   function renderMyCursors() {
-    if (me) buildMyCursor();
+    if (me) {
+      buildMyCursor();
+      for (const s of streams.values()) {
+        if (s.myBadge) paintCursor(s.myBadge, me.name);
+      }
+    }
     for (const c of peerCursors.values()) paintCursor(c.node, c.name);
   }
 

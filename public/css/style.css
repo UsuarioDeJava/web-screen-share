@@ -436,9 +436,10 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 /* ---------- o mouse de quem assiste (igual ao da tela de quem transmite) ---------- */
 
-/* O seu mouse em cima da transmissão: cursor de verdade com a setinha e a foto (montado
-   no app.js); o clique faz a animaçãozinha onde você clicou. */
-.click-holder { z-index: 20; }
+/* O seu mouse em cima da transmissão: a setinha é o cursor de verdade (montado no
+   app.js); a bolinha com a foto segue o mouse só com transform. */
+.mouse-cursor.my-badge { left: 0; top: 0; will-change: transform; }
+.tile:fullscreen.is-idle .my-badge { visibility: hidden; } /* parado em tela cheia: some junto */
 .mouse-cursor { position: absolute; z-index: 20; width: 0; height: 0; pointer-events: none; }
 .mouse-cursor.peer-cursor { z-index: 4; transition: left 70ms linear, top 70ms linear; }
 /* Clique e rolagem no mouse de alguém: um mini mouse com a parte apertada acesa. */
