@@ -188,61 +188,7 @@
     else if (savedHue >= 0 && savedHue < 360) myHue = savedHue;
   } catch {}
 
-  // ---- conversões de cor
-  const clampByte = (v) => Math.round(Math.min(255, Math.max(0, Number(v) || 0)));
-  const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const rgbToHex = (r, g, b) => `#${[r, g, b].map((v) => clampByte(v).toString(16).padStart(2, '0')).join('')}`;
-
-  function hsvToRgb(h, s, v) {
-    const f = (n) => {
-      const k = (n + h / 60) % 6;
-      return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255;
-    };
-    return [f(5), f(3), f(1)];
-  }
-
-  function rgbToHsv(r, g, b) {
-    const [R, G, B] = [r / 255, g / 255, b / 255];
-    const max = Math.max(R, G, B);
-    const d = max - Math.min(R, G, B);
-    let h = 0;
-    if (d) h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
-    return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
-  }
-
-  function hslToHex(h, s, l) {
-    const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
-    const f = (n) => {
-      const k = (n + h / 30) % 12;
-      return (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255;
-    };
-    return rgbToHex(f(0), f(8), f(4));
-  }
-
-  const hexHue = (hex) => Math.round(rgbToHsv(...hexToRgb(hex)).h) % 360;
-
-  // "#abc", "abc", "aabbcc", "#AABBCC" ou "rgb(1, 2, 3)" -> "#aabbcc" (ou null).
-  function normalizeHex(raw) {
-    const text = String(raw == null ? '' : raw).trim().toLowerCase();
-    const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(text);
-    if (rgb) return rgbToHex(rgb[1], rgb[2], rgb[3]);
-    const hex = text.replace(/^#/, '');
-    if (/^[0-9a-f]{3}$/.test(hex)) return `#${[...hex].map((c) => c + c).join('')}`;
-    return /^[0-9a-f]{6}$/.test(hex) ? `#${hex}` : null;
-  }
-
-  function luminance(hex) {
-    const [r, g, b] = hexToRgb(hex).map((v) => {
-      const c = v / 255;
-      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-    });
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  }
-
-  const contrast = (a, b) => {
-    const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m);
-    return (x + 0.05) / (y + 0.05);
-  };
+  const { clampByte, hexToRgb, rgbToHex, hsvToRgb, rgbToHsv, hslToHex, hexHue, normalizeHex, luminance, contrast, autoHue } = window.WssColor;
 
   // O nome escrito na cor escolhida: escura demais pro fundo escuro da sala, clareia só o
   // necessário pra dar pra ler.
@@ -260,12 +206,6 @@
     }
     readableCache.set(hex, out);
     return out;
-  }
-
-  function autoHue(name) {
-    let hash = 0;
-    for (const ch of name) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
-    return hash % 360;
   }
 
   // A cor de alguém: { hue, color }. color: a cor exata que a pessoa escolheu; sem ela,
@@ -1103,6 +1043,34 @@
     } else if (pc.connectionState === 'connected' && !s.video.paused) {
       setStatus(s, '');
     }
+    if (pc.connectionState === 'connected') startVideoHealth(s, pc);
+  }
+
+  function startVideoHealth(s, pc) {
+    if (s.healthTimer) return;
+    const health = window.createVideoHealth();
+    let busy = false;
+    const tick = async () => {
+      if (busy) return;
+      if (s.pc !== pc || !s.watching || s.video.paused || document.hidden || pc.connectionState !== 'connected') { health.reset(); return; }
+      busy = true;
+      try {
+        const stats = await pc.getStats();
+        if (s.pc !== pc) return;
+        const video = [...stats.values()].find((r) => r.type === 'inbound-rtp' && r.kind === 'video');
+        if (!video) return;
+        s.healthStats = health.sample(video, performance.now());
+        if (s.healthStats.stalled && Date.now() - (s.lastHealthRecovery || 0) > 60000) {
+          s.lastHealthRecovery = Date.now();
+          console.warn('Vídeo recebe dados sem decodificar novos quadros; reconectando a transmissão.');
+          setStatus(s, 'Vídeo sem novos quadros. Reconectando…', true);
+          scheduleRetry(s, 1000);
+        }
+      } catch { health.reset(); }
+      finally { busy = false; }
+    };
+    s.healthTimer = setInterval(tick, 2000);
+    tick();
   }
 
   // ---------- assistir uma transmissão do OBS (WHEP) ----------
@@ -1721,6 +1689,9 @@
   }
 
   function closeIncoming(s) {
+    clearInterval(s.healthTimer);
+    s.healthTimer = null;
+    s.healthStats = null;
     clearTimeout(s.retryTimer);
     s.retryTimer = null;
     s.attempt += 1;
@@ -1737,12 +1708,12 @@
     s.video.srcObject = null;
   }
 
-  function scheduleRetry(s) {
+  function scheduleRetry(s, delay = 3000) {
     if (s.retryTimer) return;
     s.retryTimer = setTimeout(() => {
       s.retryTimer = null;
       if (s.watching && streams.get(s.id) === s) requestWatch(s);
-    }, 3000);
+    }, delay);
   }
 
   function playVideo(s) {
@@ -2014,6 +1985,10 @@
       if (codec && codec.mimeType) lines.push(`Codec: ${codec.mimeType.replace(/^video\//, '')}`);
       if (video.frameWidth) lines.push(`Resolução: ${video.frameWidth}×${video.frameHeight}`);
       if (video.framesPerSecond != null) lines.push(`Quadros: ${Math.round(video.framesPerSecond)} fps`);
+      if (video.framesDecoded != null) lines.push(`Decodificados: ${video.framesDecoded}`);
+      if (video.framesDropped != null) lines.push(`Descartados: ${video.framesDropped}`);
+      if (video.freezeCount != null) lines.push(`Congelamentos: ${video.freezeCount}`);
+      if (video.framesDecoded && video.totalDecodeTime != null) lines.push(`Decodificação: ${(video.totalDecodeTime * 1000 / video.framesDecoded).toFixed(1)} ms/quadro`);
       if (s.lastBytes && video.bytesReceived >= s.lastBytes.bytes && video.timestamp > s.lastBytes.ts) {
         const kbps = ((video.bytesReceived - s.lastBytes.bytes) * 8) / (video.timestamp - s.lastBytes.ts);
         lines.push(`Taxa: ${(kbps / 1000).toFixed(1)} Mbps`);
@@ -3382,6 +3357,20 @@
     checkControlTargets();
   }
 
+  if (desktop && typeof desktop.onOverlayState === 'function') {
+    desktop.onOverlayState((state) => {
+      desktopOverlay = Boolean(localStream && state.share);
+      obsOverlay = Boolean(obsOverlayWanted && state.obs);
+      renderSelfTile();
+      renderObsOverlayTag();
+      desktop.caps().then((caps) => {
+        desktopCaps = caps;
+        checkControlTargets();
+        if (controlDialog.open) renderControlPanel();
+      }).catch(() => {});
+    });
+  }
+
   // Modo desenho do app (Ctrl+Shift+D): o que você rabisca na sua tela de verdade vai pra
   // quem assiste a sua transmissão (pelo app ou pelo OBS), e aparece também no seu quadro.
   function onLocalDraw(msg) {
@@ -3512,6 +3501,7 @@
     }
     if (serverNew) text += ' E o servidor tem versão nova: clique em Recarregar, no topo.';
     showToast(text);
+    return text;
   }
   if (desktop && typeof desktop.checkUpdate === 'function') {
     btnCheckUpdate.hidden = false;
@@ -3816,46 +3806,8 @@
     if (photoPalette.url === url) return;
     photoPalette.url = url;
     photoPalette.colors = [];
-    if (!url) return;
-    try {
-      const img = new Image();
-      img.src = url;
-      await img.decode();
-      const size = 48;
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0, size, size);
-      const { data } = ctx.getImageData(0, 0, size, size);
-      const buckets = new Map();
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] < 128) continue;
-        const key = ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4);
-        const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
-        b.n += 1;
-        b.r += data[i];
-        b.g += data[i + 1];
-        b.b += data[i + 2];
-        buckets.set(key, b);
-      }
-      // Mais pontos e mais cor viva primeiro; quase preto conta pouco.
-      const ranked = [...buckets.values()].map((b) => {
-        const rgb = [b.r / b.n, b.g / b.n, b.b / b.n];
-        const { s, v } = rgbToHsv(...rgb);
-        return { rgb, score: b.n * (0.3 + s) * (v < 0.15 ? 0.15 : 1) };
-      }).sort((a, b) => b.score - a.score);
-      const picked = [];
-      const far = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 64;
-      for (const { rgb } of ranked) {
-        if (picked.every((p) => far(p, rgb))) picked.push(rgb);
-        if (picked.length === 6) break;
-      }
-      if (photoPalette.url === url) photoPalette.colors = picked.map((rgb) => rgbToHex(...rgb));
-    } catch {
-      photoPalette.colors = [];
-    }
-    renderProfileDialog();
+    const colors = await window.WssColor.loadPalette(url);
+    if (photoPalette.url === url) { photoPalette.colors = colors; renderProfileDialog(); }
   }
 
   function setPickerOpen(open) {
@@ -4469,18 +4421,20 @@
     if (e.target === controlDialog) controlDialog.close();
   });
 
-  function grantControl(user) {
+  function grantControl(user, done = () => {}) {
     const stream = myControlStream();
-    if (!stream) return;
+    if (!stream) return done({ error: 'Não há transmissão disponível para controle.' });
     socket.emit('control:grant', { stream, to: user.id }, (res) => {
       if (!res || res.error) {
         showToast((res && res.error) || 'Não deu pra dar o controle.');
+        done({ error: res?.error || 'Não deu pra dar o controle.' });
         return;
       }
       controlGrant = { to: user.id, name: user.name, stream };
       desktop.controlState({ on: true, name: user.name, hue: nameHue(user.name) });
       chatNote(`${user.name} pode controlar o seu mouse e teclado (Ctrl+Shift+X tira)`);
       renderUsers(); // acende o 🎮 na lista (e atualiza o painel, se estiver aberto)
+      done({ ok: true });
     });
   }
 
@@ -4742,6 +4696,75 @@
     const s = streams.get(stream);
     if (s) renderControlButton(s);
     if (from) chatNote(`${from} tirou o seu controle`);
+  });
+
+  // Contrato usado pelo app local. O adaptador de DOM fica apenas como compatibilidade
+  // com servidores antigos; estas operações trabalham sobre o estado real da sala.
+  window.wssRoomSettings = Object.freeze({
+    version: 1,
+    async read(section) {
+      if (!me) return { available: false, reason: 'Entre na sala para acessar estas configurações.' };
+      if (section === 'diagnostics') return { available: true, diagnostics: diagOutput.textContent, running: diagRunning };
+      if (section === 'media') return { available: true, overlay: { share: desktopOverlay, obs: obsOverlay }, streams: [...streams.values()].map((s) => ({ id: s.id, watching: s.watching, state: s.pc?.connectionState, health: s.healthStats })) };
+      if (section === 'obs') {
+        const info = await desktop?.displays?.();
+        return { available: true, supported: Boolean(serverStatus.obs), name: me.name,
+          url: `${location.origin}/obs/${encodeURIComponent(me.name)}`,
+          certificateWarning: location.protocol === 'https:' && !serverStatus.certificate,
+          overlaySupported: Boolean(info?.overlay), displays: info?.displays || [], obsDisplay: info?.obsDisplay || 'off' };
+      }
+      const photo = profileAvatars.get(me.name) || null;
+      const photoColors = await window.WssColor.loadPalette(photo);
+      const problem = !desktopCaps?.control ? 'O controle remoto está indisponível ou as marcações estão desligadas.'
+        : !myControlStream() ? 'Transmita a tela inteira para permitir controle remoto.' : '';
+      return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue,
+        autoFill: `hsl(${autoHue(me.name)} 45% 42%)`, markColor: markFill(toneOf(me.name)), recent: recentColors(),
+        shareCursor, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
+        controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
+          .map((u) => ({ name: u.name, active: controlGrant?.to === u.id, disabled: controlGrant?.to !== u.id && Boolean(problem) })),
+        diagnostics: diagOutput.textContent, serverVersion: sidebarVersionEl.textContent,
+        shortcuts: [...keysDialog.querySelectorAll('dt')].filter((node) => !node.hidden && !node.nextElementSibling?.hidden)
+          .map((node) => ({ keys: node.textContent.trim(), action: node.nextElementSibling?.textContent.trim() || '' })) };
+    },
+    async action(command) {
+      if (!me) throw new Error('Entre na sala para usar esta configuração.');
+      if (command.type === 'color') {
+        if (command.color) pickerFrom(command.color);
+        setMyColor(command.color, command.commit ? 'now' : undefined);
+      } else if (command.type === 'cursor') {
+        if (command.field === 'share') {
+          shareCursor = command.enabled;
+          localStorage.setItem('wss-cursor', shareCursor ? '1' : '0'); renderCursorButton();
+        } else {
+          showCursors = command.enabled;
+          localStorage.setItem('wss-show-cursors', showCursors ? '1' : '0');
+          if (!showCursors) clearPeerCursors();
+        }
+        if (controlDialog.open) renderControlPanel();
+      } else if (command.type === 'sounds') { sounds.enabled = command.enabled; renderSoundsButton(); }
+      else if (command.type === 'photo' || command.type === 'photo-remove') {
+        const blob = command.type === 'photo' ? await preparePhoto(new File([Uint8Array.from(atob(command.data), (c) => c.charCodeAt(0))], command.name, { type: command.mime })) : null;
+        const response = await sendPhoto(blob);
+        if (response.error) throw new Error(response.error);
+        if (!(await photoStore.set(blob))) showToast('A foto foi aplicada, mas não foi possível salvá-la neste PC.');
+        renderProfileDialog();
+      } else if (command.type === 'diagnostics') { runDiagnostics(); }
+      else if (command.type === 'check-updates') return { ok: true, message: await checkUpdatesNow() };
+      else if (command.type === 'obs-display') {
+        const info = await desktop?.displays?.();
+        if (!info?.overlay || (command.value !== 'off' && !info.displays.some((d) => String(d.id) === command.value))) throw new Error('O monitor selecionado não está mais conectado.');
+        const result = await desktop.setObsDisplay(command.value);
+        if (result.error) throw new Error(result.error);
+        obsOverlay = obsOverlayWanted && Boolean(result.overlay); renderObsOverlayTag(); checkControlTargets();
+      } else if (command.type === 'control') {
+        if (!command.grant) { revokeControl(); return { ok: true }; }
+        const user = [...users.values()].find((u) => u.name === command.name && u.id !== me.id && u.kind !== 'obs');
+        if (!user || !desktopCaps?.control || !myControlStream()) throw new Error('Controle remoto indisponível para essa pessoa.');
+        const result = await new Promise((resolve) => grantControl(user, resolve));
+        if (result.error) throw new Error(result.error);
+      } else throw new Error('Comando não reconhecido.');
+      return { ok: true };
+    },
   });
 
   renderShareButton();

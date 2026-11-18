@@ -42,6 +42,24 @@ conectada. A escolha do monitor OBS é salva e aplicada imediatamente. Para capt
 pelo app, as marcações continuam seguindo a tela escolhida no seletor de captura.
 Qualidade, volume e dispositivos de voz permanecem nos controles das transmissões.
 
+O arquivo de configuração é salvo por substituição atômica: a gravação temporária
+precisa terminar antes de substituir o JSON anterior. Erros de leitura são registrados
+em vez de ignorados silenciosamente. Ao sair da tela cheia, o app verifica novamente
+os monitores para evitar restaurar a janela fora das telas disponíveis.
+
+A sala atualizada expõe `wssRoomSettings` versão 1, com leitura de estado e comandos
+explícitos. O adaptador antigo de DOM permanece como compatibilidade para servidores
+anteriores. Uploads, cores e outros comandos não compartilham mais uma única fila;
+leituras e revogação de controle não esperam um upload lento. Fechar o painel ou navegar
+cancela a espera local das operações pendentes; um envio já aceito pelo servidor pode
+concluir normalmente.
+
+As conversões de cor e a paleta de avatar usam `desktop/shared/color.js`, carregado
+também pela sala em `/js/color.js`. A paleta é reutilizada enquanto o endereço/hash da
+foto não muda. A imagem Docker inclui esse módulo compartilhado e o instalador inclui
+`shared/**`. Para usar o novo contrato e o diagnóstico de vídeo na sala remota, atualize
+também os arquivos do servidor/interface; as mudanças não são publicadas automaticamente.
+
 ## Tela cheia e diagnóstico gráfico
 
 O padrão continua sendo a tela cheia nativa. No Windows também estão disponíveis:
@@ -78,19 +96,35 @@ Há busca, filtros, pausa da visualização sem interromper o registro e limpeza
 
 O limite é configurável entre 500, 1000, 2000 e 5000 eventos. São aceitos até 100
 novos eventos por segundo; excessos são contabilizados. Atualizações visuais são
-agrupadas em 250 ms, sem coleta contínua de estatísticas de vídeo. Fechar/minimizar
- o painel suspende seu envio de atualizações.
+agrupadas em 250 ms e enviam somente os eventos novos. O buffer circular mantém o limite
+sem deslocar o histórico a cada evento, e a tabela preserva as linhas já renderizadas.
+Ocultar a aba, pausar, fechar ou minimizar o painel suspende o envio de atualizações.
+Retomar sincroniza os eventos pendentes; uma limpeza ou histórico excedido solicita uma
+ressincronização completa. A coleta do registro continua ativa na memória durante a pausa.
 
 O log cobre o que este cliente observa durante a execução, não o histórico completo
  do servidor. O observador não copia conteúdo de chat, áudio/vídeo, SDP ou candidatos
 ICE completos. Mensagens conhecidas com credenciais são sanitizadas antes do registro.
+
+## Progresso do vídeo
+
+Conexões recebidas ativas consultam estatísticas a cada dois segundos, sem sobrepor
+consultas. Ao pausar/ocultar o vídeo ou desconectar, a observação de progresso é reiniciada.
+Os detalhes mostram quadros decodificados, descartados, congelamentos e tempo médio de
+decodificação, quando fornecidos pelo navegador.
+
+Uma recuperação só é sugerida quando os bytes de vídeo continuam chegando sem novos
+quadros decodificados por pelo menos 12 segundos. Tela estática sem novos bytes não
+provoca reconexão. Reconexões dessa recuperação são limitadas a uma por minuto por
+transmissão. O mecanismo não tenta corrigir engasgos de apresentação da GPU quando a
+decodificação continua avançando; esses casos ainda precisam de comparação no hardware.
 
 ## Verificar
 
 Na raiz:
 
 ```powershell
-node --test desktop/test/borderless-fullscreen.test.js desktop/test/settings.test.js
+node --test desktop/test/borderless-fullscreen.test.js desktop/test/settings.test.js desktop/test/reliability.test.js
 ```
 
 No Windows com sessão gráfica, a partir de `desktop/`:
@@ -99,12 +133,20 @@ No Windows com sessão gráfica, a partir de `desktop/`:
 .\node_modules\.bin\electron.cmd test/fullscreen-smoke.cjs
 .\node_modules\.bin\electron.cmd test/settings-smoke.cjs
 .\node_modules\.bin\electron.cmd test/room-settings-smoke.cjs
+.\node_modules\.bin\electron.cmd test/stream-overlay-smoke.cjs
 ```
 
-Os testes Electron usam portas e perfis temporários isolados. O último inicia o
-servidor real deste checkout pelo executável `node` no PATH e valida perfil/foto,
+Os testes Electron usam portas e perfis temporários isolados. O teste de configurações
+da sala inicia o servidor real deste checkout pelo executável `node` no PATH e valida perfil/foto,
 ponteiro/sons, diagnósticos, versões, OBS e persistência de monitor. Os testes não
 iniciam uma transmissão OBS real nem concedem controle remoto de um PC real.
+
+`stream-overlay-smoke.cjs` usa dois clientes e vídeo WebRTC real gerado por um canvas
+animado. Nenhuma imagem da tela do usuário é capturada. Verifica que desativar e reativar
+overlays atualiza a sala sem trocar a captura, que salvar opções não relacionadas não
+recria o overlay, e que o receptor continua decodificando quadros em fullscreen do vídeo,
+após Esc e em F11. O seletor/IPC é exercitado com uma fonte sintética, sem acionar a
+captura nativa do Chromium. Não é um benchmark de captura real, áudio ou GPU/VRR.
 
 `WSS_TEST_SCREENSHOT_DIR` permite salvar capturas das páginas durante os testes.
 Esses arquivos são opcionais e não fazem parte do instalador. O autoteste original

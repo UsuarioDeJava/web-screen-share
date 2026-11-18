@@ -1,6 +1,12 @@
 // Ponte entre a página aberta na janela principal e o app. Na sala (página do
 // servidor): `window.wssDesktop`. Na tela de configurar o servidor: `window.setupBridge`.
 const { contextBridge, ipcRenderer } = require('electron');
+// Também mantém as etiquetas coerentes em servidores antigos que ainda não
+// assinam onOverlayState. O estado nativo é a referência para a camada visível.
+ipcRenderer.on('desktop:overlay-state', (_event, state) => {
+  document.documentElement.setAttribute('data-wss-overlay-owner', state.share ? 'share' : state.obs ? 'obs' : 'none');
+  document.documentElement.toggleAttribute('data-wss-overlays-off', !state.enabled);
+});
 
 window.addEventListener('DOMContentLoaded', () => {
   const button = document.createElement('button');
@@ -73,6 +79,10 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     platform: process.platform,
     // Começou/parou de transmitir: abre/fecha a camada de marcações na tela escolhida.
     sharing: (on) => ipcRenderer.invoke('desktop:sharing', Boolean(on)),
+    onOverlayState: (callback) => {
+      ipcRenderer.on('desktop:overlay-state', (_event, state) => callback(state));
+      ipcRenderer.invoke('desktop:overlay-state').then((state) => { if (state) callback(state); }, () => {});
+    },
     // Algo aconteceu na sua transmissão (apontar, desenhar, reagir): mostra na tela real.
     overlay: (event) => ipcRenderer.send('desktop:overlay', event),
     // Mensagem nova com a janela sem foco: pisca na barra de tarefas.
@@ -84,16 +94,16 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     setObsDisplay: (value) => ipcRenderer.invoke('desktop:obs-display', String(value)),
     // Modo desenho (Ctrl+Shift+D): a sua cor e o que você rabiscou na sua tela.
     identity: (data) => ipcRenderer.send('desktop:identity', { hue: Number(data && data.hue), color: String((data && data.color) || '') }),
-    onLocalDraw: (callback) => ipcRenderer.on('desktop:local-draw', (_event, data) => callback(data)),
+    onLocalDraw: (callback) => { ipcRenderer.on('desktop:local-draw', (_event, data) => callback(data)); },
     // Mouse de quem assiste e controle remoto.
     caps: () => ipcRenderer.invoke('desktop:caps'),
     controlState: (data) => ipcRenderer.send('desktop:control-state', data && data.on
       ? { on: true, name: String(data.name || ''), hue: Number(data.hue) || 0 } : { on: false }),
     control: (msg) => ipcRenderer.send('desktop:control', msg),
-    onControlRevoke: (callback) => ipcRenderer.on('desktop:control-revoke', () => callback()),
+    onControlRevoke: (callback) => { ipcRenderer.on('desktop:control-revoke', () => callback()); },
     // Controlando alguém: o app pega todas as teclas (Win, Alt+Tab...) e manda pra cá.
     captureKeys: (on) => ipcRenderer.invoke('desktop:capture-keys', Boolean(on)),
-    onCapturedKey: (callback) => ipcRenderer.on('desktop:captured-key', (_event, data) => callback(data)),
+    onCapturedKey: (callback) => { ipcRenderer.on('desktop:captured-key', (_event, data) => callback(data)); },
     // Versão nova do app: o estado agora e as mudanças; update() é o botão do aviso.
     onUpdate: (callback) => {
       ipcRenderer.on('desktop:update', (_event, data) => callback(data));

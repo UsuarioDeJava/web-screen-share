@@ -21,16 +21,19 @@ const { normalizePreferences, startupPreferences } = require('./preferences');
 const { createActivityLog } = require('./activity-log');
 const { createSettingsPanel } = require('./settings-panel');
 const { createRoomSettings } = require('./room-settings');
+const { readConfig, writeConfig } = require('./config-store');
 
 // Perfil e opções gráficas precisam estar definidos antes de app.ready.
 if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
 
 let config = { server: null, trusted: {}, bounds: null, maximized: false, obsDisplay: null, desktop: normalizePreferences() };
+const startupWarnings = [];
 loadConfig();
 const activePreferences = startupPreferences(config.desktop);
 if (!activePreferences.hardwareAcceleration) app.disableHardwareAcceleration();
 const activity = createActivityLog({ enabled: activePreferences.logging, limit: activePreferences.logLimit });
 const log = (category, message, level = 'info', direction = 'local') => activity.add({ category, message, level, direction });
+for (const warning of startupWarnings) log('error', warning, 'warn');
 
 const PAGES = path.join(__dirname, 'pages');
 const ICON = path.join(PAGES, 'icon.png');
@@ -68,20 +71,20 @@ const updates = createUpdates({
 });
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
 let picked = null; // última escolha do seletor: { kind, displayId }
+let shareWanted = false;
 let serverLoadFailed = false; // a última tentativa de abrir o servidor falhou
 let failure = null; // { message, timer }: aviso de falha esperando a página de erro carregar
 const declined = new Set(); // certificados recusados nesta sessão
 let pendingPreferences = { ...activePreferences };
 let settingsPanel;
+let roomSettings;
 
 // ---------- configuração ----------
 
 function configFile() { return path.join(app.getPath('userData'), 'config.json'); }
 
 function loadConfig() {
-  try {
-    config = { ...config, ...JSON.parse(fs.readFileSync(configFile(), 'utf8')) };
-  } catch {}
+  config = { ...config, ...readConfig(configFile(), (message) => startupWarnings.push(message)) };
   if (!config.trusted || typeof config.trusted !== 'object') config.trusted = {};
   config.desktop = normalizePreferences(config.desktop);
   if (config.pendingServer) { config.server = config.pendingServer; delete config.pendingServer; }
@@ -90,8 +93,7 @@ function loadConfig() {
 
 function saveConfig() {
   try {
-    fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    fs.writeFileSync(configFile(), JSON.stringify(config, null, 2));
+    writeConfig(configFile(), config);
     return true;
   } catch (err) {
     console.error('Não deu pra salvar a configuração:', err.message);
@@ -212,6 +214,10 @@ function createMainWindow() {
   webContents.on('did-start-navigation', (details) => {
     if (!details.isMainFrame || details.isSameDocument) return;
     updates.pageGone();
+    roomSettings?.cancel();
+    shareWanted = false;
+    obsWanted = false;
+    closeOverlay();
     if (borderlessFullscreen) borderlessFullscreen.exit();
     setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
@@ -231,6 +237,7 @@ function createMainWindow() {
   webContents.on('did-finish-load', async () => {
     await webContents.insertCSS(fs.readFileSync(path.join(PAGES, 'window.css'), 'utf8'));
     if (borderlessFullscreen) borderlessFullscreen.publish();
+    publishOverlayState();
     log('connection', isServerUrl(webContents.getURL()) ? 'Página da sala carregada.' : 'Tela de configuração carregada.');
     if (SELF_TEST) {
       const keys = await selfTestKeys();
@@ -250,6 +257,7 @@ function createMainWindow() {
     if (!ok) showSetup('Esse endereço abriu, mas não é um servidor do Web Screen Share.');
   });
   webContents.on('render-process-gone', (event, details) => {
+    shareWanted = false;
     log('error', `Processo da interface encerrado: ${details.reason}, código ${details.exitCode}.`, 'error');
     if (borderlessFullscreen) borderlessFullscreen.exit();
     obsWanted = false;
@@ -363,9 +371,10 @@ function saveSettings(value) {
   if (server === config.server) delete config.pendingServer;
   else config.pendingServer = server;
   if (!saveConfig()) { config = previous; return { ok: false, error: 'Não foi possível salvar as configurações.' }; }
+  const overlayChanged = pendingPreferences.overlay !== preferences.overlay;
   pendingPreferences = preferences;
   activity.configure(preferences);
-  if (!preferences.overlay) closeOverlay();
+  if (overlayChanged) reconcileOverlays();
   log('system', 'Configurações do aplicativo salvas.');
   return { ok: true };
 }
@@ -482,6 +491,21 @@ function openObsOverlay() {
   return openOverlay(obsDisplay(), 'obs');
 }
 
+function overlayState() {
+  const active = Boolean(overlay && !overlay.isDestroyed());
+  return { enabled: pendingPreferences.overlay, share: active && overlayOwner === 'share', obs: active && overlayOwner === 'obs' };
+}
+
+function publishOverlayState() { toPage('desktop:overlay-state', overlayState()); }
+
+function reconcileOverlays() {
+  if (!pendingPreferences.overlay) closeOverlay();
+  else if (shareWanted && shareDisplay()) openOverlay(shareDisplay(), 'share');
+  else if (obsWanted) openObsOverlay();
+  else closeOverlay();
+  publishOverlayState();
+}
+
 function openOverlay(display, owner) {
   if (!OVERLAY_SUPPORTED || !display || !pendingPreferences.overlay) return false;
   closeOverlay();
@@ -514,12 +538,14 @@ function openOverlay(display, owner) {
     setDrawMode(false);
     overlay = null;
     overlayOwner = null;
+    publishOverlayState();
   });
   overlay.once('ready-to-show', () => {
     if (overlay) overlay.showInactive();
   });
   // O endereço do servidor: as fotos de perfil no mouse só podem vir dele.
   overlay.loadFile(path.join(PAGES, 'overlay.html'), { query: { server: config.server || '' } });
+  publishOverlayState();
   return true;
 }
 
@@ -535,6 +561,7 @@ function closeOverlay(owner) {
   overlay = null;
   overlayOwner = null;
   if (current && !current.isDestroyed()) current.destroy();
+  publishOverlayState();
 }
 
 // ---------- modo desenho: rabiscar a sua tela, ao vivo pra quem assiste ----------
@@ -732,11 +759,12 @@ function toPage(channel, data) {
 
 ipcMain.handle('desktop:caps', (event) => {
   if (!fromServer(event)) return {};
-  return { overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && Boolean(getInput()) };
+  return { overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && pendingPreferences.overlay && Boolean(getInput()) };
 });
+ipcMain.handle('desktop:overlay-state', (event) => fromServer(event) ? overlayState() : null);
 
 ipcMain.on('desktop:control-state', (event, data) => {
-  if (fromServer(event)) setController(data && data.on ? data : null);
+  if (fromServer(event)) setController(data && data.on && pendingPreferences.overlay && overlay ? data : null);
 });
 
 // O que quem controla fez em cima da sua transmissão, já validado pelo servidor.
@@ -815,6 +843,7 @@ ipcMain.on('desktop:identity', (event, data) => {
 
 ipcMain.handle('desktop:sharing', (event, on) => {
   if (!fromServer(event)) return { overlay: false };
+  shareWanted = Boolean(on);
   log('stream', on ? 'Captura local iniciada.' : 'Captura local encerrada.');
   if (!on) {
     closeOverlay('share');
@@ -839,8 +868,9 @@ ipcMain.handle('desktop:obs', (event, on) => {
 
 ipcMain.handle('desktop:obs-display', (event, value) => {
   if (!fromServer(event)) return { overlay: false };
+  const previous = config.obsDisplay;
   config.obsDisplay = value === 'off' ? 'off' : String(value);
-  saveConfig();
+  if (!saveConfig()) { config.obsDisplay = previous; return { overlay: overlayState().obs, error: 'Não foi possível salvar o monitor das marcações.' }; }
   if (!obsWanted) return { overlay: false };
   closeOverlay('obs');
   return { overlay: openObsOverlay() };
@@ -940,7 +970,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId('com.webscreenshare.desktop');
     Menu.setApplicationMenu(null);
-    const roomSettings = createRoomSettings({ getContents: () => mainWindow?.webContents, isServer: isServerUrl });
+    roomSettings = createRoomSettings({ getContents: () => mainWindow?.webContents, isServer: isServerUrl });
     settingsPanel = createSettingsPanel({
       getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity,
       room: roomSettings,

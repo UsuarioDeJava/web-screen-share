@@ -50,6 +50,25 @@ test('mensagens exportáveis ocultam credenciais em URLs e campos conhecidos', (
   assert.equal(message.includes('chave-privada'), false);
 });
 
+test('log entrega somente novos eventos e ressincroniza após perda de histórico ou limpeza', () => {
+  const log = createActivityLog({ limit: 2 });
+  log.add({ message: 'A' });
+  const first = log.changes();
+  log.add({ message: 'B' });
+  const next = log.changes(first);
+  assert.equal(next.reset, false);
+  assert.deepEqual(next.rows.map((row) => row.message), ['B']);
+  assert.deepEqual(log.changes(next).rows, []);
+  log.add({ message: 'C' }); log.add({ message: 'D' });
+  assert.equal(log.changes(first).reset, true);
+  assert.deepEqual(log.snapshot().rows.map((row) => row.message), ['C', 'D']);
+  log.clear();
+  const empty = log.changes(next);
+  assert.equal(empty.reset, true); assert.equal(empty.total, 0);
+  log.add({ message: 'E' });
+  assert.deepEqual(log.changes(empty).rows.map((row) => row.message), ['E']);
+});
+
 test('ações da sala aceitam só comandos conhecidos e fotos limitadas', () => {
   assert.throws(() => validateRoomAction({ type: 'evaluate', code: 'qualquer código' }));
   assert.throws(() => validateRoomAction({ type: 'color', color: 'url(javascript:bad)' }));

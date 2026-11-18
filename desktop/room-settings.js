@@ -1,6 +1,7 @@
 // Adaptador para os controles da página já conectada. Usa os mesmos eventos e
 // armazenamento do perfil da sala, sem criar outra conexão ou alterar o servidor.
 async function readRoomSettings(section) {
+  if (window.wssRoomSettings?.version === 1) return window.wssRoomSettings.read(section);
   const $ = (id) => document.getElementById(id);
   if (!$('app') || $('app').hidden || !$('me-name')?.textContent.trim()) {
     return { available: false, reason: 'Entre na sala para configurar seu perfil e ponteiro.' };
@@ -19,7 +20,8 @@ async function readRoomSettings(section) {
       obsDisplay: displays?.obsDisplay || 'off',
     };
   }
-  document.documentElement.setAttribute('data-wss-settings-adapter', '');
+  const adapterRoot = document.documentElement;
+  adapterRoot.setAttribute('data-wss-settings-adapter', String(Number(adapterRoot.getAttribute('data-wss-settings-adapter') || 0) + 1));
   try {
     const profile = $('profile-dialog');
     if (profile && !profile.open) {
@@ -47,6 +49,8 @@ async function readRoomSettings(section) {
       active: node.classList.contains('is-active'), disabled: Boolean(node.querySelector('button')?.disabled),
     }));
     const controlNote = $('control-note') && !$('control-note').hidden ? $('control-note').textContent : '';
+    const nativeCaps = await window.wssDesktop?.caps?.();
+    if (nativeCaps && !nativeCaps.control) for (const person of controlPeople) if (!person.active) person.disabled = true;
     if (controls?.open && !controlWasOpen) controls.close();
     // Cor: a escolhida (#rrggbb), a de antes da cor livre (só o tom), a automática do nick,
     // a que aparece agora no mouse/marcações, as recentes e as que mais aparecem na foto.
@@ -65,8 +69,9 @@ async function readRoomSettings(section) {
     const legacyHue = !color && savedHue >= 0 && savedHue < 360 ? savedHue : null;
     let recent = [];
     try { recent = JSON.parse(localStorage.getItem('wss-color-recent') || '[]').filter((c) => /^#[0-9a-f]{6}$/.test(c)).slice(0, 8); } catch {}
-    let photoColors = [];
-    if (photo) {
+    const cached = window.__wssLegacyPalette;
+    let photoColors = cached?.url === photo ? cached.colors : [];
+    if (photo && cached?.url !== photo) {
       try {
         const image = new Image();
         image.src = photo;
@@ -98,6 +103,7 @@ async function readRoomSettings(section) {
         }
         photoColors = picked.map((rgb) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`);
       } catch {}
+      window.__wssLegacyPalette = { url: photo, colors: photoColors };
     }
     return {
       available: true, name, photo,
@@ -114,13 +120,19 @@ async function readRoomSettings(section) {
       controlPeople, controlNote,
       controlsAvailable: Boolean($('share-cursor') && $('show-cursors')),
     };
-  } finally { document.documentElement.removeAttribute('data-wss-settings-adapter'); }
+  } finally {
+    const remaining = Number(adapterRoot.getAttribute('data-wss-settings-adapter') || 1) - 1;
+    if (remaining > 0) adapterRoot.setAttribute('data-wss-settings-adapter', String(remaining));
+    else adapterRoot.removeAttribute('data-wss-settings-adapter');
+  }
 }
 
 async function applyRoomAction(command) {
+  if (window.wssRoomSettings?.version === 1) return window.wssRoomSettings.action(command);
   const $ = (id) => document.getElementById(id);
   if (!$('app') || $('app').hidden) throw new Error('Entre na sala para usar esta configuração.');
-  document.documentElement.setAttribute('data-wss-settings-adapter', '');
+  const adapterRoot = document.documentElement;
+  adapterRoot.setAttribute('data-wss-settings-adapter', String(Number(adapterRoot.getAttribute('data-wss-settings-adapter') || 0) + 1));
   try {
     const click = (id) => { const node = $(id); if (!node) throw new Error('Esta função não está disponível na versão do servidor.'); node.click(); return node; };
     const wait = async (check, timeout = 20000) => {
@@ -198,6 +210,7 @@ async function applyRoomAction(command) {
       await wait(() => !button.disabled);
       return { ok: true, message: $('toast')?.textContent || 'Verificação concluída.' };
     } else if (command.type === 'control') {
+      if (command.grant && !(await window.wssDesktop?.caps?.())?.control) throw new Error('O controle remoto está indisponível ou as marcações estão desligadas.');
       const panel = $('control-dialog');
       const wasOpen = Boolean(panel?.open);
       if (!wasOpen) click('btn-cursor');
@@ -217,7 +230,11 @@ async function applyRoomAction(command) {
       } finally { if (panel?.open && !wasOpen) panel.close(); }
     } else throw new Error('Configuração não reconhecida.');
     return { ok: true };
-  } finally { document.documentElement.removeAttribute('data-wss-settings-adapter'); }
+  } finally {
+    const remaining = Number(adapterRoot.getAttribute('data-wss-settings-adapter') || 1) - 1;
+    if (remaining > 0) adapterRoot.setAttribute('data-wss-settings-adapter', String(remaining));
+    else adapterRoot.removeAttribute('data-wss-settings-adapter');
+  }
 }
 
 function validateRoomAction(value) {
@@ -239,18 +256,43 @@ function validateRoomAction(value) {
 }
 
 function createRoomSettings({ getContents, isServer }) {
-  let pending = Promise.resolve();
+  const lanes = new Map();
+  const waiting = new Set();
+  let generation = 0;
   const execute = (fn, argument) => {
     const contents = getContents();
     if (!contents || contents.isDestroyed() || !isServer(contents.getURL())) throw new Error('Conecte-se ao servidor para acessar as configurações da sala.');
     return contents.executeJavaScript(`(${fn.toString()})(${JSON.stringify(argument)})`, true);
   };
-  const run = (fn, argument) => {
-    const result = pending.then(() => execute(fn, argument));
-    pending = result.catch(() => {});
+  const run = (fn, argument, lane) => {
+    const current = generation;
+    const previous = lanes.get(lane) || Promise.resolve();
+    const task = previous.then(() => {
+      if (current !== generation) throw new Error('Operação cancelada: a página da sala mudou.');
+      return execute(fn, argument);
+    });
+    let cancel, timer;
+    const result = Promise.race([task, new Promise((_, reject) => {
+      cancel = () => reject(new Error('Operação cancelada.'));
+      waiting.add(cancel);
+      timer = setTimeout(() => reject(new Error('A operação demorou demais. Tente novamente.')), lane === 'photo' ? 70000 : 25000);
+    })]).finally(() => { clearTimeout(timer); waiting.delete(cancel); });
+    if (lane) {
+      const tail = result.catch(() => {});
+      lanes.set(lane, tail);
+      tail.then(() => { if (lanes.get(lane) === tail) lanes.delete(lane); });
+    }
     return result;
   };
-  return { read: (section) => run(readRoomSettings, ['diagnostics', 'obs'].includes(section) ? section : undefined), action: (value) => run(applyRoomAction, validateRoomAction(value)) };
+  return {
+    read: (section) => run(readRoomSettings, ['diagnostics', 'obs', 'media'].includes(section) ? section : undefined),
+    action(value) {
+      const command = validateRoomAction(value);
+      const lane = command.type.startsWith('photo') ? 'photo' : command.type === 'color' ? 'color' : command.type === 'control' ? undefined : command.type;
+      return run(applyRoomAction, command, lane);
+    },
+    cancel() { generation++; for (const cancel of waiting) cancel(); lanes.clear(); },
+  };
 }
 
 module.exports = { createRoomSettings, validateRoomAction };

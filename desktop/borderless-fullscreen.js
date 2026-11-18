@@ -34,7 +34,15 @@ function createBorderlessFullscreen(win, screen, notify = () => {}) {
         const restore = previous;
         previous = null;
         win.setAlwaysOnTop(false);
-        win.setBounds(restore.bounds);
+        const b = restore.bounds;
+        const visible = screen.getAllDisplays().some((display) => {
+          const a = display.workArea || display.bounds;
+          return b.x + b.width > a.x + 80 && b.x < a.x + a.width - 80 && b.y >= a.y - 10 && b.y < a.y + a.height - 80;
+        });
+        const display = screen.getDisplayMatching(b);
+        const a = display.workArea || display.bounds;
+        const width = Math.min(b.width, a.width), height = Math.min(b.height, a.height);
+        win.setBounds(visible ? b : { width, height, x: Math.max(a.x, Math.min(b.x, a.x + a.width - width)), y: Math.max(a.y, Math.min(b.y, a.y + a.height - height)) });
         if (restore.maximized) win.maximize();
       }
     }

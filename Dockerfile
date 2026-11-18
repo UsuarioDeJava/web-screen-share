@@ -12,6 +12,7 @@ RUN npm ci --omit=dev
 
 COPY server ./server
 COPY public ./public
+COPY desktop/shared ./desktop/shared
 COPY docker/entrypoint.sh ./docker/entrypoint.sh
 RUN chmod +x ./docker/entrypoint.sh
 

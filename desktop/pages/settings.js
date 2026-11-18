@@ -15,22 +15,28 @@ const directions = { in: 'Recebido', out: 'Enviado', local: 'Local' };
 const levels = { info: 'Info', warn: 'Aviso', error: 'Erro' };
 function status(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
 
-function renderLog() {
+const logNodes = new Map();
+function renderLog(reset = false) {
   const query = $('search').value.trim().toLocaleLowerCase('pt-BR');
   const rows = snapshot.rows.filter((row) => (!$('category').value || row.category === $('category').value)
     && (!$('level').value || row.level === $('level').value)
     && (!$('direction').value || row.direction === $('direction').value)
     && (!query || row.message.toLocaleLowerCase('pt-BR').includes(query)));
   const fragment = document.createDocumentFragment();
+  const visibleIds = new Set(rows.map((row) => row.id));
+  if (reset) { logNodes.clear(); $('log-rows').replaceChildren(); }
+  for (const [id, node] of logNodes) if (!visibleIds.has(id)) { node.remove(); logNodes.delete(id); }
   for (const row of rows) {
+    if (logNodes.has(row.id)) continue;
     const tr = document.createElement('tr');
     tr.dataset.level = row.level;
     for (const value of [new Date(row.at).toLocaleTimeString('pt-BR', { hour12: false }), directions[row.direction], categories[row.category], levels[row.level], row.message]) {
       const td = document.createElement('td'); td.textContent = value; tr.append(td);
     }
     fragment.append(tr);
+    logNodes.set(row.id, tr);
   }
-  $('log-rows').replaceChildren(fragment);
+  $('log-rows').append(fragment);
   $('log-empty').hidden = rows.length > 0;
   $('log-count').textContent = snapshot.rows.length;
   $('log-status').textContent = `${paused ? 'Visualização pausada. ' : ''}${snapshot.enabled ? 'Registro ativo' : 'Registro desativado'} · ${rows.length} exibidos de ${snapshot.rows.length} · limite ${snapshot.limit}${snapshot.omitted ? ` · ${snapshot.omitted} eventos omitidos por excesso de frequência` : ''}`;
@@ -51,6 +57,7 @@ function selectTab(name, focus = false) {
   if (['profile', 'pointer', 'shortcuts'].includes(name)) refreshRoom();
   if (name === 'connection') pollDiagnostics();
   if (name === 'obs') refreshObs();
+  updateLogSubscription();
   if (focus) $(`tab-${name}`).focus();
 }
 for (const name of tabs) {
@@ -63,11 +70,26 @@ for (const name of tabs) {
   });
 }
 
+function acceptLog(value) {
+  if (!value) return;
+  if (value.epoch < snapshot.epoch || (value.epoch === snapshot.epoch && value.lastId < snapshot.lastId)) return;
+  const rows = value.reset ? value.rows : [...snapshot.rows, ...value.rows.filter((row) => row.id > (snapshot.lastId ?? 0))].filter((row) => row.id >= value.firstId).slice(-value.limit);
+  snapshot = { ...value, rows };
+  $('log-count').textContent = snapshot.total;
+  if (activeTab === 'log') renderLog(value.reset);
+}
+let subscriptionGeneration = 0;
+async function updateLogSubscription() {
+  const generation = ++subscriptionGeneration;
+  const live = activeTab === 'log' && !paused && !document.hidden;
+  try {
+    const packet = await api.subscribeLog({ live, cursor: { epoch: snapshot.epoch, lastId: snapshot.lastId } });
+    if (live && generation === subscriptionGeneration) acceptLog(packet);
+  } catch (error) { status(error.message, true); }
+}
 api.onLog((value) => {
   if (paused) return;
-  snapshot = value;
-  $('log-count').textContent = snapshot.rows.length;
-  if (!$('panel-log').hidden) renderLog();
+  acceptLog(value);
 });
 
 async function load() {
@@ -88,7 +110,8 @@ async function load() {
   $('version').textContent = `App ${value.environment.app}`;
   $('environment').textContent = `Electron ${value.environment.electron} · Chromium ${value.environment.chrome}\n${value.environment.platform}\nModo ativo: ${value.active.fullscreen} · aceleração ${value.active.hardwareAcceleration ? 'habilitada' : 'desabilitada'}\nServidor ativo: ${value.activeServer || 'não configurado'}\n${value.environment.displays.join('\n')}`;
   snapshot = value.log;
-  renderLog();
+  $('log-count').textContent = snapshot.total;
+  if (activeTab === 'log') renderLog(true);
   initialized = true;
 }
 $('settings-form').addEventListener('input', () => { dirty = true; });
@@ -109,12 +132,12 @@ $('settings-form').addEventListener('submit', async (event) => {
 $('restart').addEventListener('click', async () => {
   try { await api.restart(); } catch (error) { status(error.message, true); }
 });
-for (const id of ['search', 'category', 'level', 'direction']) $(id).addEventListener('input', renderLog);
+for (const id of ['search', 'category', 'level', 'direction']) $(id).addEventListener('input', () => renderLog(true));
 $('pause').addEventListener('click', async () => {
   paused = !paused;
   $('pause').textContent = paused ? 'Retomar visualização' : 'Pausar visualização';
   $('pause').setAttribute('aria-pressed', paused);
-  if (!paused) { snapshot = (await api.read()).log; }
+  await updateLogSubscription();
   renderLog();
 });
 $('clear').addEventListener('click', async () => { await api.clearLog(); snapshot = (await api.read()).log; renderLog(); });
@@ -220,7 +243,7 @@ $('copy-diagnostics').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('diagnostic-output').textContent); status('Resultado copiado.'); }
   catch (error) { status(error.message, true); }
 });
-document.addEventListener('visibilitychange', () => { if (activeTab === 'connection') pollDiagnostics(); });
+document.addEventListener('visibilitychange', () => { if (activeTab === 'connection') pollDiagnostics(); updateLogSubscription(); });
 api.onSection((name) => selectTab(name));
 
 async function refreshObs() {
@@ -261,33 +284,7 @@ refreshRoom();
 // sua foto e recentes. A cor vai pra sala pelo adaptador: "ao vivo" enquanto você arrasta
 // (a sala espera 300 ms parada pra mandar) e confirmada ao soltar (entra nas recentes).
 const HEX_COLOR = /^#[0-9a-f]{6}$/;
-const clampByte = (v) => Math.round(Math.min(255, Math.max(0, Number(v) || 0)));
-const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-const rgbToHex = (r, g, b) => `#${[r, g, b].map((v) => clampByte(v).toString(16).padStart(2, '0')).join('')}`;
-function hsvToRgb(h, s, v) {
-  const f = (n) => { const k = (n + h / 60) % 6; return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255; };
-  return [f(5), f(3), f(1)];
-}
-function rgbToHsv(r, g, b) {
-  const [R, G, B] = [r / 255, g / 255, b / 255];
-  const max = Math.max(R, G, B);
-  const d = max - Math.min(R, G, B);
-  let h = 0;
-  if (d) h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
-  return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
-}
-function normalizeHex(raw) {
-  const text = String(raw == null ? '' : raw).trim().toLowerCase();
-  const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(text);
-  if (rgb) return rgbToHex(rgb[1], rgb[2], rgb[3]);
-  const hex = text.replace(/^#/, '');
-  if (/^[0-9a-f]{3}$/.test(hex)) return `#${[...hex].map((c) => c + c).join('')}`;
-  return /^[0-9a-f]{6}$/.test(hex) ? `#${hex}` : null;
-}
-function inkFor(hex) {
-  const [r, g, b] = hexToRgb(hex).map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.36 ? '#12141c' : '#ffffff';
-}
+const { clampByte, hexToRgb, rgbToHex, hsvToRgb, rgbToHsv, normalizeHex, inkFor } = window.WssColor;
 const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
 
 const picker = { h: 0, s: 1, v: 1 }; // o tom fica guardado mesmo no cinza/preto

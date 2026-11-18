@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { createBorderlessFullscreen } = require('../borderless-fullscreen');
 
 function fixture(maximized = false) {
-  const normal = { x: 100, y: 120, width: 1000, height: 700 };
+  const normal = { x: -2400, y: 120, width: 1000, height: 700 };
   const monitor = { id: 2, bounds: { x: -2560, y: 0, width: 2560, height: 1440 } };
   let bounds = { ...normal };
   let topmost = false;
@@ -61,4 +61,6 @@ test('permite alternar para outros aplicativos e recupera um monitor removido', 
   f.controller.exit();
   f.controller.focus(true);
   assert.equal(f.topmost(), false);
+  assert.ok(f.win.getBounds().x >= 0);
+  assert.ok(f.win.getBounds().x + f.win.getBounds().width <= 1920);
 });

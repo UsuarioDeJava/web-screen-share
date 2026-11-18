@@ -80,6 +80,19 @@ async function until(check, label) {
     assert.equal(await inPanel('[...document.querySelectorAll("#log-rows tr")].every(r=>r.children[2].textContent==="Transmissões")'), true);
     await inPanel('document.getElementById("category").value="";document.getElementById("category").dispatchEvent(new Event("input"))');
     console.log('OK: atualização em tempo real, pausa sem perder eventos e filtro por categoria.');
+    await inPanel('window.firstLogRow=document.querySelector("#log-rows tr");window.logPackets=[];desktopSettings.onLog(p=>logPackets.push({count:p.rows.length,reset:p.reset}))');
+    io.emit('user:joined', { id: 'incremental', name: 'Evento incremental', sharing: false });
+    await until(() => inPanel('document.getElementById("log-rows").textContent.includes("Evento incremental")'), 'incremento');
+    assert.equal(await inPanel('window.firstLogRow === document.querySelector("#log-rows tr")'), true);
+    assert.equal(await inPanel('logPackets.at(-1).count < document.querySelectorAll("#log-rows tr").length && !logPackets.at(-1).reset'), true);
+    await inPanel('document.getElementById("tab-settings").click();window.packetCount=logPackets.length');
+    io.emit('user:joined', { id: 'hidden-tab', name: 'Log com aba oculta', sharing: false });
+    await until(async () => (await state()).log.rows.some((r) => r.message.includes('Log com aba oculta')), 'registro sem visualização');
+    await inPanel('new Promise(resolve=>setTimeout(resolve,400))');
+    assert.equal(await inPanel('logPackets.length === packetCount'), true);
+    await inPanel('document.getElementById("tab-log").click()');
+    await until(() => inPanel('document.getElementById("log-rows").textContent.includes("Log com aba oculta")'), 'ressincronização');
+    console.log('OK: somente deltas, linhas preservadas e nenhum envio enquanto a aba está oculta.');
 
     const invalid = await inPanel('window.desktopSettings.save({server:"javascript:alert(1)"})');
     assert.equal(invalid.ok, false);

@@ -30,6 +30,8 @@
       "main.js",
       "borderless-fullscreen.js",
       "preferences.js",
+      "config-store.js",
+      "shared/**",
       "activity-log.js",
       "settings-panel.js",
       "settings-preload.js",
