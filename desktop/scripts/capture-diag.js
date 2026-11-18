@@ -40,6 +40,41 @@ async function capture(point) {
   return { r: bmp[i + 2], g: bmp[i + 1], b: bmp[i], size, sources: sources.length };
 }
 
+// O caminho de verdade da transmissão: getDisplayMedia numa página (como a sala faz),
+// um quadro do vídeo num canvas, e a cor no ponto da janela.
+async function captureStream(point) {
+  const page = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
+  const d = screen.getPrimaryDisplay();
+  try {
+    await page.loadURL('data:text/html,<body></body>');
+    const fx = point.x / d.size.width;
+    const fy = point.y / d.size.height;
+    return await page.webContents.executeJavaScript(`(async () => {
+      const s = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const v = document.createElement('video');
+      v.srcObject = s;
+      v.muted = true;
+      await v.play();
+      await new Promise((r) => setTimeout(r, 1200));
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      const g = c.getContext('2d');
+      g.drawImage(v, 0, 0);
+      const x = Math.round(${fx} * c.width);
+      const y = Math.round(${fy} * c.height);
+      const px = Array.from(g.getImageData(x, y, 1, 1).data);
+      const label = s.getVideoTracks()[0].label;
+      s.getTracks().forEach((t) => t.stop());
+      return { r: px[0], g: px[1], b: px[2], size: [c.width, c.height], label };
+    })()`, true);
+  } catch (err) {
+    return { error: err.message };
+  } finally {
+    page.destroy();
+  }
+}
+
 async function trial(name, opts) {
   const bounds = { x: 120, y: 120, width: 360, height: 260 };
   const win = new BrowserWindow({
@@ -72,17 +107,25 @@ async function trial(name, opts) {
     affinity = out[0];
     exStyle = `0x${Number(win32.exStyle(hwndOf(win), -20)).toString(16)}`;
   }
-  const pixel = await capture({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
+  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  const pixel = await capture(center);
+  const stream = await captureStream(center);
   win.destroy();
   await sleep(300);
-  const red = pixel.r > 200 && pixel.g < 60 && pixel.b < 60;
-  return { name, captured: red, affinity, exStyle, direct, pixel };
+  const isRed = (p) => p && p.r > 200 && p.g < 60 && p.b < 60;
+  return { name, thumbnail: isRed(pixel), stream: isRed(stream), affinity, exStyle, direct, pixel, streamPixel: stream };
 }
 
 // As janelas de teste abrem e fecham: sem isso, o app fecharia junto com a primeira.
 app.on('window-all-closed', () => {});
 
 app.whenReady().then(async () => {
+  const { session } = require('electron');
+  // Como o app: a página pede a tela e o app entrega a tela inteira (pelo desktopCapturer).
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    const sources = await desktopCapturer.getSources({ types: ['screen'] });
+    callback({ video: sources[0] });
+  });
   const results = [];
   const run = async (name, opts) => {
     try {
