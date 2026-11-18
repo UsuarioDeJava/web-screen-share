@@ -174,14 +174,93 @@
   // Cor de cada pessoa (avatar, nome no chat, marcação na tela, mouse): a que ela
   // escolheu no perfil ou, sem escolha, uma fixa pelo nick. A foto de perfil (se tiver)
   // entra no lugar da letrinha. Os perfis dos outros chegam com a lista da sala.
-  const profileHues = new Map(); // nick -> cor escolhida
+  const profileColors = new Map(); // nick -> cor escolhida (#rrggbb)
+  const profileHues = new Map(); // nick -> tom escolhido (de antes da cor livre)
   const profileAvatars = new Map(); // nick -> endereço da foto no servidor
   const AVATAR_PATH = /^\/avatar\/[0-9a-f]{32}$/;
-  let myHue = null; // a cor que você escolheu (null: automática), salva neste navegador
+  const HEX_COLOR = /^#[0-9a-f]{6}$/;
+  let myColor = null; // a cor que você escolheu (null: automática), salva neste navegador
+  let myHue = null; // só o tom (quem escolheu antes da cor livre), até escolher de novo
   try {
-    const saved = parseInt(localStorage.getItem('wss-hue'), 10);
-    if (saved >= 0 && saved < 360) myHue = saved;
+    const savedColor = String(localStorage.getItem('wss-color') || '').toLowerCase();
+    const savedHue = parseInt(localStorage.getItem('wss-hue'), 10);
+    if (HEX_COLOR.test(savedColor)) myColor = savedColor;
+    else if (savedHue >= 0 && savedHue < 360) myHue = savedHue;
   } catch {}
+
+  // ---- conversões de cor
+  const clampByte = (v) => Math.round(Math.min(255, Math.max(0, Number(v) || 0)));
+  const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const rgbToHex = (r, g, b) => `#${[r, g, b].map((v) => clampByte(v).toString(16).padStart(2, '0')).join('')}`;
+
+  function hsvToRgb(h, s, v) {
+    const f = (n) => {
+      const k = (n + h / 60) % 6;
+      return (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))) * 255;
+    };
+    return [f(5), f(3), f(1)];
+  }
+
+  function rgbToHsv(r, g, b) {
+    const [R, G, B] = [r / 255, g / 255, b / 255];
+    const max = Math.max(R, G, B);
+    const d = max - Math.min(R, G, B);
+    let h = 0;
+    if (d) h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+    return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
+  }
+
+  function hslToHex(h, s, l) {
+    const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+    const f = (n) => {
+      const k = (n + h / 30) % 12;
+      return (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255;
+    };
+    return rgbToHex(f(0), f(8), f(4));
+  }
+
+  const hexHue = (hex) => Math.round(rgbToHsv(...hexToRgb(hex)).h) % 360;
+
+  // "#abc", "abc", "aabbcc", "#AABBCC" ou "rgb(1, 2, 3)" -> "#aabbcc" (ou null).
+  function normalizeHex(raw) {
+    const text = String(raw == null ? '' : raw).trim().toLowerCase();
+    const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/.exec(text);
+    if (rgb) return rgbToHex(rgb[1], rgb[2], rgb[3]);
+    const hex = text.replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/.test(hex)) return `#${[...hex].map((c) => c + c).join('')}`;
+    return /^[0-9a-f]{6}$/.test(hex) ? `#${hex}` : null;
+  }
+
+  function luminance(hex) {
+    const [r, g, b] = hexToRgb(hex).map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  const contrast = (a, b) => {
+    const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m);
+    return (x + 0.05) / (y + 0.05);
+  };
+
+  // O nome escrito na cor escolhida: escura demais pro fundo escuro da sala, clareia só o
+  // necessário pra dar pra ler.
+  const readableCache = new Map();
+  function readable(hex) {
+    if (readableCache.has(hex)) return readableCache.get(hex);
+    const [r, g, b] = hexToRgb(hex);
+    let out = '#ffffff';
+    for (let t = 0; t <= 1.001; t += 0.05) {
+      const c = rgbToHex(r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t);
+      if (contrast(c, '#141725') >= 4.5) {
+        out = c;
+        break;
+      }
+    }
+    readableCache.set(hex, out);
+    return out;
+  }
 
   function autoHue(name) {
     let hash = 0;
@@ -189,19 +268,33 @@
     return hash % 360;
   }
 
-  // fallback: a cor guardada junto (ex.: numa mensagem antiga do chat), pra quem não
-  // está na sala agora.
-  function nameHue(name, fallback) {
-    const chosen = profileHues.get(name);
-    if (chosen !== undefined) return chosen;
-    return Number.isInteger(fallback) ? fallback : autoHue(name);
+  // A cor de alguém: { hue, color }. color: a cor exata que a pessoa escolheu; sem ela,
+  // tudo sai do tom (hue), escolhido ou fixo pelo nick. saved: a cor guardada junto (ex.:
+  // numa mensagem antiga do chat), pra quem não está mais na sala.
+  function toneOf(name, saved) {
+    const color = profileColors.get(name);
+    if (color) return { hue: hexHue(color), color };
+    if (profileHues.has(name)) return { hue: profileHues.get(name) };
+    if (saved && HEX_COLOR.test(saved.color || '')) return { hue: hexHue(saved.color), color: saved.color };
+    if (saved && Number.isInteger(saved.hue)) return { hue: saved.hue };
+    return { hue: autoHue(name) };
   }
+
+  const nameHue = (name) => toneOf(name).hue;
+  const avatarFill = (tone) => tone.color || `hsl(${tone.hue} 45% 42%)`;
+  // Letra em cima da cor: escura numa cor clara (amarelo, branco...), senão branca.
+  const inkFor = (tone) => (tone.color && luminance(tone.color) > 0.36 ? '#12141c' : '#ffffff');
+  const nameFill = (tone, lightness) => (tone.color ? readable(tone.color) : `hsl(${tone.hue} ${lightness})`);
+  // Mouse, marcação, rabisco e reação: a cor exata (ou a viva do tom), sempre em #rrggbb.
+  const markFill = (tone) => tone.color || hslToHex(tone.hue, 95, 64);
 
   function paintAvatar(node, name) {
     const photo = profileAvatars.get(name);
+    const tone = toneOf(name);
     node.dataset.name = name;
     node.textContent = photo ? '' : [...name][0] || '?';
-    node.style.setProperty('--avatar', `hsl(${nameHue(name)} 45% 42%)`);
+    node.style.setProperty('--avatar', avatarFill(tone));
+    node.style.setProperty('--avatar-ink', inkFor(tone));
     node.style.backgroundImage = photo ? `url("${photo}")` : '';
     node.classList.toggle('has-photo', Boolean(photo));
     return node;
@@ -216,28 +309,31 @@
     node.dataset.hueName = msg.name;
     node.dataset.hueSl = lightness;
     if (Number.isInteger(msg.hue)) node.dataset.hue = String(msg.hue);
-    node.style.setProperty('--name', `hsl(${nameHue(msg.name, msg.hue)} ${lightness})`);
+    if (HEX_COLOR.test(msg.color || '')) node.dataset.color = msg.color;
+    node.style.setProperty('--name', nameFill(toneOf(msg.name, msg), lightness));
   }
 
   // Remonta os perfis pela lista da sala; se algo mudou, repinta o que já está na tela.
   function indexProfiles() {
+    const colors = new Map();
     const hues = new Map();
     const photos = new Map();
     for (const u of users.values()) {
       if (u.kind === 'obs') continue; // o OBS usa o perfil de quem tem o mesmo nick
+      if (typeof u.color === 'string' && HEX_COLOR.test(u.color)) colors.set(u.name, u.color);
       if (Number.isInteger(u.hue)) hues.set(u.name, u.hue);
       if (typeof u.avatar === 'string' && AVATAR_PATH.test(u.avatar)) photos.set(u.name, u.avatar);
     }
     const same = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
-    if (same(hues, profileHues) && same(photos, profileAvatars)) return;
-    profileHues.clear();
-    for (const [k, v] of hues) profileHues.set(k, v);
-    profileAvatars.clear();
-    for (const [k, v] of photos) profileAvatars.set(k, v);
+    if (same(colors, profileColors) && same(hues, profileHues) && same(photos, profileAvatars)) return;
+    for (const [target, source] of [[profileColors, colors], [profileHues, hues], [profileAvatars, photos]]) {
+      target.clear();
+      for (const [k, v] of source) target.set(k, v);
+    }
     for (const node of document.querySelectorAll('.avatar[data-name]')) paintAvatar(node, node.dataset.name);
     for (const node of document.querySelectorAll('[data-hue-name]')) {
-      const saved = node.dataset.hue === undefined ? undefined : Number(node.dataset.hue);
-      node.style.setProperty('--name', `hsl(${nameHue(node.dataset.hueName, saved)} ${node.dataset.hueSl})`);
+      const saved = { hue: node.dataset.hue === undefined ? undefined : Number(node.dataset.hue), color: node.dataset.color };
+      node.style.setProperty('--name', nameFill(toneOf(node.dataset.hueName, saved), node.dataset.hueSl));
     }
     if (me) onMyProfileChanged();
   }
@@ -342,7 +438,7 @@
   });
 
   function join() {
-    socket.emit('join', { name: wantedName, clientId, hue: myHue }, (res) => {
+    socket.emit('join', { name: wantedName, clientId, hue: myColor ? hexHue(myColor) : myHue, color: myColor }, (res) => {
       if (!res || res.error) {
         wantedName = null;
         stopSharing();
@@ -723,7 +819,11 @@
     uptime.title = 'Tempo ao vivo';
     who.append(el('span', 'live-badge', 'AO VIVO'), uptime);
     bar.append(who);
-    tile.append(media, bar);
+    // Em tela cheia, monitor com G-SYNC/FreeSync acompanha a quantidade de quadros que o
+    // app desenha: com só o vídeo mudando (uns 30 por segundo), o monitor inteiro caía pra
+    // ~30 Hz e o mouse ficava travando. Este pontinho (invisível) muda a cada quadro e
+    // mantém o monitor na taxa máxima dele.
+    tile.append(media, bar, el('span', 'keep-hz'));
     return { tile, media, video, status, bar, fx, uptime };
   }
 
@@ -2021,7 +2121,8 @@
 
   socket.on('react', ({ stream, emoji, name }) => {
     if (!REACTIONS.includes(emoji)) return;
-    toDesktopOverlay(stream, { type: 'react', emoji, name, hue: nameHue(name) });
+    const tone = toneOf(name);
+    toDesktopOverlay(stream, { type: 'react', emoji, name, hue: tone.hue, color: markFill(tone) });
     const target = fxTarget(stream);
     if (!target) return;
     const { fx } = target;
@@ -2080,9 +2181,14 @@
 
   // O desenho fica em cima só da imagem (sem as faixas pretas), em coordenadas de 0 a 1:
   // acompanha o quadro se ele mudar de tamanho.
-  const strokeColor = (hue) => (hue < 0 ? '#ffffff' : `hsl(${hue} 95% 64%)`);
+  // A cor de um traço: a que veio com ele (#rrggbb, ou o tom: -1 é branco) ou a da pessoa.
+  function strokeColor(name, hue, color) {
+    if (HEX_COLOR.test(color || '')) return color;
+    if (hue === -1) return '#ffffff';
+    return Number.isInteger(hue) ? hslToHex(hue, 95, 64) : markFill(toneOf(name));
+  }
 
-  function createStrokeView(target, hue) {
+  function createStrokeView(target, color) {
     const { fx, video } = target;
     const width = fx.clientWidth || 1;
     const height = fx.clientHeight || 1;
@@ -2095,7 +2201,7 @@
     svg.style.top = `${(box.top / height) * 100}%`;
     svg.style.width = `${(box.width / width) * 100}%`;
     svg.style.height = `${(box.height / height) * 100}%`;
-    svg.style.setProperty('--ping', strokeColor(hue));
+    svg.style.setProperty('--ping', color);
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
@@ -2123,7 +2229,7 @@
       target,
       pending: [],
       timer: null,
-      view: createStrokeView(target, nameHue(me.name)),
+      view: createStrokeView(target, markFill(toneOf(me.name))),
     };
     addStrokePoint(stroke, clientX, clientY);
     return stroke;
@@ -2180,9 +2286,11 @@
   const heldStrokes = new Map();
 
   // local: o seu próprio rabisco (do modo desenho do app), mostrado no seu quadro.
-  function handleDraw({ stream, id, points, end, name, hold, hue }, local = false) {
-    const color = Number.isInteger(hue) ? hue : nameHue(name);
-    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: color, name, hold: hold === 'alt' ? 'alt' : undefined });
+  function handleDraw({ stream, id, points, end, name, hold, hue, color: sent }, local = false) {
+    const color = strokeColor(name, hue, sent);
+    // hue: pro app de antes da cor livre (ele só entende o tom).
+    const oldHue = Number.isInteger(hue) ? hue : HEX_COLOR.test(sent || '') ? hexHue(sent) : nameHue(name);
+    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
@@ -2359,7 +2467,8 @@
 
   socket.on('ping', ({ stream, x, y, name }) => {
     // O seu próprio clique no seu quadro não precisa aparecer na sua tela de verdade.
-    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: nameHue(name) });
+    const tone = toneOf(name);
+    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: tone.hue, color: markFill(tone) });
     const target = fxTarget(stream);
     if (!target) return;
     const { fx, video } = target;
@@ -2370,7 +2479,7 @@
     const mark = el('span', 'fx-ping');
     mark.style.left = `${((box.left + x * box.width) / width) * 100}%`;
     mark.style.top = `${((box.top + y * box.height) / height) * 100}%`;
-    mark.style.setProperty('--ping', `hsl(${nameHue(name)} 95% 64%)`);
+    mark.style.setProperty('--ping', markFill(tone));
     mark.classList.toggle('flip', x > 0.75); // nome do lado esquerdo perto da borda direita
     mark.append(el('span', 'fx-ping-ring'), el('span', 'fx-ping-ring'), el('span', 'fx-ping-dot'), el('span', 'fx-ping-name', name));
     mark.addEventListener('animationend', (e) => {
@@ -3289,9 +3398,10 @@
     } else if (msg.type === 'draw') {
       const points = Array.isArray(msg.points) ? msg.points : [];
       const hue = Number.isInteger(msg.hue) ? msg.hue : nameHue(me.name);
+      const color = HEX_COLOR.test(msg.color || '') ? msg.color : undefined; // app 1.4.6+
       // Em pedaços de até 64 pontos (o tamanho máximo de cada mensagem no servidor).
       for (let i = 0; i < points.length || i === 0; i += 128) {
-        const data = { stream, id, points: points.slice(i, i + 128), end: Boolean(msg.end) && i + 128 >= points.length, hold: true, hue };
+        const data = { stream, id, points: points.slice(i, i + 128), end: Boolean(msg.end) && i + 128 >= points.length, hold: true, hue, color };
         socket.emit('draw', data);
         handleDraw({ ...data, name: me.name }, true);
       }
@@ -3430,8 +3540,12 @@
   // que está (animado), até 5 MB.
   const profileDialog = $('profile-dialog');
   const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
-  const HUE_SWATCHES = [0, 20, 40, 55, 80, 120, 155, 180, 200, 220, 250, 275, 300, 330];
-  let hueSendTimer = null;
+  // Cores prontas (duas fileiras: vivas e escuras), como no Discord.
+  const COLOR_PRESETS = [
+    '#ff4d5e', '#ff8a3d', '#ffc53d', '#c6e83a', '#3ee07f', '#2ee6c8', '#3ccfff', '#4d8dff', '#9b6bff', '#f25ce0',
+    '#b3263a', '#c25a12', '#a87b0c', '#5f8f14', '#16884a', '#11867a', '#14709e', '#2848b8', '#5d34b8', '#a12d8f',
+  ];
+  let colorSendTimer = null;
 
   // A setinha com a fotinha (ou a letrinha) na cor da pessoa: a mesma da tela de quem
   // transmite.
@@ -3473,7 +3587,9 @@
   function paintCursor(node, name) {
     const photo = profileAvatars.get(name);
     const badge = node.querySelector('.cursor-badge');
-    node.style.setProperty('--c', `hsl(${nameHue(name)} 95% 64%)`);
+    const tone = toneOf(name);
+    node.style.setProperty('--c', markFill(tone));
+    node.style.setProperty('--ink', inkFor(tone));
     badge.textContent = photo ? '' : [...name][0] || '?';
     badge.style.backgroundImage = photo ? `url("${photo}")` : '';
     badge.classList.toggle('has-photo', Boolean(photo));
@@ -3576,26 +3692,57 @@
     if (res.error) showToast(`Foto de perfil: ${res.error}`);
   }
 
-  function setMyHue(hue, send) {
-    myHue = Number.isInteger(hue) ? hue : null;
+  // color: '#rrggbb' ou null (automática). send 'now': manda já (soltou o mouse, clicou numa
+  // cor pronta...); sem, espera 300 ms parado (arrastando no seletor).
+  function setMyColor(color, send) {
+    myColor = HEX_COLOR.test(color || '') ? color : null;
+    myHue = null;
     try {
-      if (myHue === null) localStorage.removeItem('wss-hue');
-      else localStorage.setItem('wss-hue', String(myHue));
+      if (myColor) localStorage.setItem('wss-color', myColor);
+      else localStorage.removeItem('wss-color');
+      localStorage.removeItem('wss-hue');
     } catch {}
+    const msg = { hue: myColor ? hexHue(myColor) : null, color: myColor };
     if (me && users.has(me.id)) {
       const self = users.get(me.id);
-      if (myHue === null) delete self.hue;
-      else self.hue = myHue;
+      if (myColor) Object.assign(self, msg);
+      else {
+        delete self.hue;
+        delete self.color;
+      }
     }
-    clearTimeout(hueSendTimer);
-    if (send === 'now') socket.emit('profile', { hue: myHue });
-    else hueSendTimer = setTimeout(() => socket.emit('profile', { hue: myHue }), 300);
+    clearTimeout(colorSendTimer);
+    if (send === 'now') {
+      socket.emit('profile', msg);
+      if (myColor && !COLOR_PRESETS.includes(myColor)) rememberColor(myColor);
+    } else {
+      colorSendTimer = setTimeout(() => socket.emit('profile', msg), 300);
+    }
     renderUsers();
     renderProfileDialog();
   }
 
+  // As últimas cores personalizadas que você usou.
+  const RECENT_COLORS = 8;
+  function recentColors() {
+    try {
+      const list = JSON.parse(localStorage.getItem('wss-color-recent') || '[]');
+      return Array.isArray(list) ? list.filter((c) => HEX_COLOR.test(c)).slice(0, RECENT_COLORS) : [];
+    } catch {
+      return [];
+    }
+  }
+  function rememberColor(color) {
+    const list = [color, ...recentColors().filter((c) => c !== color)].slice(0, RECENT_COLORS);
+    try {
+      localStorage.setItem('wss-color-recent', JSON.stringify(list));
+    } catch {}
+  }
+
   function sendDesktopIdentity() {
-    if (me && desktop && typeof desktop.identity === 'function') desktop.identity({ hue: nameHue(me.name) });
+    if (!me || !desktop || typeof desktop.identity !== 'function') return;
+    const tone = toneOf(me.name);
+    desktop.identity({ hue: tone.hue, color: markFill(tone) });
   }
 
   // A sua cor ou foto mudou: a cor dos rabiscos no app, o seu mouse e a janela do perfil.
@@ -3605,23 +3752,154 @@
     renderProfileDialog();
   }
 
+  // ---- seletor de cor: quadrado (saturação × brilho), faixa do tom, código (HEX e RGB),
+  // conta-gotas (qualquer lugar da tela), cores da sua foto e as recentes.
+  const picker = { h: 0, s: 1, v: 1 }; // o tom fica guardado mesmo no cinza/preto
+  const pickerEl = $('color-picker');
+  const pickerHex = () => rgbToHex(...hsvToRgb(picker.h, picker.s, picker.v));
+
+  function pickerFrom(hex) {
+    const hsv = rgbToHsv(...hexToRgb(hex));
+    if (hsv.s > 0.001 && hsv.v > 0.001) picker.h = hsv.h;
+    picker.s = hsv.s;
+    picker.v = hsv.v;
+  }
+
+  // A cor que o seletor mostra ao abrir: a escolhida ou a que você tem agora.
+  const currentColor = () => myColor || (me ? markFill(toneOf(me.name)) : '#4d8dff');
+
+  // force: arruma até o campo em que você está digitando (confirmou com Enter).
+  function renderPicker(force = false) {
+    if (pickerEl.hidden) return;
+    const hex = pickerHex();
+    const area = $('cp-area');
+    const hue = $('cp-hue');
+    area.style.setProperty('--hue', `hsl(${picker.h} 100% 50%)`);
+    area.style.setProperty('--c', hex);
+    hue.style.setProperty('--c', `hsl(${picker.h} 100% 50%)`);
+    area.firstElementChild.style.left = `${picker.s * 100}%`;
+    area.firstElementChild.style.top = `${(1 - picker.v) * 100}%`;
+    hue.firstElementChild.style.left = `${(picker.h / 360) * 100}%`;
+    area.setAttribute('aria-valuetext', `saturação ${Math.round(picker.s * 100)}%, brilho ${Math.round(picker.v * 100)}%`);
+    hue.setAttribute('aria-valuenow', String(Math.round(picker.h)));
+    $('cp-preview').style.background = hex;
+    // Não mexe no campo que você está digitando.
+    const typing = force ? null : document.activeElement;
+    if (typing !== $('cp-hex')) $('cp-hex').value = hex.toUpperCase();
+    hexToRgb(hex).forEach((v, i) => {
+      const field = $(['cp-r', 'cp-g', 'cp-b'][i]);
+      if (typing !== field) field.value = String(v);
+    });
+  }
+
+  // Uma fileira de bolinhas de cor (da foto, recentes).
+  function renderChips(row, colors) {
+    row.hidden = !colors.length;
+    row.querySelector('.cp-chips').replaceChildren(...colors.map((color) => {
+      const chip = el('button', 'cp-chip');
+      chip.type = 'button';
+      chip.style.setProperty('--sw', color);
+      chip.title = color.toUpperCase();
+      chip.setAttribute('aria-label', `Usar a cor ${color.toUpperCase()}`);
+      chip.classList.toggle('active', color === myColor);
+      chip.addEventListener('click', () => {
+        pickerFrom(color);
+        setMyColor(color, 'now');
+      });
+      return chip;
+    }));
+  }
+
+  // As cores que mais aparecem na sua foto (no GIF, a do primeiro quadro).
+  const photoPalette = { url: null, colors: [] };
+  async function loadPhotoPalette(url) {
+    if (photoPalette.url === url) return;
+    photoPalette.url = url;
+    photoPalette.colors = [];
+    if (!url) return;
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const size = 48;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, size, size);
+      const { data } = ctx.getImageData(0, 0, size, size);
+      const buckets = new Map();
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 128) continue;
+        const key = ((data[i] >> 4) << 8) | ((data[i + 1] >> 4) << 4) | (data[i + 2] >> 4);
+        const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+        b.n += 1;
+        b.r += data[i];
+        b.g += data[i + 1];
+        b.b += data[i + 2];
+        buckets.set(key, b);
+      }
+      // Mais pontos e mais cor viva primeiro; quase preto conta pouco.
+      const ranked = [...buckets.values()].map((b) => {
+        const rgb = [b.r / b.n, b.g / b.n, b.b / b.n];
+        const { s, v } = rgbToHsv(...rgb);
+        return { rgb, score: b.n * (0.3 + s) * (v < 0.15 ? 0.15 : 1) };
+      }).sort((a, b) => b.score - a.score);
+      const picked = [];
+      const far = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 64;
+      for (const { rgb } of ranked) {
+        if (picked.every((p) => far(p, rgb))) picked.push(rgb);
+        if (picked.length === 6) break;
+      }
+      if (photoPalette.url === url) photoPalette.colors = picked.map((rgb) => rgbToHex(...rgb));
+    } catch {
+      photoPalette.colors = [];
+    }
+    renderProfileDialog();
+  }
+
+  function setPickerOpen(open) {
+    pickerEl.hidden = !open;
+    $('color-custom').setAttribute('aria-expanded', String(open));
+    if (open) pickerFrom(currentColor());
+    renderProfileDialog();
+  }
+
   function renderProfileDialog() {
     if (!profileDialog.open || !me) return;
+    const tone = toneOf(me.name);
     paintAvatar($('profile-avatar'), me.name);
     const name = $('profile-name');
     name.textContent = me.name;
-    name.style.setProperty('--name', `hsl(${nameHue(me.name)} 75% 72%)`);
+    name.style.setProperty('--name', nameFill(tone, '75% 72%'));
     paintCursor($('profile-cursor').firstElementChild, me.name);
-    const slider = $('hue-slider');
-    slider.value = String(nameHue(me.name));
-    slider.style.setProperty('--sw', `hsl(${nameHue(me.name)} 45% 42%)`);
-    for (const btn of $('hue-swatches').children) {
-      const on = btn.dataset.hue === (myHue === null ? 'auto' : String(myHue));
+    // Automática, personalizada (a escolhida fora das prontas, ou o tom de antes) ou pronta.
+    const isAuto = !myColor && myHue === null;
+    const isPreset = Boolean(myColor) && COLOR_PRESETS.includes(myColor);
+    const auto = $('color-auto');
+    const autoTone = { hue: autoHue(me.name) };
+    auto.style.setProperty('--sw', avatarFill(autoTone));
+    auto.style.setProperty('--ink', inkFor(autoTone));
+    auto.classList.toggle('active', isAuto);
+    auto.setAttribute('aria-pressed', String(isAuto));
+    const custom = $('color-custom');
+    const customOn = !isAuto && !isPreset;
+    custom.classList.toggle('active', customOn);
+    custom.classList.toggle('has-color', customOn);
+    custom.setAttribute('aria-pressed', String(customOn));
+    custom.style.setProperty('--sw', customOn ? markFill(tone) : 'transparent');
+    custom.style.setProperty('--ink', customOn ? inkFor({ color: markFill(tone) }) : 'var(--text)');
+    for (const btn of $('color-presets').children) {
+      const on = btn.dataset.color === myColor;
       btn.classList.toggle('active', on);
       btn.setAttribute('aria-pressed', String(on));
     }
-    $('hue-swatches').firstElementChild.style.setProperty('--sw', `hsl(${autoHue(me.name)} 45% 42%)`);
-    $('btn-photo-remove').hidden = !profileAvatars.has(me.name);
+    const photo = profileAvatars.get(me.name) || null;
+    loadPhotoPalette(photo);
+    renderChips($('cp-photo'), photo ? photoPalette.colors : []);
+    renderChips($('cp-recent'), recentColors());
+    $('btn-photo-remove').hidden = !photo;
+    renderPicker();
   }
 
   function openProfile() {
@@ -3632,26 +3910,139 @@
   }
 
   {
-    const swatches = $('hue-swatches');
-    const auto = el('button', 'hue-swatch hue-auto', 'Automática');
-    auto.type = 'button';
-    auto.dataset.hue = 'auto';
-    auto.title = 'A cor que o seu nick já tinha';
-    auto.addEventListener('click', () => setMyHue(null, 'now'));
-    swatches.append(auto);
-    for (const hue of HUE_SWATCHES) {
-      const btn = el('button', 'hue-swatch');
+    const presets = $('color-presets');
+    for (const color of COLOR_PRESETS) {
+      const btn = el('button', 'color-preset');
       btn.type = 'button';
-      btn.dataset.hue = String(hue);
-      btn.style.setProperty('--sw', `hsl(${hue} 45% 42%)`);
-      btn.setAttribute('aria-label', `Cor ${hue}`);
-      btn.addEventListener('click', () => setMyHue(hue, 'now'));
-      swatches.append(btn);
+      btn.dataset.color = color;
+      btn.title = color.toUpperCase();
+      btn.style.setProperty('--sw', color);
+      btn.style.setProperty('--ink', inkFor({ color }));
+      btn.setAttribute('aria-label', `Cor ${color.toUpperCase()}`);
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+      btn.addEventListener('click', () => {
+        pickerFrom(color);
+        setMyColor(color, 'now');
+      });
+      presets.append(btn);
     }
     $('profile-cursor').append(cursorNode());
   }
-  $('hue-slider').addEventListener('input', (e) => setMyHue(Number(e.target.value)));
-  $('hue-slider').addEventListener('change', (e) => setMyHue(Number(e.target.value), 'now'));
+  $('color-auto').addEventListener('click', () => setMyColor(null, 'now'));
+  $('color-custom').addEventListener('click', () => setPickerOpen(pickerEl.hidden));
+
+  // Arrastar no quadrado e na faixa do tom (mouse, caneta ou dedo).
+  function dragSlider(node, apply) {
+    const move = (e) => {
+      const r = node.getBoundingClientRect();
+      apply(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+      setMyColor(pickerHex());
+    };
+    node.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      node.focus();
+      node.setPointerCapture(e.pointerId);
+      move(e);
+    });
+    node.addEventListener('pointermove', (e) => {
+      if (node.hasPointerCapture(e.pointerId)) move(e);
+    });
+    const done = (e) => {
+      if (!node.hasPointerCapture(e.pointerId)) return;
+      node.releasePointerCapture(e.pointerId);
+      setMyColor(pickerHex(), 'now');
+    };
+    node.addEventListener('pointerup', done);
+    node.addEventListener('pointercancel', done);
+  }
+  dragSlider($('cp-area'), (x, y) => {
+    picker.s = x;
+    picker.v = 1 - y;
+  });
+  dragSlider($('cp-hue'), (x) => {
+    picker.h = Math.min(359.9, x * 360);
+  });
+
+  // Setas do teclado: de 1 em 1 (com Shift, de 10 em 10). Entra nas recentes só a cor
+  // em que você parou.
+  let keyCommit = null;
+  function arrowKeys(node, apply) {
+    node.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 10 : 1;
+      const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+      if (!delta) return;
+      e.preventDefault();
+      apply(...delta);
+      setMyColor(pickerHex());
+      clearTimeout(keyCommit);
+      keyCommit = setTimeout(() => setMyColor(pickerHex(), 'now'), 800);
+    });
+  }
+  arrowKeys($('cp-area'), (dx, dy) => {
+    picker.s = Math.min(1, Math.max(0, picker.s + dx / 100));
+    picker.v = Math.min(1, Math.max(0, picker.v + dy / 100));
+  });
+  arrowKeys($('cp-hue'), (dx, dy) => {
+    picker.h = (picker.h + dx + dy + 360) % 360;
+  });
+
+  // Digitando o código: vale assim que fica completo; Enter (ou sair do campo) confirma.
+  // Enter não pode fechar a janela (o formulário dela fecha com Enter).
+  function typedColor() {
+    return normalizeHex($('cp-hex').value);
+  }
+  function rgbColor() {
+    const values = ['cp-r', 'cp-g', 'cp-b'].map((id) => $(id).value.trim());
+    if (!values.every((v) => /^\d{1,3}$/.test(v) && Number(v) <= 255)) return null;
+    return rgbToHex(...values.map(Number));
+  }
+  // Confirma (manda já e entra nas recentes) com Enter ou quando o foco sai do grupo: de
+  // R pra G não conta, senão cada passo da digitação virava uma cor recente.
+  for (const [ids, read] of [[['cp-hex'], typedColor], [['cp-r', 'cp-g', 'cp-b'], rgbColor]]) {
+    let dirty = false;
+    const commit = () => {
+      const color = read();
+      if (dirty && color) {
+        pickerFrom(color);
+        setMyColor(color, 'now');
+      }
+      dirty = false;
+      renderPicker(true); // arruma o que ficou no campo (ex.: "abc" vira "#AABBCC")
+    };
+    for (const id of ids) {
+      const field = $(id);
+      field.addEventListener('input', () => {
+        dirty = true;
+        const color = read();
+        if (!color || color === myColor) return;
+        pickerFrom(color);
+        setMyColor(color);
+      });
+      field.addEventListener('focusout', (e) => {
+        if (!ids.some((other) => $(other) === e.relatedTarget)) commit();
+      });
+      field.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        commit();
+        field.select();
+      });
+    }
+  }
+
+  // Conta-gotas do Chrome/Edge e do app: a cor de qualquer pixel da tela.
+  const eyeBtn = $('cp-eyedropper');
+  eyeBtn.hidden = typeof window.EyeDropper !== 'function';
+  eyeBtn.addEventListener('click', async () => {
+    try {
+      const { sRGBHex } = await new window.EyeDropper().open();
+      const color = normalizeHex(sRGBHex);
+      if (!color) return;
+      pickerFrom(color);
+      setMyColor(color, 'now');
+    } catch {} // Esc: desistiu
+  });
   $('btn-photo').addEventListener('click', () => $('photo-input').click());
   $('photo-input').addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -3882,7 +4273,8 @@
     const { stream, id, name, x, y, gone } = msg;
     const photo = profileAvatars.get(name);
     toDesktopOverlay(stream, {
-      type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name),
+      // color só de quem escolheu: a automática o app ainda separa das parecidas.
+      type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name), color: toneOf(name).color,
       avatar: photo ? new URL(photo, window.location.href).href : null, click: msg.click,
     });
     showPeerCursor(msg);

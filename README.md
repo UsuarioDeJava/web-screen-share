@@ -344,7 +344,10 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
        automático; os botões de cima e o cursor somem com o mouse parado. No celular,
        um toque mostra tudo por alguns segundos. Quando o mouse sai da janela (por
        exemplo, indo pra outro monitor) ou você clica em outro programa, tudo que
-       aparece por cima do vídeo some na hora, inclusive a lista de pessoas.
+       aparece por cima do vídeo some na hora, inclusive a lista de pessoas. Em monitor
+       com G-SYNC/FreeSync (taxa variável), a tela cheia continua desenhando na taxa
+       máxima do monitor: sem isso, o monitor acompanhava o vídeo (uns 30 quadros por
+       segundo) e o mouse inteiro ficava travando naquela tela.
      - **X — parar de assistir**: desliga aquela transmissão pra você (economiza
        banda) e tira o quadro da tela, sobrando espaço pras outras. Pra voltar, é o
        botão **Assistir** que aparece no nome da pessoa, na lista de pessoas (o
@@ -403,9 +406,12 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     **M** som, **F** tela cheia, **P** fixar, **S** print, **1** a **6** reações,
     **C** chat, **V** voz/microfone.
 13. **Perfil** (clique na sua fotinha, no rodapé da lista, ou em **Perfil**): escolha
-    a sua **cor** (umas prontas, a barrinha pra qualquer outra, ou **Automática**, a do
-    nick) e uma **foto** (PNG, JPG, WebP ou GIF animado até 5 MB; as fotos paradas
-    viram um quadradinho de 256 px). A cor e a foto aparecem pra todo mundo na lista,
+    a sua **cor** e uma **foto** (PNG, JPG, WebP ou GIF animado até 5 MB; as fotos
+    paradas viram um quadradinho de 256 px). A cor pode ser **Automática** (a do nick),
+    uma das 20 prontas ou qualquer outra pelo lápis: quadrado de saturação e brilho,
+    faixa do tom, código **HEX** ou **R G B**, **conta-gotas** (pega a cor de qualquer
+    lugar da tela; Chrome, Edge e app), as cores **da sua foto** e as **recentes**. Numa
+    cor escura, o nome clareia só o bastante pra dar pra ler no chat. A cor e a foto aparecem pra todo mundo na lista,
     no chat, nos quadros, nos rabiscos e no mouse, e ficam salvas no navegador como o
     nick: na próxima vez elas já entram junto. As fotos ficam só na memória do servidor
     enquanto a pessoa está na sala.
@@ -541,3 +547,10 @@ install && npm start`.
   quadro mostra se a conexão está saindo direta ou via TURN. Na imagem Docker o TURN é
   o embutido; fora dela, o público padrão tem banda limitada e é de terceiros, então
   pra uso frequente (ou privacidade) vale configurar um TURN próprio.
+- Ainda travando em tela cheia num monitor com G-SYNC/FreeSync? Dá pra tirar o app da
+  taxa variável: no Painel de Controle da NVIDIA, **Gerenciar as configurações 3D** →
+  **Configurações do programa** → adicione o `Web Screen Share.exe` → **Tecnologia do
+  monitor: Atualização fixa** (na AMD, no Adrenalin: **Jogos** → o app → FreeSync
+  desligado).
+- Ideias pro futuro (skins do mouse, enfeites, estilos de clique, ping e pincel): veja
+  [IDEIAS.md](IDEIAS.md).

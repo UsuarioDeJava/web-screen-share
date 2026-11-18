@@ -269,7 +269,7 @@
         <div class="dialog-label">Foto</div>
         <div class="profile-photo">
           <button id="btn-photo" class="btn btn-primary" type="button">Escolher foto</button>
-          <button id="btn-photo-remove" class="btn" type="button" hidden>Tirar a foto</button>
+          <button id="btn-photo-remove" class="btn" type="button" hidden>Remover foto</button>
           <input id="photo-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
         </div>
         <p class="dialog-tip">PNG, JPG, WebP ou GIF (animado, até 5 MB). Fica salva neste navegador, igual o nick: é só escolher uma vez.</p>
@@ -277,8 +277,32 @@
       </div>
       <div class="profile-block">
         <div class="dialog-label">Cor</div>
-        <div id="hue-swatches" class="hue-swatches"></div>
-        <input id="hue-slider" class="hue-slider" type="range" min="0" max="359" step="1" aria-label="Escolher a cor" />
+        <div class="color-choices">
+          <button id="color-auto" class="color-big color-auto" type="button" title="Automática: a cor que o seu nick já tinha" aria-label="Cor automática">
+            <svg class="color-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+          </button>
+          <button id="color-custom" class="color-big color-custom" type="button" title="Cor personalizada: escolha qualquer cor" aria-label="Cor personalizada" aria-expanded="false" aria-controls="color-picker">
+            <svg class="color-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+            <svg class="color-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 5.5 4 4"/><path d="M17 3a2.8 2.8 0 0 1 4 4L8 20l-5 1 1-5z"/></svg>
+          </button>
+          <div id="color-presets" class="color-presets"></div>
+        </div>
+        <div id="color-picker" class="color-picker" hidden>
+          <div id="cp-area" class="cp-area" role="slider" tabindex="0" aria-label="Saturação e brilho (use as setas)"><span class="cp-knob"></span></div>
+          <div id="cp-hue" class="cp-hue" role="slider" tabindex="0" aria-label="Tom (use as setas)" aria-valuemin="0" aria-valuemax="359"><span class="cp-knob"></span></div>
+          <div class="cp-fields">
+            <span id="cp-preview" class="cp-preview" aria-hidden="true"></span>
+            <label class="cp-field cp-field-hex"><input id="cp-hex" type="text" maxlength="7" spellcheck="false" autocomplete="off" /><span>HEX</span></label>
+            <label class="cp-field"><input id="cp-r" type="number" min="0" max="255" inputmode="numeric" /><span>R</span></label>
+            <label class="cp-field"><input id="cp-g" type="number" min="0" max="255" inputmode="numeric" /><span>G</span></label>
+            <label class="cp-field"><input id="cp-b" type="number" min="0" max="255" inputmode="numeric" /><span>B</span></label>
+            <button id="cp-eyedropper" class="icon-btn cp-eyedropper" type="button" title="Conta-gotas: clique e pegue a cor de qualquer lugar da tela" aria-label="Conta-gotas" hidden>
+              <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3z"/></svg></span>
+            </button>
+          </div>
+          <div id="cp-photo" class="cp-row" hidden><span class="cp-row-label">Da sua foto</span><div class="cp-chips"></div></div>
+          <div id="cp-recent" class="cp-row" hidden><span class="cp-row-label">Recentes</span><div class="cp-chips"></div></div>
+        </div>
       </div>
     </form>
   </dialog>

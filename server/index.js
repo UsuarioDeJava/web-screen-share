@@ -280,17 +280,20 @@ function uniqueName(name) {
 
 // since: quando a transmissão começou (hora do servidor), pro tempo ao vivo nos quadros.
 // voice: quem está no chat de voz, com o microfone/fone ligado ou não.
-// hue/avatar: a cor e a foto que a pessoa escolheu.
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, avatar }) => {
+// color/hue/avatar: a cor e a foto que a pessoa escolheu. color é a cor exata (#rrggbb);
+// hue, o tom dela (o app de antes da cor livre só entende o tom).
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, color, avatar }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (sharing) user.since = since || startedAt || null;
   if (voice) user.voice = voice;
   if (Number.isInteger(hue)) user.hue = hue;
+  if (color) user.color = color;
   if (avatar) user.avatar = `/avatar/${avatar}`;
   return user;
 };
 
 const cleanHue = (raw) => (Number.isInteger(raw) && raw >= 0 && raw < 360 ? raw : null);
+const cleanColor = (raw) => (typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : null);
 
 const voiceState = (raw) => ({ muted: Boolean(raw && raw.muted), deafened: Boolean(raw && raw.deafened) });
 
@@ -467,6 +470,8 @@ io.on('connection', (socket) => {
     const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId };
     const hue = cleanHue(payload.hue);
     if (hue !== null) user.hue = hue;
+    const color = cleanColor(payload.color);
+    if (color) user.color = color;
     users.set(socket.id, user);
     logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
@@ -496,6 +501,9 @@ io.on('connection', (socket) => {
     const hue = cleanHue(msg.hue);
     if (hue === null) delete user.hue;
     else user.hue = hue;
+    const color = cleanColor(msg.color);
+    if (color === null) delete user.color;
+    else user.color = color;
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
@@ -534,6 +542,7 @@ io.on('connection', (socket) => {
     lastChatId = Math.max(lastChatId + 1, Date.now());
     const message = { id: lastChatId, name: user.name, text, at: Date.now() };
     if (Number.isInteger(user.hue)) message.hue = user.hue; // a cor fica no histórico
+    if (user.color) message.color = user.color;
     chatHistory.push(message);
     if (chatHistory.length > CHAT_HISTORY) chatHistory.shift();
     saveChatSoon();
@@ -590,8 +599,9 @@ io.on('connection', (socket) => {
 
   // Desenho ao vivo por cima da transmissão: o traço chega em pedaços (pontos de 0 a 1,
   // [x, y, x, y...]) enquanto a pessoa ainda está desenhando. Quem transmite, rabiscando
-  // a própria tela pelo app, não tem limite de ritmo, escolhe a cor (hue de 0 a 359, -1
-  // pra branco) e o traço fica (hold) até ela limpar ou sair do modo desenho.
+  // a própria tela pelo app, não tem limite de ritmo, escolhe a cor (color, #rrggbb; ou
+  // hue de 0 a 359, -1 pra branco) e o traço fica (hold) até ela limpar ou sair do modo
+  // desenho.
   socket.on('draw', (msg) => {
     const user = users.get(socket.id);
     if (!user || !msg || !isLive(msg.stream) || typeof msg.id !== 'string' || msg.id.length > 32) return;
@@ -606,6 +616,7 @@ io.on('connection', (socket) => {
     if (msg.hold === 'alt') out.hold = 'alt';
     else if (owner && msg.hold) out.hold = true;
     if (owner && Number.isInteger(msg.hue) && msg.hue >= -1 && msg.hue < 360) out.hue = msg.hue;
+    if (owner && cleanColor(msg.color)) out.color = cleanColor(msg.color);
     socket.to(ROOM).emit('draw', out);
   });
 

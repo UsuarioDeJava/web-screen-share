@@ -6,7 +6,19 @@ const strokes = new Map(); // "nome|id" -> { svg, path, points, expire }
 const altHeld = new Map(); // nome -> { list, timer }: traços de quem ainda segura o Alt
 
 const unit = (v) => Math.min(1, Math.max(0, Number(v) || 0));
-const color = (hue) => (Number(hue) === -1 ? '#ffffff' : `hsl(${(Number(hue) || 0) % 360} 95% 64%)`);
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+function hslHex(h, s, l) {
+  const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    const v = Math.round((l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255);
+    return v.toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+// A cor exata (#rrggbb) que a sala manda; sem ela (sala de antes), sai do tom.
+const color = (hue, exact) => (HEX_COLOR.test(exact || '') ? exact
+  : Number(hue) === -1 ? '#ffffff' : hslHex(((Number(hue) || 0) % 360 + 360) % 360, 95, 64));
 const text = (v) => String(v == null ? '' : v).slice(0, 40);
 
 function el(tag, className, content) {
@@ -16,11 +28,11 @@ function el(tag, className, content) {
   return node;
 }
 
-function ping({ x, y, name, hue }) {
+function ping({ x, y, name, hue, color: exact }) {
   const mark = el('div', 'ping');
   mark.style.left = `${unit(x) * 100}%`;
   mark.style.top = `${unit(y) * 100}%`;
-  mark.style.setProperty('--c', color(hue));
+  mark.style.setProperty('--c', color(hue, exact));
   mark.classList.toggle('flip', unit(x) > 0.8);
   mark.append(el('span', 'ping-ring'), el('span', 'ping-ring'), el('span', 'ping-dot'), el('span', 'ping-name', text(name)));
   mark.addEventListener('animationend', (e) => {
@@ -76,7 +88,7 @@ function releaseAlt(name) {
   }
 }
 
-function draw({ key, points, end, hue, hold, name }) {
+function draw({ key, points, end, hue, hold, name, color: exact }) {
   if (typeof key !== 'string' || !Array.isArray(points)) return;
   let stroke = strokes.get(key);
   if (!stroke) {
@@ -85,7 +97,7 @@ function draw({ key, points, end, hue, hold, name }) {
     svg.setAttribute('class', 'draw');
     svg.setAttribute('viewBox', '0 0 1 1');
     svg.setAttribute('preserveAspectRatio', 'none');
-    svg.style.setProperty('--c', color(hue));
+    svg.style.setProperty('--c', color(hue, exact));
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
@@ -103,13 +115,13 @@ function draw({ key, points, end, hue, hold, name }) {
   else stroke.expire = setTimeout(done, 5000);
 }
 
-function react({ emoji, name, hue }) {
+function react({ emoji, name, hue, color: exact }) {
   const items = fx.querySelectorAll('.react');
   for (let i = 0; i <= items.length - 20; i += 1) items[i].remove();
   const item = el('div', 'react');
   item.style.left = `${78 + Math.random() * 18}%`;
   item.style.setProperty('--drift', `${Math.round(Math.random() * 60 - 30)}px`);
-  item.style.setProperty('--c', color(hue));
+  item.style.setProperty('--c', color(hue, exact));
   item.append(el('span', 'react-emoji', text(emoji).slice(0, 8)), el('span', 'react-name', text(name)));
   item.addEventListener('animationend', (e) => {
     if (e.target === item) item.remove();
@@ -126,19 +138,21 @@ const colorsEl = document.getElementById('colors');
 const PALETTE = [{ hue: null, name: 'Sua cor' }, { hue: 0, name: 'Vermelho' }, { hue: 50, name: 'Amarelo' }, { hue: 140, name: 'Verde' }, { hue: -1, name: 'Branco' }];
 const own = []; // seus traços: ficam até desfazer, limpar ou sair do modo
 let myHue = 200;
+let myColor = null; // a sua cor exata, se a sala mandou
 let picked = null; // cor escolhida na barrinha (null: a sua cor)
 let current = null; // traço sendo desenhado agora
 let ownCounter = 0;
 
 const activeHue = () => (picked === null ? myHue : picked);
+const activeColor = () => (picked === null ? color(myHue, myColor) : color(picked));
 
 function renderColors() {
-  document.body.style.setProperty('--mine', color(activeHue()));
+  document.body.style.setProperty('--mine', activeColor());
   colorsEl.replaceChildren(...PALETTE.map((option) => {
     const swatch = el('button', 'swatch');
     swatch.type = 'button';
     swatch.title = option.name;
-    swatch.style.setProperty('--c', color(option.hue === null ? myHue : option.hue));
+    swatch.style.setProperty('--c', option.hue === null ? color(myHue, myColor) : color(option.hue));
     swatch.classList.toggle('active', option.hue === picked);
     swatch.addEventListener('click', () => {
       picked = option.hue;
@@ -159,13 +173,14 @@ function newStroke() {
   svg.setAttribute('viewBox', '0 0 1 1');
   svg.setAttribute('preserveAspectRatio', 'none');
   const hue = activeHue();
-  svg.style.setProperty('--c', color(hue));
+  const hex = activeColor();
+  svg.style.setProperty('--c', hex);
   const path = document.createElementNS(SVG_NS, 'path');
   path.setAttribute('vector-effect', 'non-scaling-stroke');
   svg.append(path);
   fx.append(svg);
   ownCounter += 1;
-  return { id: ownCounter, hue, svg, path, points: [], pending: [], timer: null };
+  return { id: ownCounter, hue, color: hex, svg, path, points: [], pending: [], timer: null };
 }
 
 // Sai em pedaços a cada 30 ms enquanto você desenha; sem limite de tamanho.
@@ -173,7 +188,7 @@ function flush(stroke, end = false) {
   clearTimeout(stroke.timer);
   stroke.timer = null;
   if (!stroke.pending.length && !end) return;
-  window.overlayBridge.draw({ id: stroke.id, points: stroke.pending.splice(0), end, hue: stroke.hue });
+  window.overlayBridge.draw({ id: stroke.id, points: stroke.pending.splice(0), end, hue: stroke.hue, color: stroke.color });
 }
 
 function addPoint(stroke, clientX, clientY) {
@@ -208,8 +223,9 @@ function clearOwn() {
   window.overlayBridge.clear();
 }
 
-function setDrawMode(on, hue) {
+function setDrawMode(on, hue, exact) {
   if (Number.isInteger(hue)) myHue = hue;
+  myColor = HEX_COLOR.test(exact || '') ? exact : null;
   document.body.classList.toggle('drawing', on);
   hud.hidden = !on;
   renderColors();
@@ -256,6 +272,21 @@ function distinctHue(id, wanted) {
   let hue = ((Number(wanted) || 0) % 360 + 360) % 360;
   for (let i = 0; i < 12 && used.some((u) => hueGap(u, hue) < 32); i += 1) hue = (hue + 137.5) % 360;
   return Math.round(hue);
+}
+
+// Letra escura numa cor clara (amarelo, branco...), senão branca.
+function inkFor(hex) {
+  const lin = (i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5) > 0.36 ? '#12141c' : '#ffffff';
+}
+
+function paintCursor(c) {
+  const hex = c.custom || color(c.hue);
+  c.node.style.setProperty('--c', hex);
+  c.node.style.setProperty('--ink', c.custom ? inkFor(hex) : '#ffffff');
 }
 
 function removeCursor(id) {
@@ -331,7 +362,9 @@ function showClick(node, kind) {
   node.append(mark);
 }
 
-function cursor({ id, x, y, gone, letter, hue, avatar, click }) {
+function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact }) {
+  // A cor que a pessoa escolheu vai exata; a automática gira se ficar parecida com outra.
+  const custom = HEX_COLOR.test(exact || '') ? exact.toLowerCase() : null;
   if (typeof id !== 'string') return;
   if (gone) {
     removeCursor(id);
@@ -343,15 +376,16 @@ function cursor({ id, x, y, gone, letter, hue, avatar, click }) {
     node.innerHTML = ARROW;
     const badge = el('span', 'cursor-badge', text(letter).slice(0, 2));
     node.append(badge);
-    c = { node, badge, photo: null, hue: distinctHue(id, hue), wanted: hue, timer: null };
-    node.style.setProperty('--c', color(c.hue));
+    c = { node, badge, photo: null, hue: custom ? hue : distinctHue(id, hue), wanted: hue, custom, timer: null };
+    paintCursor(c);
     cursors.set(id, c);
     cursorsEl.append(node);
-  } else if (hue !== c.wanted) {
+  } else if (hue !== c.wanted || custom !== c.custom) {
     // A pessoa trocou de cor no perfil.
     c.wanted = hue;
-    c.hue = distinctHue(id, hue);
-    c.node.style.setProperty('--c', color(c.hue));
+    c.custom = custom;
+    c.hue = custom ? hue : distinctHue(id, hue);
+    paintCursor(c);
   }
   paintBadge(c, letter, avatar);
   if (click) showClick(c.node, click);
@@ -382,7 +416,7 @@ window.overlayBridge.onEvent((event) => {
   else if (event.type === 'draw') draw(event);
   else if (event.type === 'draw-release') releaseAlt(event.name);
   else if (event.type === 'react') react(event);
-  else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue);
+  else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue, event.color);
   else if (event.type === 'draw-undo') undo();
   else if (event.type === 'draw-clear') clearOwn();
 });

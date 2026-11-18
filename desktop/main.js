@@ -37,7 +37,8 @@ let overlay = null;
 let overlayOwner = null; // de quem é a camada aberta: 'share' (tela escolhida no app) ou 'obs'
 let obsWanted = false; // a sua transmissão do OBS está no ar (com você na sala pelo app)
 let drawMode = false; // você está rabiscando a sua tela (a camada pega o mouse)
-let identity = { hue: 200 }; // a sua cor na sala
+let identity = { hue: 200, color: null }; // a sua cor na sala (color: #rrggbb)
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 let controller = null; // quem está controlando agora: { name }
 let picker = null; // seletor de tela aberto: { win, finish }
@@ -443,7 +444,7 @@ function setDrawMode(on) {
       globalShortcut.unregister(accelerator);
     }
   }
-  toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue });
+  toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue, color: identity.color });
   if (!drawMode) toRoom({ type: 'clear' }); // saindo, os rabiscos somem pra todo mundo
 }
 
@@ -468,7 +469,11 @@ const fromOverlay = (event) => Boolean(overlay) && !overlay.isDestroyed() && eve
 ipcMain.on('overlay:draw', (event, data) => {
   if (!fromOverlay(event) || !drawMode || !data || !Array.isArray(data.points)) return;
   const points = data.points.filter((v) => Number.isFinite(v)).map((v) => Math.min(1, Math.max(0, v)));
-  toRoom({ type: 'draw', id: Number(data.id) || 0, points, end: Boolean(data.end), hue: Number.isInteger(data.hue) ? data.hue : identity.hue });
+  toRoom({
+    type: 'draw', id: Number(data.id) || 0, points, end: Boolean(data.end),
+    hue: Number.isInteger(data.hue) ? data.hue : identity.hue,
+    color: HEX_COLOR.test(data.color || '') ? data.color : undefined,
+  });
 });
 ipcMain.on('overlay:undo', (event, id) => {
   if (fromOverlay(event)) toRoom({ type: 'undo', id: Number(id) || 0 });
@@ -676,7 +681,9 @@ ipcMain.handle('desktop:update', (event) => fromServer(event) && updates.act());
 ipcMain.handle('desktop:update-check', (event) => (fromServer(event) ? updates.check() : null));
 
 ipcMain.on('desktop:identity', (event, data) => {
-  if (fromServer(event) && data && Number.isInteger(data.hue)) identity = { hue: data.hue };
+  if (!fromServer(event) || !data || !Number.isInteger(data.hue)) return;
+  identity = { hue: data.hue, color: HEX_COLOR.test(data.color || '') ? data.color.toLowerCase() : null };
+  if (drawMode) toOverlay({ type: 'draw-mode', on: true, hue: identity.hue, color: identity.color });
 });
 
 ipcMain.handle('desktop:sharing', (event, on) => {
