@@ -24,13 +24,41 @@ No navegador, fica no armazenamento local daquele endereço. Dois controles fís
 com a mesma identificação compartilham o perfil; cada participante envia um controle
 selecionado por vez.
 
-O monitor visual mostra os 17 botões, intensidade dos gatilhos e posição dos dois
-analógicos tanto no desenho do controle quanto nos gráficos de eixos. Os valores são
-da **saída mapeada** enviada ao jogo. **Editar mapeamento, inversões e zona morta**
-expande os ajustes. **Testar circularidade** registra até 64 setores por analógico;
-a cobertura indica quanto da volta foi percorrido e o desvio radial é a distância
-média dos pontos registrados ao círculo unitário. É uma visualização de diagnóstico
-da saída configurada, sem alterar a calibração do dispositivo.
+O monitor visual acompanha o tema escuro do aplicativo. Mostra os 17 botões,
+intensidade dos gatilhos e posição dos dois analógicos no desenho e nos gráficos.
+Os valores são da **saída mapeada** enviada ao jogo. **Editar mapeamento, inversões
+e zona morta** expande os ajustes.
+
+### Presets e botões extras
+
+**Preset do controle** oferece **Xbox**, **PlayStation** e **GameSir / personalizado**.
+Os dois primeiros aplicam os índices padrão, os símbolos correspondentes e a
+disposição dos analógicos. Selecionar um preset restaura o mapeamento básico e as
+inversões; preserva a zona morta e as atribuições extras salvas. As atribuições
+extras só são aplicadas no modo personalizado. Ajustes antigos sem preset continuam
+com seus índices e zona morta preservados. A seleção inicial por nome do dispositivo
+é uma sugestão; o usuário pode trocá-la.
+
+No preset **GameSir / personalizado**, o aplicativo mostra ao vivo até 64 entradas
+físicas. Clique em **Adicionar botão extra**, dê um nome (M1, M2, L4, R4 etc.) e escolha
+**Enviar como**. **Detectar botão** captura a próxima tecla pressionada enquanto a
+janela está em foco, com prazo de 15 segundos; também é possível informar o índice
+manualmente. Há até 16 atribuições extras por perfil, com aparência Xbox ou PlayStation.
+Os extras também acendem abaixo do desenho do controle.
+
+Um botão extra pode enviar A, B, X, Y, um gatilho ou qualquer outro comando dos
+17 botões do controle virtual. A entrada principal continua funcionando: o aplicativo
+combina as pressões sem soltar um botão que ainda está apertado por outra entrada.
+Nos gatilhos, mantém o maior valor analógico. Remover a atribuição interrompe esse
+mapeamento. Isso não cria botões adicionais no dispositivo XInput nem concede acesso
+ao teclado: o jogo continua recebendo **Xbox 360**, inclusive com preset PlayStation.
+
+Os botões precisam ser expostos pela [Gamepad API](https://www.w3.org/TR/gamepad/)
+como entradas independentes para terem atribuições independentes no aplicativo.
+Alguns controles permitem programar teclas traseiras para repetir outros botões no
+próprio firmware, como o [GameSir G7 SE](https://gamesir.com/support/manuals/gamesir-g7-se).
+Nesses casos, configure a função no software ou no controle do fabricante. O aplicativo
+não consegue distinguir duas teclas físicas que chegam como a mesma entrada.
 
 ## Detalhes de compartilhamento
 

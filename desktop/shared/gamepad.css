@@ -1,29 +1,40 @@
-.gpad-view { --gp-ink:#102439; --gp-line:#c9d9e9; container-type:inline-size; box-sizing:border-box; background:#fff; color:var(--gp-ink); border:1px solid #dce5ee; border-radius:12px; padding:24px; margin:16px 0; font:14px/1.4 system-ui,sans-serif; }
+.gpad-view { --gp-ink:#e9edfb; --gp-muted:#9aa8c4; --gp-line:#303b55; --gp-accent:var(--accent-2,#9b8aff); container-type:inline-size; box-sizing:border-box; background:linear-gradient(145deg,rgba(131,103,255,.08),transparent 65%),#111521; color:var(--gp-ink); border:1px solid #30384e; border-radius:14px; padding:24px; margin:16px 0; font:14px/1.4 system-ui,sans-serif; }
 .gpad-view * { box-sizing:border-box; }
-.gpad-device { color:#101820; font-size:22px; margin:0 0 22px; overflow-wrap:anywhere; }
-.gpad-meta { display:flex; flex-wrap:wrap; gap:14px 26px; margin:0 0 24px; }
-.gpad-meta dt,.gpad-view small { color:#728ba4; font-size:10px; font-weight:500; text-transform:uppercase; }
-.gpad-meta dd { margin:2px 0 0; font-size:14px; font-variant-numeric:tabular-nums; }
+.gpad-heading { display:flex; align-items:start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin:0 0 22px; }
+.gpad-device { color:#f0f2ff; font-size:20px; margin:0; overflow-wrap:anywhere; flex:1; min-width:180px; }
+.gpad-preset-badge { border:1px solid #514578; background:#29223d; color:#d8ceff; border-radius:20px; padding:5px 11px; font-size:11px; }
+.gpad-meta { display:flex; flex-wrap:wrap; gap:14px 24px; margin:0 0 24px; }
+.gpad-meta dt,.gpad-view small { color:var(--gp-muted); font-size:10px; font-weight:500; text-transform:uppercase; }
+.gpad-meta dd { margin:3px 0 0; font-size:13px; font-variant-numeric:tabular-nums; }
 .gpad-layout { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(260px,1fr); gap:28px; align-items:center; }
 .gpad-readings { min-width:0; }
-.gpad-buttons { display:grid; grid-template-columns:repeat(auto-fit,minmax(52px,1fr)); gap:10px 8px; }
-.gpad-button { position:relative; border-left:5px solid #e6edf4; padding-left:6px; }
-.gpad-button::before { content:''; position:absolute; bottom:0; left:-5px; width:5px; height:var(--pressure,0%); background:#2675c9; }
+.gpad-buttons { display:grid; grid-template-columns:repeat(auto-fit,minmax(56px,1fr)); gap:10px 8px; }
+.gpad-button { position:relative; border-left:4px solid #2b354c; background:#161d2d; border-radius:3px; padding:5px 5px 5px 8px; }
+.gpad-button::before { content:''; position:absolute; bottom:0; left:-4px; width:4px; height:var(--pressure,0%); background:var(--gp-accent); border-radius:3px; }
 .gpad-button small,.gpad-button strong,.gpad-axis small,.gpad-axis strong { display:block; white-space:nowrap; }
 .gpad-button strong { font-weight:500; font-variant-numeric:tabular-nums; font-size:15px; }
-.gpad-button.is-pressed strong { color:#176ac5; }
+.gpad-button.is-pressed { background:#292443; }.gpad-button.is-pressed strong { color:#d7cdff; }
 .gpad-sticks { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin:24px 0 16px; }
-.gpad-stick { min-width:0; }.gpad-stick h4 { font-size:10px; color:#728ba4; font-weight:500; margin:0 0 8px; }
-.gpad-stick-plot { display:flex; gap:10px; align-items:center; }.gpad-axis { flex:none; }.gpad-axis>div { border-left:4px solid #e6edf4; padding-left:6px; margin:8px 0; }
+.gpad-stick { min-width:0; }.gpad-stick h4 { font-size:10px; color:var(--gp-muted); font-weight:500; margin:0 0 8px; }
+.gpad-stick-plot { display:flex; gap:10px; align-items:center; }.gpad-axis { flex:none; }.gpad-axis>div { border-left:3px solid #3c3657; padding-left:6px; margin:8px 0; }
 .gpad-axis strong { font-size:13px; font-variant-numeric:tabular-nums; font-weight:500; }
 .gpad-stick-plot svg { min-width:64px; max-width:140px; flex:1; overflow:visible; }
-.gpad-grid { fill:none; stroke:#d2dfeb; stroke-width:1; }.gpad-dot { fill:#154f88; }.gpad-trace { fill:none; stroke:#469bdf; stroke-width:1.5; }
-.gpad-figure svg { width:100%; display:block; overflow:visible; }.gpad-body { fill:#f8fbfe; stroke:#c5d9ec; stroke-width:3; }.gpad-shadow { fill:#ebf2f9; }
-.gpad-control { fill:#fff; stroke:#162635; stroke-width:2.7; transition:fill .06s; }.gpad-control.is-pressed { fill:#75b8f5; stroke:#1267b7; }
-.gpad-stick-ring { fill:none; stroke:#c5d9ec; stroke-width:3; }.gpad-trigger-fill { fill:#3b8bd4; }.gpad-figure text { text-anchor:middle; font:11px system-ui; fill:#243a4c; pointer-events:none; }
-.gpad-test-actions { display:flex; flex-wrap:wrap; gap:8px; }.gpad-test-button { background:#e8eef5; color:#173047; border:0; border-radius:6px; padding:8px 12px; font:12px system-ui; cursor:pointer; }.gpad-test-button[aria-pressed=true] { background:#d1e6fa; color:#105a9e; }
-.gpad-note { font-size:11px; color:#71869c; line-height:1.6; margin:12px 0 0; }.gpad-circularity-score { display:block; margin-top:10px; text-transform:none!important; }
+.gpad-grid { fill:none; stroke:#35435e; stroke-width:1; }.gpad-dot { fill:#b3a0ff; stroke:#e3d9ff; stroke-width:1; }
+.gpad-figure svg { width:100%; display:block; overflow:visible; }.gpad-body { fill:#1b2234; stroke:#7785ab; stroke-width:2.5; }.gpad-shadow { fill:#090d17; }
+.gpad-control { fill:#101624; stroke:#a4aec8; stroke-width:2.7; transition:fill .06s; }.gpad-control.is-pressed { fill:#7660c9; stroke:#d0bfff; }
+.gpad-stick-ring { fill:#151b2a; stroke:#444f6b; stroke-width:3; }.gpad-trigger-fill { fill:#b3a0ff; }.gpad-figure text { text-anchor:middle; font:11px system-ui; fill:#e0e5f9; pointer-events:none; }
+.gpad-view[data-layout=playstation] [data-glyph="0"] { fill:#99caff; }.gpad-view[data-layout=playstation] [data-glyph="1"] { fill:#ff9ca9; }.gpad-view[data-layout=playstation] [data-glyph="2"] { fill:#e9aff4; }.gpad-view[data-layout=playstation] [data-glyph="3"] { fill:#8ae1c2; }
+.gpad-note { font-size:11px; color:var(--gp-muted); line-height:1.6; margin:12px 0 0; }
 .gpad-view.is-disconnected .gpad-figure { opacity:.45; }.gpad-view [hidden] { display:none!important; }
+.gamepad-profile-controls { display:grid; grid-template-columns:minmax(180px,260px) 1fr; gap:16px; align-items:center; padding:14px 0; }.gamepad-profile-controls label { margin:0; color:#cdd4eb; font-size:12px; }.gamepad-profile-controls select { display:block; margin-top:7px; width:100%; }
+.gamepad-profile-controls .dialog-sub { font-size:12px; color:#a1acc7; margin:0; }.gamepad-feedback { color:#bfb2f4; font-size:12px; margin:6px 0; }.gamepad-feedback:empty { display:none; }
+.gamepad-extras { padding:18px; margin:18px 0; border:1px solid #39334f; background:#131726; border-radius:12px; }.gamepad-extras h4 { margin:0 0 10px; font-size:14px; color:#e1dafa; }.gamepad-extras>label { color:#aebad4; font-size:12px; max-width:260px; }
+.gpad-physical-extras,.gpad-extra-visual { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }.gpad-extra-visual { justify-content:center; }
+.gpad-physical-extras { max-height:180px; overflow-y:auto; }
+.gpad-extra-chip { color:#b6c1db; background:#1b2234; border:1px solid #343f5a; border-radius:7px; padding:6px 9px; font:11px/1.4 system-ui,sans-serif; }.gpad-extra-chip.is-pressed { background:#3c2e63; color:#e9deff; border-color:#a28bd7; }
+.gpad-physical-extras p { margin:0; font-size:12px; color:#a0acc8; }.gpad-extra-bindings { display:grid; gap:12px; margin-bottom:14px; }
+.gpad-extra-binding { display:flex; align-items:end; flex-wrap:wrap; gap:10px; padding:12px; background:#0f1420; border:1px solid #2e3750; border-radius:9px; }.gpad-extra-binding label { flex:1; min-width:95px; margin:0; color:#aab6d1; font-size:11px; }.gpad-extra-binding input,.gpad-extra-binding select { display:block; margin-top:6px; box-sizing:border-box; width:100%; min-width:0; background:#0b0f1b; color:#e9edfb; height:36px; border:1px solid #38425b; border-radius:7px; padding:0 8px; }.gpad-extra-binding .btn { font-size:11px; min-height:36px; }
+.gamepad-extras[hidden] { display:none!important; }
 @media(max-width:850px) { .gpad-layout { grid-template-columns:1fr; }.gpad-figure { max-width:460px; width:100%; margin:auto; }.gpad-view { padding:18px; } }
-@media(max-width:480px) { .gpad-sticks { grid-template-columns:1fr; }.gpad-stick-plot svg { max-width:130px; }.gpad-meta { gap:12px; } }
+@media(max-width:480px) { .gpad-sticks { grid-template-columns:1fr; }.gpad-stick-plot svg { max-width:130px; }.gpad-meta { gap:12px; }.gamepad-profile-controls { grid-template-columns:1fr; } }
 @container(max-width:650px) { .gpad-layout { grid-template-columns:1fr; }.gpad-figure { max-width:400px; width:100%; margin:auto; } }

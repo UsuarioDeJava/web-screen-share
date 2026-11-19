@@ -66,6 +66,36 @@ test('perfil local remapeia botões, gatilhos e eixos antes da conversão XInput
   assert.equal(out.sThumbLX, -32768); assert.equal(out.sThumbLY, 32767);
   assert.equal(model.profile(null).deadzone, 0.12);
 });
+
+test('presets reconhecem a disposição padrão e mantêm saída XInput para Xbox e PlayStation', () => {
+  assert.equal(model.defaultProfile({ id: 'Sony DualSense Wireless Controller' }).preset, 'playstation');
+  assert.equal(model.defaultProfile({ id: 'GameSir Controller' }).preset, 'custom');
+  const pad = { buttons: Array.from({ length: 22 }, (_, i) => ({ value: i === 0 ? 1 : 0 })), axes: [0, 0, 0, 0] };
+  const xbox = model.applyPreset('xbox'); const play = model.applyPreset('playstation');
+  assert.equal(model.labelsFor(play)[0], '✕'); assert.equal(model.labelsFor(xbox)[0], 'A');
+  assert.deepEqual(model.sample(pad, xbox), model.sample(pad, play));
+  assert.equal(report(model.sample(pad, play)).wButtons, 0x1000);
+  const migrated = model.profile({ buttons: [2], deadzone: 0.2 });
+  assert.equal(migrated.buttons[0], 2); assert.equal(migrated.deadzone, 0.2); assert.equal(migrated.preset, 'xbox');
+});
+
+test('extras compartilham botões sem soltar a entrada principal e preservam gatilhos analógicos', () => {
+  const p = model.profile({ preset: 'custom', extraButtons: [{ name: 'L4', source: 17, target: 0 }, { name: 'R4', source: 19, target: 6 }] });
+  const pad = { buttons: Array.from({ length: 22 }, () => ({ value: 0 })), axes: [0, 0, 0, 0] };
+  pad.buttons[17].value = 1; pad.buttons[19].value = 0.7;
+  let state = model.sample(pad, p);
+  assert.equal(state.buttons.length, 17); assert.equal(model.validState(state), true);
+  assert.equal(state.buttons[0], 1); assert.equal(state.buttons[6], 0.7);
+  pad.buttons[0].value = 1; pad.buttons[17].value = 0;
+  assert.equal(model.sample(pad, p).buttons[0], 1);
+  pad.buttons[0].value = 0; pad.buttons[6].value = 0.9;
+  assert.equal(model.sample(pad, p).buttons[0], 0); assert.equal(model.sample(pad, p).buttons[6], 0.9);
+  const standard = model.applyPreset('xbox', p);
+  pad.buttons[17].value = 1;
+  assert.equal(model.sample(pad, standard).buttons[0], 0);
+  assert.equal(model.profile({ preset: 'custom', extraButtons: [{ source: 64, target: 0 }, { source: 17, target: 18 }, null] }).extraButtons.length, 0);
+  assert.equal(model.profile({ preset: 'custom', extraButtons: Array.from({ length: 30 }, () => ({ source: 17, target: 0 })) }).extraButtons.length, 16);
+});
 test('gamepads nativos são isolados; watchdog neutraliza, revogação remove e falha libera recursos', () => {
   let clock = 0, next = 0; const calls = [];
   const api = { alloc: () => 1, connect: () => 0x20000000, target: () => ++next, add: () => 0x20000000,

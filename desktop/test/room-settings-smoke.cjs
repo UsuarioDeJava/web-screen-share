@@ -95,14 +95,36 @@ async function until(check, label, timeout = 12000) {
     await until(() => inPanel('document.querySelector("#gamepad-config > p:last-child").textContent.includes("A B")'), 'teste do mapeamento normalizado');
     assert.equal(await inPanel('document.querySelectorAll(".gpad-control.is-pressed").length>=2'), true);
     assert.equal(await inPanel('document.querySelector(".gpad-button strong").textContent'), '1.00');
-    await inPanel('document.querySelector(".gpad-test-button").click()');
-    assert.equal(await inPanel('document.querySelector(".gpad-test-button").getAttribute("aria-pressed")'), 'true');
-    await inPanel('Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>{const angle=(window.qaCircle=(window.qaCircle||0)+1)*Math.PI/32;return [{index:0,id:"Controle de teste",timestamp:performance.now(),mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[Math.cos(angle),Math.sin(angle),0,0]}]}})');
-    await until(() => inPanel('document.querySelector(".gpad-circularity-score").textContent.includes("desvio radial") && document.querySelector(".gpad-trace").getAttribute("d").length>20'), 'percurso e circularidade ao vivo');
+    assert.equal(await inPanel('document.querySelectorAll(".gpad-test-button,.gpad-circularity-score").length'), 0);
+    assert.equal(await inPanel('getComputedStyle(document.querySelector(".gpad-view")).backgroundColor'), 'rgb(17, 21, 33)');
+    await inPanel('document.querySelector(".gamepad-preset").value="playstation";document.querySelector(".gamepad-preset").dispatchEvent(new Event("change"))');
+    await until(() => inPanel('document.querySelector(".gpad-view").dataset.layout==="playstation" && [...document.querySelectorAll("[data-glyph]")].find(e=>e.dataset.glyph==="0").textContent==="✕"'), 'preset PlayStation');
+    assert.equal((await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].preset, 'playstation');
+    if (outputPath) {
+      await inPanel('document.querySelector(".gpad-view").scrollIntoView({block:"start"});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(outputPath, 'gamepad-playstation.png'), (await panel.webContents.capturePage()).toPNG());
+    }
+    await inPanel('document.querySelector(".gamepad-preset").value="xbox";document.querySelector(".gamepad-preset").dispatchEvent(new Event("change"))');
+    await until(() => inPanel('[...document.querySelectorAll("[data-glyph]")].find(e=>e.dataset.glyph==="0").textContent==="A"'), 'preset Xbox');
+    await inPanel('document.querySelector(".gamepad-preset").value="custom";document.querySelector(".gamepad-preset").dispatchEvent(new Event("change"));window.qaSource=17;Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle de teste",timestamp:performance.now(),mapping:"standard",buttons:Array.from({length:22},(_,i)=>({value:i===window.qaSource?1:0})),axes:[0.5,-0.3,0,0]}]})');
+    await until(() => inPanel('document.querySelectorAll(".gpad-physical-extras .gpad-extra-chip").length===22'), 'detecção de botões físicos');
+    await inPanel('document.querySelector(".gamepad-add-extra").click()');
+    await until(() => inPanel('document.querySelector(".gpad-extra-visual").textContent.includes("M1 → A") && document.querySelector(".gpad-button strong").textContent==="1.00"'), 'extra B17 envia A');
+    await inPanel('document.querySelector(".gpad-extra-binding select").value="5";document.querySelector(".gpad-extra-binding select").dispatchEvent(new Event("change"))');
+    await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons[0].target===5, 'destino extra salvo');
+    panel.focus();
+    await inPanel('document.querySelector(".gpad-extra-binding button").click();window.qaSource=19;');
+    await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons[0].source===19, 'detectar botão extra B19');
+    await until(() => inPanel('document.querySelector("#gamepad-config > p:last-child").textContent.includes("RB")'), 'extra remapeado antes de enviar');
     if (outputPath) {
       await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(outputPath, 'gamepad-settings.png'), (await panel.webContents.capturePage()).toPNG());
+      await inPanel('document.querySelector(".gamepad-extras").scrollIntoView({block:"start"});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(outputPath, 'gamepad-extras.png'), (await panel.webContents.capturePage()).toPNG());
     }
+    await inPanel('document.querySelectorAll(".gpad-extra-binding button")[1].click()');
+    await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons.length===0, 'remoção de extra persistida');
+    await until(() => inPanel('document.querySelector(".gpad-extra-visual").hidden'), 'remover extra solta o botão de saída');
     console.log('OK: gamepad simulado detectado, remapeado, testado e salvo no perfil nativo compartilhado com a sala.');
 
     await inPanel('document.getElementById("tab-connection").click()');

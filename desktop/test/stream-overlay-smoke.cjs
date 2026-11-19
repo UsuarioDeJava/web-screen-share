@@ -109,9 +109,9 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     console.log('OK: receptor decodifica vídeo WebRTC real do canvas animado.');
     const gamepadPeer = new BrowserWindow({ width: 900, height: 680, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
     await gamepadPeer.loadURL(process.env.WSS_SERVER); await join(gamepadPeer, 'Gamepad QA');
-    await evaluate(peer, 'localStorage.setItem("wss-gamepad-profiles",JSON.stringify({"Controle remoto QA":{buttons:[1,0]}}))');
+    await evaluate(peer, 'localStorage.setItem("wss-gamepad-profiles",JSON.stringify({"Controle remoto QA":{preset:"custom",extraButtons:[{name:"M1",source:19,target:0}]}}))');
     await peer.loadURL(process.env.WSS_SERVER); await join(peer, 'Receptor QA');
-    await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0.75,-0.5,0,0]}]})');
+    await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:22},(_,i)=>({value:i===19?1:0})),axes:[0.75,-0.5,0,0]}]})');
     await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"))'), 'reentrada do receptor');
     const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
     await grantGamepad('Receptor QA'); await grantGamepad('Gamepad QA');
