@@ -92,7 +92,7 @@ async function until(check, label, timeout = 12000) {
     assert.equal((await inRoom('window.wssDesktop.readGamepadProfiles()'))['Controle de teste'].buttons[0], 1);
     const gamepadConfig = JSON.parse(fs.readFileSync(path.join(process.env.WSS_USER_DATA, 'config.json'), 'utf8'));
     assert.equal(gamepadConfig.gamepadProfiles['Controle de teste'].buttons[0], 1);
-    await until(() => inPanel('document.querySelector("#gamepad-config > p:last-child").textContent.includes("A B")'), 'teste do mapeamento normalizado');
+    await until(() => inPanel('document.querySelector("#gamepad-config > details:last-child p").textContent.includes("A B")'), 'teste do mapeamento normalizado');
     assert.equal(await inPanel('document.querySelectorAll(".gpad-control.is-pressed").length>=2'), true);
     assert.equal(await inPanel('document.querySelector(".gpad-button strong").textContent'), '1.00');
     assert.equal(await inPanel('document.querySelectorAll(".gpad-test-button,.gpad-circularity-score").length'), 0);
@@ -115,7 +115,7 @@ async function until(check, label, timeout = 12000) {
     panel.focus();
     await inPanel('document.querySelector(".gpad-extra-binding button").click();window.qaSource=19;');
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons[0].source===19, 'detectar botão extra B19');
-    await until(() => inPanel('document.querySelector("#gamepad-config > p:last-child").textContent.includes("RB")'), 'extra remapeado antes de enviar');
+    await until(() => inPanel('document.querySelector("#gamepad-config > details:last-child p").textContent.includes("RB")'), 'extra remapeado antes de enviar');
     if (outputPath) {
       await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(outputPath, 'gamepad-settings.png'), (await panel.webContents.capturePage()).toPNG());
@@ -125,6 +125,18 @@ async function until(check, label, timeout = 12000) {
     await inPanel('document.querySelectorAll(".gpad-extra-binding button")[1].click()');
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons.length===0, 'remoção de extra persistida');
     await until(() => inPanel('document.querySelector(".gpad-extra-visual").hidden'), 'remover extra solta o botão de saída');
+    await inPanel('window.qaSource=6; window.qaRumble=[]; window.qaActuator={effects:["dual-rumble"],playEffect:(type,params)=>{window.qaRumble.push({type,params});return new Promise(resolve=>window.qaEndRumble=resolve)},reset:()=>{window.qaRumble.push({stop:true});window.qaEndRumble?.("preempted");return Promise.resolve()}};const oldGet=navigator.getGamepads;Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>oldGet().map(p=>({...p,vibrationActuator:window.qaActuator}))});document.querySelector(".gamepad-trigger-row button").click()');
+    await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].triggerLimits[0]===0.5,'meio gatilho salvo');
+    await until(() => inPanel('document.querySelector(".gamepad-trigger-row progress").value===0.5'),'pressão parcial no painel');
+    await inPanel('document.querySelector(".gamepad-vibrate").click()');
+    await until(() => inPanel('window.qaRumble.length===1'),'teste de vibração iniciado');
+    assert.deepEqual(await inPanel('window.qaRumble[0]'),{type:'dual-rumble',params:{duration:1000,startDelay:0,strongMagnitude:0.5,weakMagnitude:0.5}});
+    await inPanel('document.querySelector(".gamepad-vibration-stop").click()');
+    await until(() => inPanel('window.qaRumble.some(x=>x.stop)'),'vibração interrompida');
+    await until(() => inPanel('!document.querySelector(".gamepad-vibrate").disabled'),'novo teste disponível');
+    await inPanel('document.querySelector(".gamepad-vibrate").click();window.dispatchEvent(new Event("blur"))');
+    await until(() => inPanel('window.qaRumble.filter(x=>x.stop).length===2'),'perda de foco interrompe vibração');
+    if(outputPath){await inPanel('document.querySelector(".gamepad-quick").scrollIntoView({block:"start"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');fs.writeFileSync(path.join(outputPath,'gamepad-quick.png'),(await panel.webContents.capturePage()).toPNG());}
     console.log('OK: gamepad simulado detectado, remapeado, testado e salvo no perfil nativo compartilhado com a sala.');
 
     await inPanel('document.getElementById("tab-connection").click()');

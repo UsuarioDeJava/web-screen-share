@@ -153,3 +153,19 @@ test('pausar bloqueia gamepad sem retirar permissão; limite não descarta pesso
   host.emit('control:revoke', { to: 'b' });
   assert.equal(host.emit('control:options', { maxGamepads: 1, gamepadPaused: false }).ok, true);
 });
+
+test('limites dos gatilhos preservam pressão parcial e chegam ao XInput em 8 bits', () => {
+  const pad = { buttons: Array.from({length: 22}, () => ({value: 0})), axes: [0,0,0,0] };
+  const p = model.profile({preset:'custom', triggerLimits:[0.5,0.75], extraButtons:[{source:19,target:6}]});
+  pad.buttons[6].value = 1; pad.buttons[7].value = 0.5;
+  let state = model.sample(pad,p);
+  assert.equal(state.buttons[6],0.5); assert.equal(state.buttons[7],0.375);
+  assert.equal(report(state).bLeftTrigger,128); assert.equal(report(state).bRightTrigger,96);
+  pad.buttons[6].value = 0.5; assert.equal(model.sample(pad,p).buttons[6],0.25);
+  pad.buttons[6].value = 0; pad.buttons[19].value = 1;
+  assert.equal(model.sample(pad,p).buttons[6],0.5);
+  assert.deepEqual(model.applyPreset('playstation',p).triggerLimits,[0.5,0.75]);
+  assert.deepEqual(model.profile({triggerLimits:[NaN,Infinity]}).triggerLimits,[1,1]);
+  assert.deepEqual(model.profile({triggerLimits:[-1,2]}).triggerLimits,[0,1]);
+  pad.buttons[19].value=0; assert.equal(report(model.sample(pad,p)).bLeftTrigger,0);
+});

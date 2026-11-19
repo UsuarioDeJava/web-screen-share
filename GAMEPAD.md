@@ -144,3 +144,19 @@ conversão XInput, neutralização e persistência. O smoke Electron exercita de
 mapeamento com controle simulado, dois participantes autorizados, servidor real,
 transporte Socket.IO, IPC e vídeo WebRTC sintético. O driver nativo é simulado nesses
 testes: ainda é necessário validar com ViGEmBus/DLL reais e gamepads físicos em jogos.
+
+## Ajustes rápidos e vibração local
+
+LT/L2 e RT/R2 mostram entrada e saída em porcentagem. O limite independente de cada
+um escala a pressão recebida: limite 50% e aperto completo produzem 0,5 (128 de 255
+no XInput); aperto de 50% com esse limite produz 0,25. O padrão continua 100%.
+Os limites também se aplicam a botões extras associados aos gatilhos e são salvos
+por controle. Trocar o preset preserva os limites; restaurar o preset retorna a 100%.
+Se o hardware só informar 0 ou 1, o app não consegue medir a posição intermediária:
+confira o modo de conexão, a trava e a configuração analógica no software do fabricante.
+
+O teste de vibração dura um segundo, com intensidade ajustável e botão Parar.
+Usa o atuador disponível na Gamepad API (dual-rumble ou pulse); controles e modos
+sem suporte mostram a indisponibilidade. Fechar o painel, trocar o controle ou perder
+foco interrompe o efeito. Este é um teste local, sem retorno de vibração dos jogos
+remotos. Mapeamento numérico e leituras técnicas ficam recolhidos nas opções avançadas.

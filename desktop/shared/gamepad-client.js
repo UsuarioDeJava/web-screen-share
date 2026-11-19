@@ -28,7 +28,52 @@ window.WssGamepadClient = {
     const layoutLabel = make('label', 'Aparência do controle'); const layoutSelect = make('select'); layoutSelect.setAttribute('aria-label', 'Aparência do controle personalizado');
     for (const [id, label] of [['xbox', 'Xbox'], ['playstation', 'PlayStation']]) { const option = make('option', label); option.value = id; layoutSelect.append(option); } layoutLabel.append(layoutSelect);
     extras.append(make('h4', 'Botões extras · GameSir e outros'), extraInfo, layoutLabel, extraReadings, extraBindings, addExtra);
-    panel.append(hint, select, presetRow, status, feedback, monitor, remap, extras, preview);
+    const quick = make('section'); quick.className = 'gamepad-quick'; quick.append(make('h4', 'Ajustes rápidos'));
+    const triggerGrid = make('div'); triggerGrid.className = 'gamepad-trigger-controls';
+    const triggerRows = [0, 1].map((i) => {
+      const row = make('div'); row.className = 'gamepad-trigger-row';
+      const label = make('label', i ? 'RT / R2' : 'LT / L2'); const input = make('input'); input.type = 'range'; input.min = '0'; input.max = '100'; input.step = '1'; input.value = '100'; input.setAttribute('aria-label', `Limite ${i ? 'RT' : 'LT'}`); label.append(input);
+      const limit = make('output', 'Limite: 100%'); const reading = make('p'); const meter = make('progress'); meter.max = 1; meter.value = 0; meter.setAttribute('aria-label', `Pressão enviada ${i ? 'RT' : 'LT'}`);
+      const apply = () => { const next = getProfile(); next.triggerLimits[i] = Number(input.value) / 100; limit.textContent = `Limite: ${input.value}%`; save(next); };
+      input.addEventListener('change', apply); input.addEventListener('input', () => { limit.textContent = `Limite: ${input.value}%`; });
+      const actions = make('div');
+      for (const [value, text] of [[50, 'Meio gatilho · 50%'], [100, 'Completo · 100%']]) { const button = make('button', text); button.type = 'button'; button.className = 'btn'; button.addEventListener('click', () => { input.value = String(value); apply(); }); actions.append(button); }
+      row.append(label, limit, reading, meter, actions); triggerGrid.append(row); return { input, limit, reading, meter, row };
+    });
+    const triggerHint = make('p', 'Pressão proporcional ao aperto. Com limite de 50%, apertar até o fim envia meio gatilho. Se a entrada só alternar entre 0% e 100%, confira o modo analógico e a trava dos gatilhos no controle.'); triggerHint.className = 'dialog-sub';
+    const vibration = make('div'); vibration.className = 'gamepad-vibration';
+    const strengthLabel = make('label', 'Intensidade da vibração'); const strength = make('input'); strength.type = 'range'; strength.min = '10'; strength.max = '100'; strength.value = '50'; strength.setAttribute('aria-label', 'Intensidade da vibração'); strengthLabel.append(strength);
+    const intensity = make('output', '50%'); strength.addEventListener('input', () => { intensity.textContent = `${strength.value}%`; });
+    const vibrate = make('button', 'Testar vibração'); vibrate.type = 'button'; vibrate.className = 'btn gamepad-vibrate'; vibrate.disabled = true;
+    const stop = make('button', 'Parar'); stop.type = 'button'; stop.className = 'btn gamepad-vibration-stop'; stop.disabled = true;
+    const vibrationStatus = make('p'); vibrationStatus.className = 'dialog-sub'; vibrationStatus.setAttribute('role', 'status');
+    let activeActuator = null, vibrationRun = 0, vibrationMessage = false;
+    const actuatorFor = (pad) => pad?.vibrationActuator || pad?.hapticActuators?.[0];
+    const dualRumble = (a) => typeof a?.playEffect === 'function' && (!a.effects?.length || a.effects.includes('dual-rumble'));
+    const supportsVibration = (a) => dualRumble(a) || typeof a?.pulse === 'function';
+    function stopVibration() {
+      vibrationRun++; const actuator = activeActuator; activeActuator = null; stop.disabled = true;
+      if (actuator) { try { Promise.resolve(typeof actuator.reset === 'function' ? actuator.reset() : dualRumble(actuator) ? actuator.playEffect('dual-rumble', { duration: 0, strongMagnitude: 0, weakMagnitude: 0 }) : actuator.pulse(0, 0)).catch(() => {}); } catch {} vibrationStatus.textContent = 'Teste interrompido.'; }
+    }
+    vibrate.addEventListener('click', async () => {
+      stopVibration(); const actuator = actuatorFor(current()); if (!supportsVibration(actuator)) return;
+      vibrationMessage = true; const run = ++vibrationRun; activeActuator = actuator; stop.disabled = false; vibrate.disabled = true; vibrationStatus.textContent = 'Vibrando por 1 segundo…';
+      try {
+        const magnitude = Number(strength.value) / 100;
+        const result = await (dualRumble(actuator) ? actuator.playEffect('dual-rumble', { duration: 1000, startDelay: 0, strongMagnitude: magnitude, weakMagnitude: magnitude }) : actuator.pulse(magnitude, 1000));
+        if (run === vibrationRun) vibrationStatus.textContent = result === false ? 'O dispositivo não executou a vibração.' : result === 'preempted' ? 'Teste interrompido pelo dispositivo.' : 'Teste concluído no controle local.';
+      } catch { if (run === vibrationRun) vibrationStatus.textContent = 'Vibração indisponível neste modo de conexão. Tente USB ou outro modo do controle.'; }
+      finally { if (run === vibrationRun) { activeActuator = null; stop.disabled = true; } }
+    });
+    stop.addEventListener('click', stopVibration); window.addEventListener('blur', stopVibration);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) stopVibration(); });
+    panel.addEventListener('toggle', () => { if (!panel.open) stopVibration(); });
+    vibration.append(strengthLabel, intensity, vibrate, stop, vibrationStatus);
+    quick.append(triggerGrid, triggerHint, vibration);
+    const diagnostic = make('details'); diagnostic.className = 'gamepad-remap'; diagnostic.append(make('summary', 'Leituras técnicas'), preview);
+    remap.querySelector('summary').textContent = 'Avançado · mapeamento e analógicos';
+    presetHint.textContent = 'Escolha o modelo e teste os comandos. Os ajustes são salvos automaticamente.';
+    panel.append(hint, select, presetRow, status, feedback, quick, monitor, extras, remap, diagnostic);
     let pads = [], selected = '', signature = '', lastSent = '', sentAt = 0, wasSending = false, lastPaint = 0;
     const current = () => pads.find((pad) => String(pad.index) === selected);
     const getProfile = () => profiles[current()?.id] ? model.profile(profiles[current().id]) : model.defaultProfile(current());
@@ -78,9 +123,10 @@ window.WssGamepadClient = {
       addExtra.disabled = p.extraButtons.length >= 16;
     }
     function editor() {
-      learning = null;
+      learning = null; stopVibration(); vibrationMessage = false;
       mapping.replaceChildren(); const pad = current(); if (!pad) { presetSelect.disabled = true; extras.hidden = true; rawExtraNodes.length = 0; return; }
       const p = getProfile();
+      triggerRows.forEach((row, i) => { row.input.value = String(Math.round(p.triggerLimits[i] * 100)); row.limit.textContent = `Limite: ${row.input.value}%`; });
       presetSelect.disabled = !pad; presetSelect.value = p.preset;
       function number(label, value, max, change, step = '1') {
         const row = make('label', label + ' '); const input = make('input'); input.type = 'number'; input.min = '0'; input.max = String(max); input.step = step; input.value = String(value);
@@ -93,7 +139,7 @@ window.WssGamepadClient = {
         input.addEventListener('change', () => { const next = getProfile(); next.invert[i] = input.checked; save(next); }); row.append(input); mapping.append(row);
       });
       number('Zona morta (0 a 0,5)', p.deadzone, 0.5, (next, value) => { next.deadzone = value; }, '0.01');
-      const reset = make('button', 'Restaurar padrão deste preset'); reset.type = 'button'; reset.className = 'btn'; reset.addEventListener('click', () => { const next = model.applyPreset(p.preset, p); next.extraButtons = []; save(next); editor(); }); mapping.append(reset);
+      const reset = make('button', 'Restaurar padrão deste preset'); reset.type = 'button'; reset.className = 'btn'; reset.addEventListener('click', () => { const next = model.applyPreset(p.preset, p); next.extraButtons = []; next.triggerLimits = [1, 1]; save(next); editor(); }); mapping.append(reset);
       extraEditor(pad, p);
     }
     select.addEventListener('change', () => { if (wasSending) send(model.neutral()); selected = select.value; lastSent = ''; editor(); });
@@ -112,6 +158,9 @@ window.WssGamepadClient = {
         select.replaceChildren(...options); select.value = selected; editor();
       }
       const pad = current(); const config = getProfile(); const state = pad ? model.sample(pad, config) : model.neutral();
+      vibrate.disabled = Boolean(activeActuator) || !supportsVibration(actuatorFor(pad));
+      for (const row of triggerRows) { row.input.disabled = !pad; for (const button of row.row.querySelectorAll('button')) button.disabled = !pad; }
+      if (!pad && activeActuator) stopVibration();
       if (learning && pad) {
         for (const index of learning.held) if (!(pad.buttons[index]?.value > 0.5)) learning.held.delete(index);
         const source = pad.buttons.findIndex((b, index) => index < 64 && b.value > 0.5 && !learning.held.has(index));
@@ -131,6 +180,9 @@ window.WssGamepadClient = {
       if (panel.open && !document.hidden && time - lastPaint > 33) {
         lastPaint = time;
         view.update(pad, state, config);
+        const rawTriggers = pad ? model.sample(pad, { ...config, triggerLimits: [1, 1] }).buttons : model.neutral().buttons;
+        triggerRows.forEach((row, i) => { row.reading.textContent = `Entrada: ${Math.round(rawTriggers[6 + i] * 100)}% → saída: ${Math.round(state.buttons[6 + i] * 100)}%`; row.meter.value = state.buttons[6 + i]; });
+        if (!vibrationMessage) vibrationStatus.textContent = !pad ? 'Conecte um controle para testar.' : supportsVibration(actuatorFor(pad)) ? 'Teste local de 1 segundo. A vibração dos jogos remotos ainda não é transmitida.' : 'Vibração indisponível neste modo de conexão.';
         for (const { chip, index } of rawExtraNodes) { const value = pad?.buttons[index]?.value || 0; chip.textContent = `B${index}: ${value.toFixed(2)}`; chip.classList.toggle('is-pressed', value > 0.1); }
         status.textContent = pad ? `${pad.mapping === 'standard' ? 'Mapeamento padrão' : 'Controle sem padrão: ajuste os índices físicos abaixo'}. ${sending ? 'Enviando' : 'Teste local'}.` : 'Conecte o gamepad e pressione um botão.';
         const raw = pad ? pad.buttons.map((b, i) => b.value > 0.1 ? `${i}=${b.value.toFixed(2)}` : '').filter(Boolean).join(' ') : '';
@@ -138,7 +190,7 @@ window.WssGamepadClient = {
         preview.textContent = `Botões físicos: ${raw || 'nenhum'} | Eixos físicos: ${rawAxes} | Saída: ${state.buttons.map((v, i) => v > 0.1 ? model.labelsFor(config)[i] : '').filter(Boolean).join(' ') || 'neutro'} | Eixos mapeados: ${state.axes.join(', ')}`;
       }
     }, 16);
-    window.addEventListener('pagehide', () => { if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); }, { once: true });
+    window.addEventListener('pagehide', () => { stopVibration(); if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); }, { once: true });
     return { profiles: () => profiles };
   },
 };

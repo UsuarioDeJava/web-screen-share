@@ -76,7 +76,7 @@ window.WssGamepadView = {
         title.textContent = pad?.id || 'Nenhum controle conectado'; root.classList.toggle('is-disconnected', !pad);
         metadata.index.textContent = pad ? String(pad.index) : '—'; metadata.connected.textContent = pad ? 'Sim' : 'Não';
         metadata.mapping.textContent = pad ? pad.mapping || 'personalizado' : '—'; metadata.timestamp.textContent = pad ? (Number(pad.timestamp) || 0).toFixed(2) : '—';
-        metadata.vibration.textContent = 'Não transmitida';
+        metadata.vibration.textContent = 'Teste nos ajustes rápidos';
         state.buttons.forEach((value, i) => { buttonNodes[i].value.textContent = value.toFixed(2); buttonNodes[i].tile.classList.toggle('is-pressed', value > 0.1); buttonNodes[i].tile.style.setProperty('--pressure', `${value * 100}%`); });
         for (const c of controls) c.classList.toggle('is-pressed', state.buttons[Number(c.dataset.button)] > 0.1);
         for (const trigger of triggers) { const amount = state.buttons[Number(trigger.dataset.trigger)] * 27; trigger.setAttribute('height', String(amount)); trigger.setAttribute('y', String(35 - amount)); }
