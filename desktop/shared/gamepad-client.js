@@ -18,9 +18,8 @@ window.WssGamepadClient = {
     const feedback = make('p'); feedback.className = 'gamepad-feedback'; feedback.setAttribute('role', 'status');
     const mapping = make('div'); mapping.className = 'gamepad-mapping';
     const preview = make('p'); preview.className = 'dialog-sub'; preview.setAttribute('aria-live', 'off');
-    const hint = make('p', 'Configure uma vez neste aplicativo. Todos os computadores que você controlar recebem o mesmo mapeamento como um controle Xbox 360. Abra esta seção para testar sem enviar comandos.'); hint.className = 'dialog-sub';
     const monitor = make('div'); const view = window.WssGamepadView.create(monitor, { onChange: (change) => { const next = getProfile(); change(next); next.triggerLimits = [1, 1]; save(next); editor(); } });
-    const remap = make('details'); remap.className = 'gamepad-remap'; remap.append(make('summary', 'Editar mapeamento, inversões e zona morta'), mapping);
+    const remap = make('section'); remap.className = 'gamepad-remap'; remap.append(mapping);
     const extras = make('details'); extras.className = 'gamepad-extras'; extras.hidden = true;
     const extraInfo = make('p'); extraInfo.className = 'dialog-sub'; const extraReadings = make('div'); extraReadings.className = 'gpad-physical-extras';
     const extraBindings = make('div'); extraBindings.className = 'gpad-extra-bindings';
@@ -28,41 +27,39 @@ window.WssGamepadClient = {
     const layoutLabel = make('label', 'Aparência do controle'); const layoutSelect = make('select'); layoutSelect.setAttribute('aria-label', 'Aparência do controle personalizado');
     for (const [id, label] of [['xbox', 'Xbox'], ['playstation', 'PlayStation']]) { const option = make('option', label); option.value = id; layoutSelect.append(option); } layoutLabel.append(layoutSelect);
     extras.append(make('summary', 'Botões extras · GameSir e outros'), extraInfo, layoutLabel, extraReadings, extraBindings, addExtra);
-    const quick = make('section'); quick.className = 'gamepad-quick'; quick.append(make('h4', 'Vibração'));
-    const vibration = make('div'); vibration.className = 'gamepad-vibration';
-    const strengthLabel = make('label', 'Intensidade da vibração'); const strength = make('input'); strength.type = 'range'; strength.min = '10'; strength.max = '100'; strength.value = '50'; strength.setAttribute('aria-label', 'Intensidade da vibração'); strengthLabel.append(strength);
-    const intensity = make('output', '50%'); strength.addEventListener('input', () => { intensity.textContent = `${strength.value}%`; });
-    const vibrate = make('button', 'Testar vibração'); vibrate.type = 'button'; vibrate.className = 'btn gamepad-vibrate'; vibrate.disabled = true;
-    const stop = make('button', 'Parar'); stop.type = 'button'; stop.className = 'btn gamepad-vibration-stop'; stop.disabled = true;
-    const vibrationStatus = make('p'); vibrationStatus.className = 'dialog-sub'; vibrationStatus.setAttribute('role', 'status');
-    let activeActuator = null, vibrationRun = 0, vibrationMessage = false;
+    const vibrationStatus = make('p'); vibrationStatus.className = 'gamepad-vibration-status'; vibrationStatus.setAttribute('role', 'status');
+    const vibrationButtons = ['esquerda', 'direita'].map((side, i) => {
+      const button = make('button', '〰 ' + (i ? 'D' : 'E')); button.type = 'button'; button.className = 'gamepad-vibrate gamepad-vibrate-' + side;
+      button.setAttribute('aria-label', 'Testar vibração ' + side); button.title = 'Testar vibração ' + side + ' por 1 segundo'; button.disabled = true;
+      (i ? view.vibrationRight : view.vibrationLeft).append(button); return button;
+    });
+    let activeActuator = null, activeSide = -1, vibrationRun = 0, vibrationMessage = false;
     const actuatorFor = (pad) => pad?.vibrationActuator || pad?.hapticActuators?.[0];
     const dualRumble = (a) => typeof a?.playEffect === 'function' && (!a.effects?.length || a.effects.includes('dual-rumble'));
-    const supportsVibration = (a) => dualRumble(a) || typeof a?.pulse === 'function';
+    const supportsVibration = (a) => dualRumble(a);
     function stopVibration() {
-      vibrationRun++; const actuator = activeActuator; activeActuator = null; stop.disabled = true;
-      if (actuator) { try { Promise.resolve(typeof actuator.reset === 'function' ? actuator.reset() : dualRumble(actuator) ? actuator.playEffect('dual-rumble', { duration: 0, strongMagnitude: 0, weakMagnitude: 0 }) : actuator.pulse(0, 0)).catch(() => {}); } catch {} vibrationStatus.textContent = 'Teste interrompido.'; }
+      vibrationRun++; const actuator = activeActuator; activeActuator = null; activeSide = -1;
+      vibrationButtons.forEach(button => button.classList.remove('is-active'));
+      if (actuator) { try { Promise.resolve(typeof actuator.reset === 'function' ? actuator.reset() : actuator.playEffect('dual-rumble', { duration: 0, strongMagnitude: 0, weakMagnitude: 0 })).catch(() => {}); } catch {} vibrationStatus.textContent = 'Teste interrompido.'; }
     }
-    vibrate.addEventListener('click', async () => {
-      stopVibration(); const actuator = actuatorFor(current()); if (!supportsVibration(actuator)) return;
-      vibrationMessage = true; const run = ++vibrationRun; activeActuator = actuator; stop.disabled = false; vibrate.disabled = true; vibrationStatus.textContent = 'Vibrando por 1 segundo…';
+    vibrationButtons.forEach((button, side) => button.addEventListener('click', async () => {
+      const stopping = activeSide === side; stopVibration(); if (stopping) return;
+      const actuator = actuatorFor(current()); if (!supportsVibration(actuator)) return;
+      vibrationMessage = true; const run = ++vibrationRun; activeActuator = actuator; activeSide = side; button.classList.add('is-active');
+      vibrationStatus.textContent = 'Testando vibração ' + (side ? 'direita' : 'esquerda') + '…';
       try {
-        const magnitude = Number(strength.value) / 100;
-        const result = await (dualRumble(actuator) ? actuator.playEffect('dual-rumble', { duration: 1000, startDelay: 0, strongMagnitude: magnitude, weakMagnitude: magnitude }) : actuator.pulse(magnitude, 1000));
+        const result = await actuator.playEffect('dual-rumble', { duration: 1000, startDelay: 0, strongMagnitude: side ? 0 : 0.5, weakMagnitude: side ? 0.5 : 0 });
         if (run === vibrationRun) vibrationStatus.textContent = result === false ? 'O dispositivo não executou a vibração.' : result === 'preempted' ? 'Teste interrompido pelo dispositivo.' : 'Teste concluído no controle local.';
       } catch { if (run === vibrationRun) vibrationStatus.textContent = 'Vibração indisponível neste modo de conexão. Tente USB ou outro modo do controle.'; }
-      finally { if (run === vibrationRun) { activeActuator = null; stop.disabled = true; } }
-    });
-    stop.addEventListener('click', stopVibration); window.addEventListener('blur', stopVibration);
+      finally { if (run === vibrationRun) { activeActuator = null; activeSide = -1; button.classList.remove('is-active'); } }
+    }));
+    window.addEventListener('blur', stopVibration);
     document.addEventListener('visibilitychange', () => { if (document.hidden) stopVibration(); });
     panel.addEventListener('toggle', () => { if (!panel.open) stopVibration(); });
-    vibration.append(strengthLabel, intensity, vibrate, stop, vibrationStatus);
-    quick.append(vibration);
-    const diagnostic = make('details'); diagnostic.className = 'gamepad-remap'; diagnostic.append(make('summary', 'Leituras técnicas'), preview);
-    remap.querySelector('summary').textContent = 'Avançado · mapeamento e analógicos';
+    const diagnostic = make('section'); diagnostic.className = 'gamepad-diagnostic'; diagnostic.append(make('h4', 'Leituras técnicas'), preview, vibrationStatus);
     presetHint.textContent = 'Escolha o modelo e teste os comandos. Os ajustes são salvos automaticamente.';
-    hint.textContent = 'Configure seu controle. O desenho mostra exatamente os comandos enviados ao jogo.';
-    panel.append(select, presetRow, status, feedback, monitor, quick, extras, remap, diagnostic);
+    view.mapping.append(extras, remap);
+    panel.append(select, presetRow, status, feedback, monitor, diagnostic);
     let pads = [], selected = '', signature = '', lastSent = '', sentAt = 0, wasSending = false, lastPaint = 0;
     const current = () => pads.find((pad) => String(pad.index) === selected);
     const getProfile = () => profiles[current()?.id] ? model.profile({ ...profiles[current().id], triggerLimits: [1, 1] }) : model.defaultProfile(current());
@@ -120,12 +117,6 @@ window.WssGamepadClient = {
         const row = make('label', label + ' '); const input = make('input'); input.type = 'number'; input.min = '0'; input.max = String(max); input.step = step; input.value = String(value);
         input.addEventListener('change', () => { if (input.checkValidity() && input.value !== '') { const next = getProfile(); change(next, Number(input.value)); save(next); } }); row.append(input); mapping.append(row);
       }
-      model.labelsFor(p).forEach((label, i) => number(label + ' · botão físico', p.buttons[i], 63, (next, value) => { next.buttons[i] = value; next.preset = 'custom'; presetSelect.value = 'custom'; extraEditor(pad, next); }));
-      ['Analógico esquerdo X', 'Analógico esquerdo Y', 'Analógico direito X', 'Analógico direito Y'].forEach((label, i) => {
-        number(label + ' · eixo', p.axes[i], 15, (next, value) => { next.axes[i] = value; });
-        const row = make('label', 'Inverter ' + label + ' '); const input = make('input'); input.type = 'checkbox'; input.checked = p.invert[i];
-        input.addEventListener('change', () => { const next = getProfile(); next.invert[i] = input.checked; save(next); }); row.append(input); mapping.append(row);
-      });
       number('Zona morta (0 a 0,5)', p.deadzone, 0.5, (next, value) => { next.deadzone = value; }, '0.01');
       const reset = make('button', 'Restaurar padrão deste preset'); reset.type = 'button'; reset.className = 'btn'; reset.addEventListener('click', () => { const next = model.applyPreset(p.preset, p); next.extraButtons = []; next.triggerLimits = [1, 1]; next.triggers = model.profile().triggers; save(next); editor(); }); mapping.append(reset);
       extraEditor(pad, p);
@@ -146,7 +137,7 @@ window.WssGamepadClient = {
         select.replaceChildren(...options); select.value = selected; select.hidden = pads.length <= 1; editor();
       }
       const pad = current(); const config = getProfile(); const state = pad ? model.sample(pad, config) : model.neutral();
-      vibrate.disabled = Boolean(activeActuator) || !supportsVibration(actuatorFor(pad));
+      vibrationButtons.forEach(button => { button.disabled = !supportsVibration(actuatorFor(pad)); });
       if (!pad && activeActuator) stopVibration();
       if (learning && pad) {
         for (const index of learning.held) if (!(pad.buttons[index]?.value > 0.5)) learning.held.delete(index);
@@ -167,7 +158,7 @@ window.WssGamepadClient = {
       if (panel.open && !document.hidden && time - lastPaint > 33) {
         lastPaint = time;
         view.update(pad, state, config);
-        if (!vibrationMessage) vibrationStatus.textContent = !pad ? 'Conecte um controle para testar.' : supportsVibration(actuatorFor(pad)) ? 'Teste local de 1 segundo. A vibração dos jogos remotos ainda não é transmitida.' : 'Vibração indisponível neste modo de conexão.';
+        if (!vibrationMessage) vibrationStatus.textContent = !pad ? 'Conecte um controle para testar.' : supportsVibration(actuatorFor(pad)) ? 'Vibração local: E testa o motor forte; D testa o motor fraco. Clique novamente para parar.' : 'Vibração indisponível neste modo de conexão.';
         for (const { chip, index } of rawExtraNodes) { const value = pad?.buttons[index]?.value || 0; chip.textContent = `B${index}: ${value.toFixed(2)}`; chip.classList.toggle('is-pressed', value > 0.1); }
         status.textContent = pad ? `${pad.mapping === 'standard' ? 'Mapeamento padrão' : 'Controle sem padrão: ajuste os índices físicos abaixo'}. ${sending ? 'Enviando' : 'Teste local'}.` : 'Conecte o gamepad e pressione um botão.';
         const raw = pad ? pad.buttons.map((b, i) => b.value > 0.1 ? `${i}=${b.value.toFixed(2)}` : '').filter(Boolean).join(' ') : '';

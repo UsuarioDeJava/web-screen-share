@@ -8,10 +8,22 @@ A imagem oficial ghcr.io/usuariodejava/web-screen-share:latest também foi baixa
 
 - Neste PC: https://localhost:3100/
 - Rede local: https://192.168.0.116:3100/ (o IP pode mudar).
-- Tailscale: https://100.81.170.116:3100/
+- Tailscale (link para compartilhar): https://paolinho-pc.tail1ae8a1.ts.net/
+- Tailscale direto (certificado autoassinado): https://100.81.170.116:3100/
 
-O certificado local é autoassinado: o navegador pode pedir confirmação na primeira
-visita. No aplicativo, use Configurações > Conexão e testes para trocar o servidor
+O link para compartilhar usa Tailscale Serve em segundo plano, com HTTPS e
+certificado automático. Ele está disponível somente pela VPN. Cada participante
+precisa estar conectado ao Tailscale e ter permissão para acessar este PC.
+Configurado e verificado neste PC em 19/11/2026.
+
+O proxy encaminha para https://localhost:3100/. O PUBLIC_PORT=3100 do Compose
+mantém o TURN na porta direta 3100 (TCP/UDP), usada para retransmitir mídia.
+Para consultar: `tailscale serve status`. Para desativar somente este proxy:
+`tailscale serve --https=443 off`.
+
+O certificado dos endereços diretos é autoassinado: o navegador pode pedir
+confirmação na primeira visita. O link pelo Tailscale Serve usa certificado válido.
+No aplicativo, use Configurações > Conexão e testes para trocar o servidor
 por https://localhost:3100/ e reiniciar/aplicar. Outros participantes devem usar
 o endereço da rede local ou do Tailscale, nunca localhost.
 

@@ -8,9 +8,8 @@ window.WssGamepadView = {
     const layout = make('div', 'gpad-layout');
     const left = make('div', 'gpad-config-side'), right = make('div', 'gpad-config-side');
     const buttonNodes = [];
-    let activePad = null, activeProfile = window.WssGamepad.profile(), learning = null, optionKey = '';
-    const observations = [new Set(), new Set()];
-    const order = [6,4,8,16,10,12,13,14,15,7,5,3,2,1,0,9,11];
+    let activePad = null, learning = null, optionKey = '';
+    const order = [6,4,8,10,12,14,13,15,7,5,3,2,1,0,9,11];
     window.WssGamepad.labels.forEach((label, i) => {
       const tile = make('div', 'gpad-button gpad-config-row'); tile.dataset.output = String(i); tile.classList.add('gpad-output-'+i);
       const value = make('strong', '', '0%'); const pressure=make('progress'); pressure.max=1; pressure.value=0; pressure.setAttribute('aria-label','Pressão '+label); const caption = make('label', '', label);
@@ -31,6 +30,7 @@ window.WssGamepadView = {
       tile.append(caption, value, learn, pressure); buttonNodes.push({ tile, value, caption, source, learn, pressure });
     });
     for (const i of order) (i === 7 || [5,3,2,1,0,9,11].includes(i) ? right : left).append(buttonNodes[i].tile);
+    const guide = buttonNodes[16].tile; guide.classList.add('gpad-guide');
     const sticks = make('div', 'gpad-sticks'); const stickNodes = [];
     for (let i = 0; i < 2; i++) {
       const item = make('div', 'gpad-stick'); item.append(make('h4', '', i ? 'ANALÓGICO DIREITO' : 'ANALÓGICO ESQUERDO'));
@@ -39,15 +39,25 @@ window.WssGamepadView = {
       const ax = make('div'), ay = make('div'); ax.append(make('small', '', `AXIS ${i * 2}`), x); ay.append(make('small', '', `AXIS ${i * 2 + 1}`), y); axis.append(ax, ay);
       const graph = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); graph.setAttribute('viewBox', '0 0 120 120'); graph.setAttribute('aria-label', i ? 'Posição do analógico direito' : 'Posição do analógico esquerdo');
       graph.innerHTML = '<circle cx="60" cy="60" r="54" class="gpad-grid"/><path d="M6 60h108M60 6v108" class="gpad-grid"/><circle class="gpad-dot" cx="60" cy="60" r="4"/>';
-      plot.append(axis, graph); item.append(plot); sticks.append(item);
-      stickNodes.push({ x, y, dot: graph.querySelector('.gpad-dot') });
+      const settings = make('div', 'gpad-stick-settings'); const inputs = [];
+      for (let j = 0; j < 2; j++) {
+        const index = i * 2 + j; const label = make('label', '', j ? 'Eixo Y' : 'Eixo X');
+        const source = make('select'); source.setAttribute('aria-label', (i ? 'Direito' : 'Esquerdo') + (j ? ' · eixo Y' : ' · eixo X'));
+        source.addEventListener('change', () => onChange(p => { p.axes[index] = Number(source.value); }));
+        const invertLabel = make('label', 'gpad-invert', 'Inverter'); const invert = make('input'); invert.type = 'checkbox';
+        invert.setAttribute('aria-label', 'Inverter ' + (i ? 'direito' : 'esquerdo') + (j ? ' Y' : ' X'));
+        invert.addEventListener('change', () => onChange(p => { p.invert[index] = invert.checked; }));
+        label.append(source); invertLabel.prepend(invert); settings.append(label, invertLabel); inputs.push({source, invert, index});
+      }
+      plot.append(axis, graph); item.append(plot, settings); sticks.append(item);
+      stickNodes.push({ x, y, inputs, dot: graph.querySelector('.gpad-dot') });
     }
     const note = make('p', 'gpad-note', 'Saída configurada: os valores e o desenho mostram o que será enviado ao jogo.');
     const figure = make('div', 'gpad-figure');
     figure.innerHTML = `<svg viewBox="0 0 520 360" role="img" aria-label="Controle Xbox: botões e analógicos acendem ao pressionar">
-      <path class="gpad-shadow" d="M149 79C115 79 99 94 88 127L49 252c-18 65 10 106 48 78l58-65h210l58 65c38 28 66-13 48-78l-39-125c-11-33-27-48-61-48Z"/>
-      <path class="gpad-body" d="M149 69C115 69 99 84 88 117L49 242c-18 65 10 106 48 78l58-65h210l58 65c38 28 66-13 48-78l-39-125c-11-33-27-48-61-48Z"/>
-      <path class="gpad-grid" d="m75 185 80 70m290-70-80 70"/>
+      <path class="gpad-shadow" d="M149 79C115 79 99 94 88 127L49 252c-18 65 10 106 48 78l58-43h210l58 43c38 28 66-13 48-78l-39-125c-11-33-27-48-61-48Z"/>
+      <path class="gpad-body" d="M149 69C115 69 99 84 88 117L49 242c-18 65 10 106 48 78l58-43h210l58 43c38 28 66-13 48-78l-39-125c-11-33-27-48-61-48Z"/>
+      <path class="gpad-grid" d="m75 185 80 92m290-92-80 92"/>
       <rect class="gpad-control" data-button="4" x="115" y="48" width="83" height="12" rx="6"/><text x="156" y="43" data-glyph="4">LB</text>
       <rect class="gpad-control" data-button="5" x="322" y="48" width="83" height="12" rx="6"/><text x="363" y="43" data-glyph="5">RB</text>
       <rect class="gpad-control" x="140" y="5" width="31" height="33" rx="10"/><rect class="gpad-trigger-fill" data-trigger="6" x="143" y="35" width="25" height="0" rx="7"/>
@@ -67,23 +77,11 @@ window.WssGamepadView = {
     </svg>`;
     const wiring = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); wiring.classList.add('gpad-wiring'); wiring.setAttribute('aria-hidden', 'true');
     const wires = buttonNodes.map(() => { const path = document.createElementNS(wiring.namespaceURI, 'path'); wiring.append(path); return path; });
-    const technical = make('details', 'gpad-technical'); technical.append(make('summary', '', 'Detalhes dos analógicos'), sticks);
-    layout.className = 'gpad-config-layout'; layout.append(wiring, left, figure, right); root.append(heading, layout, technical, note); container.append(root);
-    const calibration = make('details', 'gpad-calibration'); calibration.append(make('summary', '', 'Calibrar gatilhos / verificar sinal analógico'));
-    const calibrationGrid = make('div', 'gpad-calibration-grid'); const calibrationNodes = [];
-    for(let i=0;i<2;i++) {
-      const box=make('div'); const reading=make('p'); const result=make('p'); result.setAttribute('role','status');
-      const rest=make('button','','Salvar solto'), full=make('button','','Salvar até o fim'), reset=make('button','','Padrão');
-      const raw=()=>{const t=activeProfile.triggers[i]; return t.type==='axis' ? activePad?.axes[t.source] : activePad?.buttons[t.type==='button'?t.source:activeProfile.buttons[6+i]]?.value;};
-      let resting=null;
-      rest.type=full.type=reset.type='button';
-      rest.addEventListener('click',()=>{const value=raw();if(!Number.isFinite(value))return;resting=value;result.textContent='Posição solta registrada. Aperte até o fim e salve.';});
-      full.addEventListener('click',()=>{const max=raw();if(resting===null||!Number.isFinite(max)||Math.abs(max-resting)<0.05){result.textContent='Solte e registre primeiro; as duas posições precisam ser diferentes.';return;}const min=resting;onChange(p=>{p.triggers[i]={...p.triggers[i],min,max};});result.textContent='Curso calibrado. Teste um aperto lento para conferir a progressão.';});
-      reset.addEventListener('click',()=>{resting=null;observations[i].clear();onChange(p=>{p.triggers[i]={type:'mapped',source:6+i,min:0,max:1};});result.textContent='Entrada padrão restaurada.';});
-      box.append(make('h4','',i?'RT / R2':'LT / L2'),reading,rest,full,reset,result);calibrationGrid.append(box);calibrationNodes.push({reading,result,rest,full,reset,raw});
-    }
-    calibration.append(calibrationGrid,make('p','gpad-note','Para acelerar progressivamente, a entrada precisa variar entre solto e pressionado. Se houver só 0 e 100%, confira a trava de gatilho rápido e o modo analógico do controle. Para controles DirectInput, escolha o eixo do gatilho no mapeamento.'));
-    root.append(calibration);
+    const center = make('div', 'gpad-center'); center.append(figure, sticks);
+    const mapping = make('section', 'gpad-integrated-mapping');
+    const vibrationLeft = make('div', 'gpad-rumble-left'), vibrationRight = make('div', 'gpad-rumble-right');
+    layout.className = 'gpad-config-layout'; layout.append(wiring, vibrationLeft, guide, vibrationRight, left, center, right);
+    root.append(heading, layout, mapping, note); container.append(root);
     let wireFrame = 0;
     function drawWires() {
       cancelAnimationFrame(wireFrame); wireFrame=requestAnimationFrame(()=>{
@@ -92,9 +90,9 @@ window.WssGamepadView = {
         buttonNodes.forEach((node,i)=>{
           const target=figure.querySelector('[data-button="'+i+'"]') || figure.querySelector('[data-trigger="'+i+'"]');
           const targetBox=target.getBoundingClientRect(), box=node.tile.getBoundingClientRect();const fromLeft=node.tile.parentElement===left;
-          const x=(fromLeft?box.right:box.left)-bounds.left, y=box.top+box.height/2-bounds.top;
+          const isGuide=i===16; const x=(isGuide?box.left+box.width/2:fromLeft?box.right:box.left)-bounds.left, y=(isGuide?box.bottom:box.top+box.height/2)-bounds.top;
           const tx=targetBox.left+targetBox.width/2-bounds.left,ty=targetBox.top+targetBox.height/2-bounds.top;
-          const bend=x+(fromLeft?14:-14);wires[i].setAttribute('d','M'+x+' '+y+'H'+bend+'L'+tx+' '+ty);
+          const bend=x+(fromLeft?14:-14);wires[i].setAttribute('d',isGuide?'M'+x+' '+y+'L'+tx+' '+ty:'M'+x+' '+y+'H'+bend+'L'+tx+' '+ty);
         });
       });
     }
@@ -103,8 +101,9 @@ window.WssGamepadView = {
     const extraVisual = make('div', 'gpad-extra-visual'); figure.append(extraVisual);
     let layoutKey = '', extrasKey = ''; const extraNodes = [];
     return {
+      mapping, vibrationLeft, vibrationRight,
       update(pad, state, config) {
-        const profile = window.WssGamepad.profile(config); activePad=pad; activeProfile=profile; const labels = window.WssGamepad.labelsFor(profile);
+        const profile = window.WssGamepad.profile(config); activePad=pad; const labels = window.WssGamepad.labelsFor(profile);
         badge.textContent = window.WssGamepad.presets.find((p) => p.id === profile.preset).name;
         if (layoutKey !== profile.layout) {
           layoutKey = profile.layout; root.dataset.layout = layoutKey;
@@ -116,7 +115,7 @@ window.WssGamepadView = {
         }
         const nextOptionKey=JSON.stringify([pad?.id,pad?.buttons.length,pad?.axes.length,profile.buttons,profile.triggers]);
         if(nextOptionKey!==optionKey){
-          if (learning) { learning.button.textContent='Detectar'; learning=null; } optionKey=nextOptionKey; observations.forEach(s=>s.clear());
+          if (learning) { learning.button.textContent='Detectar'; learning=null; } optionKey=nextOptionKey;
           buttonNodes.forEach((node,i)=>{
             node.source.replaceChildren();
             const add=(text,value)=>{const option=make('option','',text);option.value=value;node.source.append(option);};
@@ -135,12 +134,6 @@ window.WssGamepadView = {
             onChange(p=>{if(l.output===6||l.output===7)p.triggers[l.output-6]={type,source,min,max:type==='axis'&&min>.5?-1:1};else p.buttons[l.output]=source;});
           }else if(performance.now()>l.until){learning=null;l.button.textContent='Detectar';}
         }
-        calibrationNodes.forEach((node,i)=>{
-          const raw=node.raw();if(Number.isFinite(raw))observations[i].add(Math.round(raw*1000)/1000);
-          const hasPartial=[...observations[i]].some(v=>v>0.01&&v<0.99);
-          node.reading.textContent='Entrada: '+(Number.isFinite(raw)?raw.toFixed(3):'—')+' · saída: '+Math.round(state.buttons[6+i]*100)+'% · '+(profile.triggers[i].type==='axis'?'Eixo analógico':hasPartial?'Pressão intermediária detectada':observations[i].size>1?'Somente extremos observados até agora':'Aperte devagar para testar');
-          node.rest.disabled=node.full.disabled=node.reset.disabled=!pad;
-        });
         const bindings = profile.preset === 'custom' ? profile.extraButtons : [];
         const key = JSON.stringify([profile.layout, bindings]);
         if (key !== extrasKey) {
@@ -155,6 +148,11 @@ window.WssGamepadView = {
         for (const trigger of triggers) { const amount = state.buttons[Number(trigger.dataset.trigger)] * 27; trigger.setAttribute('height', String(amount)); trigger.setAttribute('y', String(35 - amount)); }
         stickNodes.forEach((stick, i) => {
           const x = state.axes[i * 2], y = state.axes[i * 2 + 1]; stick.x.textContent = x.toFixed(4); stick.y.textContent = y.toFixed(4);
+          stick.inputs.forEach(({source, invert, index}) => {
+            const count = Math.max(pad?.axes.length || 4, profile.axes[index] + 1);
+            if (source.options.length !== count) { source.replaceChildren(...Array.from({length:count}, (_, a) => { const option=make('option','','Axis '+a); option.value=String(a); return option; })); }
+            source.value=String(profile.axes[index]); invert.checked=profile.invert[index]; source.disabled=invert.disabled=!pad;
+          });
           stick.dot.setAttribute('cx', String(60 + x * 54)); stick.dot.setAttribute('cy', String(60 + y * 54)); handles[i].setAttribute('transform', `translate(${x * 12} ${y * 12})`);
 
         });

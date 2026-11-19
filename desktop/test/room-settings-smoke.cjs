@@ -85,14 +85,14 @@ async function until(check, label, timeout = 12000) {
     console.log('OK: foto enviada e removida pelo fluxo original do servidor e armazenamento da sala.');
 
     await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").open=true; Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle de teste",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0,0,0,0]}]})');
-    await until(() => inPanel('document.querySelectorAll("#gamepad-config input[type=number]").length===22'), 'editor do gamepad');
+    await until(() => inPanel('document.querySelectorAll("#gamepad-config input[type=number]").length===1'), 'editor do gamepad');
     await until(() => inPanel('document.querySelectorAll(".gpad-button").length===17 && document.querySelector(".gpad-device").textContent==="Controle de teste"'), 'visualização do gamepad');
     await inPanel('const gamepadField=document.querySelector(".gpad-output-0 select"); gamepadField.value="button:1"; gamepadField.dispatchEvent(new Event("change"));');
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste']?.buttons[0] === 1, 'perfil nativo do gamepad');
     assert.equal((await inRoom('window.wssDesktop.readGamepadProfiles()'))['Controle de teste'].buttons[0], 1);
     const gamepadConfig = JSON.parse(fs.readFileSync(path.join(process.env.WSS_USER_DATA, 'config.json'), 'utf8'));
     assert.equal(gamepadConfig.gamepadProfiles['Controle de teste'].buttons[0], 1);
-    await until(() => inPanel('document.querySelector("#gamepad-config > details:last-child p").textContent.includes("A B")'), 'teste do mapeamento normalizado');
+    await until(() => inPanel('document.querySelector(".gamepad-diagnostic p").textContent.includes("A B")'), 'teste do mapeamento normalizado');
     assert.equal(await inPanel('document.querySelectorAll(".gpad-control.is-pressed").length>=2'), true);
     assert.equal(await inPanel('document.querySelector(".gpad-output-0 strong").textContent'), '100%');
     assert.equal(await inPanel('document.querySelectorAll(".gpad-test-button,.gpad-circularity-score").length'), 0);
@@ -115,7 +115,7 @@ async function until(check, label, timeout = 12000) {
     panel.focus();
     await inPanel('document.querySelector(".gpad-extra-binding button").click();window.qaSource=19;');
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons[0].source===19, 'detectar botão extra B19');
-    await until(() => inPanel('document.querySelector("#gamepad-config > details:last-child p").textContent.includes("RB")'), 'extra remapeado antes de enviar');
+    await until(() => inPanel('document.querySelector(".gamepad-diagnostic p").textContent.includes("RB")'), 'extra remapeado antes de enviar');
     if (outputPath) {
       await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(outputPath, 'gamepad-settings.png'), (await panel.webContents.capturePage()).toPNG());
@@ -132,13 +132,12 @@ async function until(check, label, timeout = 12000) {
     await inPanel('const source=document.querySelector(".gpad-output-6 select");source.value="axis:4";source.dispatchEvent(new Event("change"));window.qaAxis=0');
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].triggers[0].type==='axis','fonte analógica salva');
     await until(() => inPanel('document.querySelector(".gpad-output-6 strong").textContent==="50%"'),'meio curso do eixo produz meio gatilho');
-    await inPanel('document.querySelector(".gpad-calibration").open=true;window.qaAxis=-0.5');
-    await until(()=>inPanel('document.querySelector(".gpad-output-6 strong").textContent==="25%"'),'entrada parcial antes da calibração');
-    await inPanel('document.querySelector(".gpad-calibration-grid button").click();window.qaAxis=0.5');
-    await until(()=>inPanel('document.querySelector(".gpad-output-6 strong").textContent==="75%"'),'curso máximo da calibração');
-    await inPanel('document.querySelectorAll(".gpad-calibration-grid button")[1].click();window.qaAxis=0');
-    await until(async()=>{const p=(await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'];return p.triggers[0].min===-0.5&&p.triggers[0].max===0.5},'calibração persistida');
-    await until(()=>inPanel('document.querySelector(".gpad-output-6 strong").textContent==="50%"'),'curso calibrado proporcional');
+    assert.equal(await inPanel('Boolean(document.querySelector(".gpad-calibration"))'), false);
+    assert.equal(await inPanel('document.querySelector(".gamepad-diagnostic").tagName'), 'SECTION');
+    assert.equal(await inPanel('document.querySelector(".gpad-guide").dataset.output'), '16');
+    assert.deepEqual(await inPanel('[...document.querySelector(".gpad-config-side").children].map(e=>Number(e.dataset.output))'), [6,4,8,10,12,14,13,15]);
+    await inPanel('const axis=document.querySelector(".gpad-stick-settings select");axis.value="2";axis.dispatchEvent(new Event("change"))');
+    await until(async()=> (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].axes[0]===2, 'eixo do analógico salvo junto ao desenho');
     await inPanel('window.qaAxis=1');
     await until(() => inPanel('document.querySelector(".gpad-output-6 strong").textContent==="100%"'),'curso completo');
     await inPanel('window.qaAxis=-1');
@@ -149,13 +148,23 @@ async function until(check, label, timeout = 12000) {
     await until(async()=> (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].buttons[10]===2,'detecção direta de botão no diagrama');
     await inPanel('document.querySelector(".gamepad-vibrate").click()');
     await until(() => inPanel('window.qaRumble.length===1'),'teste de vibração iniciado');
-    assert.deepEqual(await inPanel('window.qaRumble[0]'),{type:'dual-rumble',params:{duration:1000,startDelay:0,strongMagnitude:0.5,weakMagnitude:0.5}});
-    await inPanel('document.querySelector(".gamepad-vibration-stop").click()');
+    assert.deepEqual(await inPanel('window.qaRumble[0]'),{type:'dual-rumble',params:{duration:1000,startDelay:0,strongMagnitude:0.5,weakMagnitude:0}});
+    await inPanel('document.querySelector(".gamepad-vibrate-esquerda").click()');
     await until(() => inPanel('window.qaRumble.some(x=>x.stop)'),'vibração interrompida');
-    await until(() => inPanel('!document.querySelector(".gamepad-vibrate").disabled'),'novo teste disponível');
-    await inPanel('document.querySelector(".gamepad-vibrate").click();window.dispatchEvent(new Event("blur"))');
+    await until(() => inPanel('!document.querySelector(".gamepad-vibrate-direita").disabled'),'novo teste disponível');
+    await inPanel('document.querySelector(".gamepad-vibrate-direita").click();window.dispatchEvent(new Event("blur"))');
     await until(() => inPanel('window.qaRumble.filter(x=>x.stop).length===2'),'perda de foco interrompe vibração');
-    if(outputPath){await inPanel('document.querySelector(".gamepad-quick").scrollIntoView({block:"start"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');fs.writeFileSync(path.join(outputPath,'gamepad-quick.png'),(await panel.webContents.capturePage()).toPNG());}
+    if(outputPath){await inPanel('document.querySelector(".gpad-view").scrollIntoView({block:"start"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');fs.writeFileSync(path.join(outputPath,'gamepad-quick.png'),(await panel.webContents.capturePage()).toPNG());}
+    assert.deepEqual(await inPanel('window.qaRumble.filter(x=>x.params)[1].params'),{duration:1000,startDelay:0,strongMagnitude:0,weakMagnitude:0.5});
+    if (outputPath) {
+      panel.setSize(640, 820);
+      await inPanel('document.querySelector(".gpad-view").scrollIntoView({block:"start"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      assert.equal(await inPanel('document.documentElement.scrollWidth <= document.documentElement.clientWidth'), true);
+      fs.writeFileSync(path.join(outputPath, 'gamepad-narrow.png'), (await panel.webContents.capturePage()).toPNG());
+      panel.setSize(1050, 1100);
+      await inPanel('document.querySelector(".gpad-view").scrollIntoView({block:"start"});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      fs.writeFileSync(path.join(outputPath, 'gamepad-complete.png'), (await panel.webContents.capturePage()).toPNG());
+    }
     console.log('OK: gamepad simulado detectado, remapeado, testado e salvo no perfil nativo compartilhado com a sala.');
 
     await inPanel('document.getElementById("tab-connection").click()');
