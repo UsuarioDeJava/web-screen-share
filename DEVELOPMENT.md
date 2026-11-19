@@ -68,6 +68,18 @@ Configurações (aba Mouse e efeitos). O servidor só confere o formato do estil
 páginas do app vale CSP sem `unsafe-inline`: nada de atributo `style` em HTML montado por
 string (use atributos SVG ou `element.style`).
 
+Imagens próprias (setinha e ping): `desktop/shared/fx-image.js` (servido em
+`/js/fx-image.js`) lê .cur/.ani (com a ponta do arquivo), reduz até 128 px e junta
+animações em APNG; as partes só de bytes têm teste no Node (`desktop/test/fx-image.test.js`).
+A sala manda pelo evento `fx:image` (até 2 MB e 256 px, no mesmo armazenamento das
+fotos) e o servidor devolve `cursorImg`/`pingImg` na lista; o estilo guarda só a ponta
+(`hx`, `hy`, em %). As Configurações do app usam as ações `fx-image` e `fx-image-remove`.
+
+O mouse de quem assiste só é enviado na transmissão "ativa" (a última clicada; clicar
+fora, trocar de programa ou esconder a página desativa), e cada transmissão tem o seu
+liga/desliga (`wss-cursor-streams`, por nick de quem transmite). Tudo isso é só no
+navegador de quem assiste.
+
 ## Tela cheia e diagnóstico gráfico
 
 O padrão continua sendo a tela cheia nativa. No Windows também estão disponíveis:

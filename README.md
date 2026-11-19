@@ -328,6 +328,11 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
    - Passando o mouse sobre o vídeo (no celular fica sempre visível):
      - **Qualidade** (Alta / Média / Baixa / Mínima): reduz resolução, quadros e taxa
        de bits que aquela pessoa te envia, útil com internet fraca.
+     - **O seu mouse** (setinha): liga/desliga o seu mouse só naquela transmissão (fica
+       salvo por pessoa que transmite). Ligado, ele só aparece depois que você **clica**
+       na transmissão, como uma janela ativa do Windows: a borda acende na sua cor;
+       clicou fora (outro quadro, o chat, a lista), trocou de programa ou escondeu a
+       página, ela fica inativa e o seu mouse some de lá.
      - **(i) Estatísticas**: estado da conexão, se ela é direta ou via TURN,
        resolução, fps, taxa e latência. Em transmissões do OBS, mostra também o trecho
        do OBS até o servidor: pacotes perdidos (no último segundo e no total), pedaços
@@ -421,24 +426,38 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 14. **Mouse e efeitos** (aba no **Perfil**; no app, em **Configurações**): deixe o seu
     mouse e as suas marcações do seu jeito, com uma **prévia ao vivo** pra testar
     (mexer, clicar, Alt + clique, arrastar, rodinha) e **pacotes prontos** (Neon,
-    Fofura, Realeza, Retrô, Festa, Aventura, Anjinho, Diabinho, Alienígena):
-    - **Setinha**: clássica, do PC, redonda, pixel, mãozinha, mira, lápis, espadinha ou
-      varinha, em três **tamanhos**.
+    Fofura, Realeza, Retrô, Festa, Mago, Aventura, Pirata, Espacial, Natal, Anjinho,
+    Diabinho, Assombrado, Gatinho, Alienígena):
+    - **Setinha**: clássica, do PC, pixel, mãozinha, mira, lápis, espadinha, varinha,
+      foguete, aviãozinho, patinha, fantasminha, coração ou estrela, em quatro
+      **tamanhos**, com o **contorno** branco, preto ou colorido (a bolinha da foto
+      também).
+    - **Imagem própria**: a sua setinha pode ser uma imagem sua: **PNG**, **GIF**
+      (animado também), **WebP** ou um cursor do Windows (**.cur** e **.ani**, com a
+      ponta que vem no arquivo). Imagens grandes são reduzidas (até 128 px) e as
+      animadas continuam animadas. Clique na imagem pra marcar onde fica a ponta.
     - **Enfeite** (coroa, cartola, chapéu de festa, auréola, chifrinhos, orelhas de
-      gato, lacinho, florzinha, anteninhas), **efeito** na setinha (brilho, arco-íris,
-      pulsando), **rastro** (brilhinhos, bolinhas, arco-íris, corações, bolhas, fogo) e
-      o seu **nome junto** do mouse.
-    - **Clique e rodinha**: mini mouse, ondinha, estrelinhas, confete, quadrinhos
-      ("CLICK!") ou nenhuma.
-    - **Ping** (Alt + clique): clássico, alvo, alerta, seta caindo, pulso ou um **emoji**
-      (👀 🎯 🔥 ⭐ 💥 ❤️ 😂 👉 🎉 💀), com o **som** que você escolher (ou sem som).
-    - **Pincel** (Alt + arrastar): normal, neon, tracejado, giz, marca-texto, arco-íris
-      ou rastro que some, em três **espessuras**.
+      gato, lacinho, florzinha, anteninhas, chapéu de mago, gorro de Natal, boné,
+      chapéu pirata, capacete viking, orelhas de coelho, boné de hélice), **efeito** na
+      setinha (brilho, arco-íris, pulsando, pulinho, balançando, estrelinhas),
+      **rastro** (brilhinhos, arco-íris, corações, bolhas, fogo, neve, notas musicais,
+      fumaça, pixels) e o seu **nome junto** do mouse.
+    - **Clique e rodinha**: mini mouse, ondinha, estrelinhas, corações, confete, raios,
+      explosão, quadrinhos ("CLICK!") ou nenhuma.
+    - **Ping** (Alt + clique): clássico, alvo, alerta, seta caindo, alfinete, bandeira,
+      um **emoji** (👀 🎯 🔥 ⭐ 💥 ❤️ 😂 👉 🎉 💀 ❓ ✅ ❌ ⚠️ 💰 👻 😎 🤔 🚀 👏 🎁 🎄) ou uma
+      **imagem sua** (PNG, JPG, WebP ou GIF), com o **som** que você escolher (ou sem
+      som).
+    - **Pincel** (Alt + arrastar): normal, neon, contorno, tracejado, pontilhado,
+      marca-texto, arco-íris, purpurina, flecha ou rastro que some, em três
+      **espessuras**.
 
     Todo mundo vê do seu jeito: quem assiste junto, nos quadros, e quem transmite, na
-    tela de verdade (pelo app 1.6 ou mais novo). Fica salvo como a cor e a foto. No seu
-    próprio mouse, a setinha é o cursor do sistema (sem atraso) e o resto vem junto
-    logo atrás; o efeito animado na setinha (arco-íris, pulsando) só os outros veem.
+    tela de verdade (pelo app 1.7 ou mais novo pras novidades). Fica salvo como a cor e
+    a foto (as imagens próprias também, e vão de novo sozinhas quando você entra). No
+    seu próprio mouse, a setinha é o cursor do sistema (sem atraso; a imagem própria
+    animada troca de quadro também) e o resto vem junto logo atrás; o efeito animado na
+    setinha (arco-íris, pulsando...) só os outros veem.
 
 ## App de desktop (Windows)
 
@@ -448,8 +467,8 @@ que o navegador não faz:
 
 - **Configurações** (a engrenagem ao lado do seu nome, clique no seu avatar/nome ou
   **Ctrl+,**): uma janela só com **Perfil** (foto e cor, com o mesmo seletor da sala),
-  **Ponteiro e controle** (mostrar o seu mouse, ver o de quem assiste, sons, quem pode
-  controlar), **Aplicativo** (modo de tela cheia, aceleração de hardware, marcações na
+  **Mouse e efeitos** (o mesmo editor do perfil, com imagem própria), **Ponteiro e
+  controle** (ver o mouse de quem assiste, sons, quem pode controlar), **Aplicativo** (modo de tela cheia, aceleração de hardware, marcações na
   tela, registro de atividade, versões e **Verificar atualização**), **Conexão e
   testes** (endereço do servidor e o teste de conexão), **OBS e overlays** (endereço
   do OBS e o monitor das marcações), **Log em tempo real** (quem entrou e saiu,
@@ -489,7 +508,8 @@ que o navegador não faz:
   **Ctrl+Shift+D** de novo); saindo, os rabiscos somem pra todo mundo. A camada não
   rouba o foco: o jogo continua na frente quando você sai do modo.
 - **Mouse de quem assiste**: transmitindo pelo app (ou pelo OBS, com as marcações na
-  tela ligadas), quando alguém passa o mouse por cima da sua transmissão, aparece na
+  tela ligadas), quando alguém clica na sua transmissão (deixando ela ativa) e passa o
+  mouse por cima, aparece na
   sua tela uma setinha na cor da pessoa, com a foto de perfil dela (ou a letrinha do
   nick), sem nome; cada pessoa com uma cor diferente. Quem assiste também vê, em cima
   do quadro, o mouse de quem está assistindo junto (no app e no navegador), e o próprio
@@ -499,10 +519,12 @@ que o navegador não faz:
   na borda direita ou de baixo da janela (uns 28 px), volta a setinha normal: o
   Chromium não deixa um cursor personalizado passar da borda.
   Clicar (botão esquerdo, direito ou a rodinha) ou rolar em cima da transmissão mostra
-  uma animaçãozinha no mouse da pessoa: um mini mouse com a parte apertada acesa (e,
-  rolando, uma setinha pra cima ou pra baixo). O botão da setinha, embaixo da lista
-  de pessoas, abre o painel **Mouse e controle**: ali quem assiste desliga o próprio
-  mouse, e quem transmite desliga o de todo mundo.
+  uma animaçãozinha parada onde a pessoa clicou (não vai junto do mouse, e um clique
+  novo não apaga o anterior): um mini mouse com a parte apertada acesa (e, rolando,
+  uma setinha pra cima ou pra baixo), ou o estilo que ela escolheu. Quem assiste liga
+  e desliga o próprio mouse em cada transmissão, no botão da setinha em cima dela; o
+  botão embaixo da lista de pessoas abre o painel **Mouse e controle**, onde quem
+  transmite desliga o mouse de todo mundo.
 - **Controle remoto** (desligado por padrão): enquanto você transmite, cada pessoa da
   lista da sala ganha um botão 🎮; clique nele e confirme em **Permitir?** (uma pessoa
   por vez; dá também pelo painel **Mouse e controle**). A pessoa ganha o botão 🎮 em
