@@ -461,6 +461,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 
 ## App de desktop (Windows)
 
+O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md) (e nas notas de cada
+[release](https://github.com/UsuarioDeJava/web-screen-share/releases)).
+
 Além do navegador, dá pra usar o app de desktop. Ele abre a mesma sala do seu
 servidor (então tudo que muda no servidor chega nele sem reinstalar) e acrescenta o
 que o navegador não faz:

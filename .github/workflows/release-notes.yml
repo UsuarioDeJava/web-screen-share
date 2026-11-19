@@ -1,0 +1,47 @@
+name: Release notes
+
+# As notas de cada release do app (desktop-vX.Y.Z) vêm do CHANGELOG.md: quando ele muda,
+# todas as releases que existem são atualizadas; depois de cada build do app, a nova
+# também (o build publica com o texto padrão e este passo troca pelo changelog).
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - CHANGELOG.md
+      - scripts/release-notes.js
+      - .github/workflows/release-notes.yml
+  workflow_run:
+    workflows:
+      - Build desktop app
+    types:
+      - completed
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for version in $(node scripts/release-notes.js --list); do
+            tag="desktop-v$version"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              node scripts/release-notes.js "$version" > notes.md
+              gh release edit "$tag" --notes-file notes.md
+              echo "$tag: notas atualizadas"
+            else
+              echo "$tag: ainda sem release"
+            fi
+          done

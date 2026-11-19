@@ -80,6 +80,14 @@ fora, trocar de programa ou esconder a página desativa), e cada transmissão te
 liga/desliga (`wss-cursor-streams`, por nick de quem transmite). Tudo isso é só no
 navegador de quem assiste.
 
+## Versões e novidades
+
+Toda versão nova do app (`desktop/package.json`) ganha a sua seção `## x.y.z — data` no
+`CHANGELOG.md`, com o que muda pra quem usa (sala e app, com o crédito dos PRs). O workflow
+**Release notes** (`scripts/release-notes.js`) põe essa seção nas notas da release
+`desktop-vx.y.z` depois de cada build do app, e atualiza todas as releases quando o
+`CHANGELOG.md` muda.
+
 ## Tela cheia e diagnóstico gráfico
 
 O padrão continua sendo a tela cheia nativa. No Windows também estão disponíveis:
