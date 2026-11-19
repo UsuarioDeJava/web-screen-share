@@ -105,6 +105,7 @@ async function load() {
   }
   // Os modos "sem bordas" e "vídeo ampliado na janela" só existem no Windows.
   const windows = /^win32/.test(value.environment.platform);
+  $('gamepad-install').hidden = value.environment.platform !== 'win32 x64';
   for (const option of $('fullscreen').options) option.hidden = option.disabled = !windows && option.value !== 'native';
   pendingRestart = value.restartRequired;
   $('restart').hidden = !pendingRestart;
@@ -132,6 +133,20 @@ $('settings-form').addEventListener('submit', async (event) => {
 });
 $('restart').addEventListener('click', async () => {
   try { await api.restart(); } catch (error) { status(error.message, true); }
+});
+$('gamepad-install').addEventListener('click', async () => {
+  const button = $('gamepad-install'), message = $('gamepad-setup-status');
+  button.disabled = true; $('gamepad-setup-restart').hidden = true;
+  message.textContent = 'Preparando componentes oficiais. Confirme o pedido de administrador do Windows, se aparecer, e aguarde.';
+  try {
+    const result = await api.prepareGamepad();
+    message.textContent = result.message;
+    $('gamepad-setup-restart').hidden = !result.restartRequired || result.rebootRequired;
+  } catch (error) { message.textContent = 'Não foi possível preparar o gamepad: ' + error.message; }
+  finally { button.disabled = false; }
+});
+$('gamepad-setup-restart').addEventListener('click', async () => {
+  try { await api.restart(); } catch (error) { $('gamepad-setup-status').textContent = error.message; }
 });
 for (const id of ['search', 'category', 'level', 'direction']) $(id).addEventListener('input', () => renderLog(true));
 $('pause').addEventListener('click', async () => {

@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { createInput } = require('./input');
 const { createGamepads } = require('./gamepad');
+const { createGamepadSetup } = require('./gamepad-setup');
 const gamepadModel = require('./shared/gamepad');
 const { createUpdates } = require('./updates');
 const { createKeyHook } = require('./keyhook');
@@ -63,6 +64,7 @@ let identity = { hue: 200, color: null }; // a sua cor na sala (color: #rrggbb)
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad') });
+const gamepadSetup = createGamepadSetup({ directory: path.join(app.getPath('userData'), 'gamepad') });
 let controlPeople = new Map();
 const gamepadReceivers = new Map();
 let controller = null; // quem está controlando agora: { name }
@@ -1018,6 +1020,7 @@ if (!app.requestSingleInstanceLock()) {
     roomSettings = createRoomSettings({ getContents: () => mainWindow?.webContents, isServer: isServerUrl });
     settingsPanel = createSettingsPanel({
       readGamepadProfiles, saveGamepadProfile,
+      prepareGamepad: () => gamepadSetup.prepare(),
       getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity,
       room: roomSettings,
       restart: () => {
