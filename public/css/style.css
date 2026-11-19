@@ -299,6 +299,25 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .profile-cursor { position: relative; flex: none; width: 46px; height: 44px; }
 .profile-cursor .mouse-cursor { left: 4px; top: 3px; }
 .profile-block { display: grid; gap: 8px; }
+#profile-dialog { width: min(640px, calc(100% - 32px)); }
+.profile-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.profile-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+.profile-tab:hover { color: var(--text); }
+.profile-tab[aria-selected="true"] { border-bottom-color: var(--accent-2); color: var(--text); }
+.profile-tab-new { padding: 1px 6px; border-radius: 999px; background: var(--grad) border-box; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.profile-panel { display: grid; gap: 12px; }
+.profile-panel[hidden] { display: none; }
 .dialog-label { color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .profile-photo { display: flex; flex-wrap: wrap; gap: 8px; }
 .profile-photo .btn { height: 34px; }
@@ -456,8 +475,10 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .click-up .m-up, .click-down .m-down { opacity: 1; }
 @keyframes click-life { 0% { opacity: 0; } 10% { opacity: 1; } 65% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes click-ripple { from { opacity: 1; transform: scale(0.4); } to { opacity: 0; transform: scale(1.7); } }
-.mouse-cursor svg { position: absolute; left: -2px; top: -2px; width: 26px; height: 26px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
-.mouse-cursor svg path { fill: var(--c); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
+/* A setinha (o modelo, o tamanho e o lugar vêm do js/fx.js); só a filha direta, pra não
+   pintar o enfeite nem o mini mouse do clique. */
+.mouse-cursor > svg { position: absolute; left: -2px; top: -2px; width: 26px; height: 26px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+.mouse-cursor > svg:not(.wfx-arrow) path { fill: var(--c); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
 .mouse-cursor .cursor-badge {
   position: absolute;
   left: 18px;
@@ -1061,7 +1082,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .fx-draw path {
   fill: none;
   stroke: var(--ping);
-  stroke-width: clamp(3px, 0.45cqi, 7px);
+  stroke-width: calc(clamp(3px, 0.45cqi, 7px) * var(--bw, 1)); /* --bw: a espessura do pincel de quem desenha */
   stroke-linecap: round;
   stroke-linejoin: round;
 }

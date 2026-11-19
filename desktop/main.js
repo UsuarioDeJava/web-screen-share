@@ -25,6 +25,7 @@ const { createActivityLog } = require('./activity-log');
 const { createSettingsPanel } = require('./settings-panel');
 const { createRoomSettings } = require('./room-settings');
 const { readConfig, writeConfig } = require('./config-store');
+const { normalize: normalizeStyle } = require('./shared/fx');
 
 // Perfil e opções gráficas precisam estar definidos antes de app.ready.
 if (process.env.WSS_USER_DATA) app.setPath('userData', process.env.WSS_USER_DATA);
@@ -60,7 +61,7 @@ let overlay = null;
 let overlayOwner = null; // de quem é a camada aberta: 'share' (tela escolhida no app) ou 'obs'
 let obsWanted = false; // a sua transmissão do OBS está no ar (com você na sala pelo app)
 let drawMode = false; // você está rabiscando a sua tela (a camada pega o mouse)
-let identity = { hue: 200, color: null }; // a sua cor na sala (color: #rrggbb)
+let identity = { hue: 200, color: null, style: null }; // a sua cor (color: #rrggbb) e o seu estilo (pincel) na sala
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad') });
@@ -606,7 +607,7 @@ function setDrawMode(on) {
       globalShortcut.unregister(accelerator);
     }
   }
-  toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue, color: identity.color });
+  toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue, color: identity.color, style: identity.style });
   if (!drawMode) toRoom({ type: 'clear' }); // saindo, os rabiscos somem pra todo mundo
 }
 
@@ -881,8 +882,12 @@ ipcMain.handle('desktop:update-check', (event) => (fromServer(event) ? updates.c
 
 ipcMain.on('desktop:identity', (event, data) => {
   if (!fromServer(event) || !data || !Number.isInteger(data.hue)) return;
-  identity = { hue: data.hue, color: HEX_COLOR.test(data.color || '') ? data.color.toLowerCase() : null };
-  if (drawMode) toOverlay({ type: 'draw-mode', on: true, hue: identity.hue, color: identity.color });
+  identity = {
+    hue: data.hue,
+    color: HEX_COLOR.test(data.color || '') ? data.color.toLowerCase() : null,
+    style: data.style && typeof data.style === 'object' ? normalizeStyle(data.style) : null,
+  };
+  if (drawMode) toOverlay({ type: 'draw-mode', on: true, hue: identity.hue, color: identity.color, style: identity.style });
 });
 
 ipcMain.handle('desktop:sharing', (event, on) => {

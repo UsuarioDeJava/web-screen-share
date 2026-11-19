@@ -20,6 +20,10 @@ function hslHex(h, s, l) {
 const color = (hue, exact) => (HEX_COLOR.test(exact || '') ? exact
   : Number(hue) === -1 ? '#ffffff' : hslHex(((Number(hue) || 0) % 360 + 360) % 360, 95, 64));
 const text = (v) => String(v == null ? '' : v).slice(0, 40);
+// Estilos do mouse e das marcações de cada pessoa (setinha, enfeite, rastro, clique,
+// ping, pincel): ../shared/fx.js, o mesmo da sala. Sem ele (ou sem estilo), o clássico.
+const Fx = window.WssFx;
+const OVERLAY_SCALE = 0.85; // na tela de verdade, um pouco menor que na sala
 
 function el(tag, className, content) {
   const node = document.createElement(tag);
@@ -28,7 +32,8 @@ function el(tag, className, content) {
   return node;
 }
 
-function ping({ x, y, name, hue, color: exact }) {
+function ping({ x, y, name, hue, color: exact, style }) {
+  if (Fx && Fx.ping(fx, `${unit(x) * 100}%`, `${unit(y) * 100}%`, style, color(hue, exact), text(name), unit(x) > 0.8)) return;
   const mark = el('div', 'ping');
   mark.style.left = `${unit(x) * 100}%`;
   mark.style.top = `${unit(y) * 100}%`;
@@ -51,6 +56,12 @@ function strokePath(pts) {
     d += `Q${f(pts[i])} ${f(pts[i + 1])} ${f((pts[i] + pts[i + 2]) / 2)} ${f((pts[i + 1] + pts[i + 3]) / 2)}`;
   }
   return `${d}L${f(pts[pts.length - 2])} ${f(pts[pts.length - 1])}`;
+}
+
+// O pincel de quem desenha (neon, tracejado, giz, marca-texto, arco-íris, rastro...).
+function brushFor(svg, path, style, hex) {
+  if (Fx) return Fx.brush(svg, path, style, hex, strokePath);
+  return { update: (points) => path.setAttribute('d', strokePath(points)) };
 }
 
 function finishStroke(key, stroke) {
@@ -88,7 +99,7 @@ function releaseAlt(name) {
   }
 }
 
-function draw({ key, points, end, hue, hold, name, color: exact }) {
+function draw({ key, points, end, hue, hold, name, color: exact, style }) {
   if (typeof key !== 'string' || !Array.isArray(points)) return;
   let stroke = strokes.get(key);
   if (!stroke) {
@@ -102,13 +113,13 @@ function draw({ key, points, end, hue, hold, name, color: exact }) {
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
     fx.append(svg);
-    stroke = { svg, path, points: [], expire: null };
+    stroke = { svg, path, points: [], expire: null, brush: brushFor(svg, path, style, color(hue, exact)) };
     strokes.set(key, stroke);
   }
   for (const v of points.slice(0, 256)) {
     if (stroke.points.length < 2400) stroke.points.push(unit(v));
   }
-  stroke.path.setAttribute('d', strokePath(stroke.points));
+  stroke.brush.update(stroke.points);
   clearTimeout(stroke.expire);
   const done = () => (hold === 'alt' ? keepUntilRelease(name, key, stroke) : finishStroke(key, stroke));
   if (end) done();
@@ -139,6 +150,7 @@ const PALETTE = [{ hue: null, name: 'Sua cor' }, { hue: 0, name: 'Vermelho' }, {
 const own = []; // seus traços: ficam até desfazer, limpar ou sair do modo
 let myHue = 200;
 let myColor = null; // a sua cor exata, se a sala mandou
+let myStyle = null; // o seu estilo (o pincel dos seus rabiscos)
 let picked = null; // cor escolhida na barrinha (null: a sua cor)
 let current = null; // traço sendo desenhado agora
 let ownCounter = 0;
@@ -180,7 +192,7 @@ function newStroke() {
   svg.append(path);
   fx.append(svg);
   ownCounter += 1;
-  return { id: ownCounter, hue, color: hex, svg, path, points: [], pending: [], timer: null };
+  return { id: ownCounter, hue, color: hex, svg, path, points: [], pending: [], timer: null, brush: brushFor(svg, path, myStyle, hex) };
 }
 
 // Sai em pedaços a cada 30 ms enquanto você desenha; sem limite de tamanho.
@@ -198,7 +210,7 @@ function addPoint(stroke, clientX, clientY) {
   if (n && Math.hypot(x - stroke.points[n - 2], y - stroke.points[n - 1]) < 0.0008) return;
   stroke.points.push(x, y);
   stroke.pending.push(x, y);
-  stroke.path.setAttribute('d', strokePath(stroke.points));
+  stroke.brush.update(stroke.points);
   if (!stroke.timer) stroke.timer = setTimeout(() => flush(stroke), 30);
 }
 
@@ -223,9 +235,10 @@ function clearOwn() {
   window.overlayBridge.clear();
 }
 
-function setDrawMode(on, hue, exact) {
+function setDrawMode(on, hue, exact, style) {
   if (Number.isInteger(hue)) myHue = hue;
   myColor = HEX_COLOR.test(exact || '') ? exact : null;
+  myStyle = style && typeof style === 'object' ? style : null;
   document.body.classList.toggle('drawing', on);
   hud.hidden = !on;
   renderColors();
@@ -349,8 +362,9 @@ const CLICK_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="
   + '<path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
 const CLICK_KINDS = new Set(['left', 'middle', 'right', 'up', 'down']);
 
-function showClick(node, kind) {
+function showClick(node, kind, style, hex) {
   if (!CLICK_KINDS.has(kind)) return;
+  if (Fx && Fx.click(node, kind, style, hex)) return;
   const old = node.querySelector('.click-mark');
   if (old) old.remove();
   const mark = el('span', `click-mark click-${kind}`);
@@ -362,7 +376,7 @@ function showClick(node, kind) {
   node.append(mark);
 }
 
-function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact }) {
+function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact, style, name }) {
   // A cor que a pessoa escolheu vai exata; a automática gira se ficar parecida com outra.
   const custom = HEX_COLOR.test(exact || '') ? exact.toLowerCase() : null;
   if (typeof id !== 'string') return;
@@ -388,9 +402,12 @@ function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact }) {
     paintCursor(c);
   }
   paintBadge(c, letter, avatar);
-  if (click) showClick(c.node, click);
+  const hex = c.custom || color(c.hue);
+  if (Fx) Fx.applyCursor(c.node, style, { name: text(name), scale: OVERLAY_SCALE });
+  if (click) showClick(c.node, click, style, hex);
   c.node.style.left = `${unit(x) * 100}%`;
   c.node.style.top = `${unit(y) * 100}%`;
+  if (Fx) Fx.trail(cursorsEl, c, unit(x) * 100, unit(y) * 100, style, hex, '%');
   clearTimeout(c.timer);
   c.timer = setTimeout(() => removeCursor(id), 4000); // parou de mandar: some
 }
@@ -416,7 +433,7 @@ window.overlayBridge.onEvent((event) => {
   else if (event.type === 'draw') draw(event);
   else if (event.type === 'draw-release') releaseAlt(event.name);
   else if (event.type === 'react') react(event);
-  else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue, event.color);
+  else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue, event.color, event.style);
   else if (event.type === 'draw-undo') undo();
   else if (event.type === 'draw-clear') clearOwn();
 });

@@ -41,7 +41,7 @@ body { font: 14px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans
 .ping.flip .ping-name { left: auto; right: 12px; }
 
 .draw { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 4px var(--c)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)); }
-.draw path { fill: none; stroke: var(--c); stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; }
+.draw path { fill: none; stroke: var(--c); stroke-width: calc(4px * var(--bw, 1)); stroke-linecap: round; stroke-linejoin: round; } /* --bw: o pincel de quem desenha */
 .draw.fading { animation: fade 0.8s ease-in 2.4s forwards; }
 .draw.clearing { animation: fade 0.4s ease-in forwards; }
 
@@ -84,7 +84,7 @@ body.drawing::after {
   box-shadow: inset 0 0 28px -6px var(--mine, #2fc2ff);
   pointer-events: none;
 }
-.own path { stroke-width: 5px; }
+.own path { stroke-width: calc(5px * var(--bw, 1)); }
 
 .hud {
   position: fixed;
@@ -144,8 +144,9 @@ body.drawing::after {
   height: 0;
   transition: left 70ms linear, top 70ms linear, opacity 0.3s;
 }
-.cursor svg { position: absolute; left: -2px; top: -2px; width: 22px; height: 22px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
-.cursor svg path { fill: var(--c); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
+/* Só a setinha (filha direta): o enfeite e o mini mouse do clique têm os desenhos deles. */
+.cursor > svg { position: absolute; left: -2px; top: -2px; width: 22px; height: 22px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+.cursor > svg:not(.wfx-arrow) path { fill: var(--c); stroke: #fff; stroke-width: 1.6; stroke-linejoin: round; }
 /* A letrinha do nick, como a fotinha de perfil da sala. */
 .cursor-badge {
   position: absolute;

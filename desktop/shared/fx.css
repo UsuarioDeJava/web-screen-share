@@ -1,0 +1,338 @@
+/* Estilos do mouse e das marcações (ver fx.js). Um arquivo só (desktop/shared): o
+   servidor entrega pra sala em /css/fx.css e o app usa direto. */
+
+/* ---------- setinha, enfeite, efeito, nome ---------- */
+
+.wfx-cursor > .wfx-arrow {
+  position: absolute;
+  overflow: visible;
+  color: var(--c);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+.wfx-aura-glow > .wfx-arrow { filter: drop-shadow(0 0 3px var(--c)) drop-shadow(0 0 8px var(--c)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+.wfx-aura-rainbow > .wfx-arrow,
+.wfx-aura-rainbow > .wfx-deco { animation: wfx-hue 2.4s linear infinite; }
+.wfx-aura-pulse > .wfx-arrow { animation: wfx-pulse 1.1s ease-in-out infinite; }
+@keyframes wfx-hue {
+  from { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)) hue-rotate(0deg); }
+  to { filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)) hue-rotate(360deg); }
+}
+@keyframes wfx-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+
+.wfx-deco {
+  position: absolute;
+  z-index: 1;
+  color: var(--c);
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.wfx-deco svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.wfx-deco-halo { filter: drop-shadow(0 0 4px #ffe27a); animation: wfx-bob 1.6s ease-in-out infinite; }
+@keyframes wfx-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+
+.wfx-name {
+  position: absolute;
+  z-index: 1;
+  padding: 0 6px;
+  border: 1.5px solid var(--c);
+  border-radius: 7px;
+  background: rgba(9, 11, 19, 0.85);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font: 700 11px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---------- rastro ---------- */
+
+.wfx-p {
+  position: absolute;
+  z-index: 3;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--c);
+  pointer-events: none;
+  animation: wfx-p 0.7s ease-out forwards;
+}
+.wfx-p-rainbow { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; box-shadow: 0 0 6px var(--c); }
+.wfx-p-sparkles, .wfx-p-hearts {
+  width: auto;
+  height: auto;
+  margin: -8px 0 0 -5px;
+  background: none;
+  color: var(--c);
+  font: 13px/1 system-ui, sans-serif;
+  text-shadow: 0 0 4px var(--c), 0 0 1px #fff;
+}
+.wfx-p-sparkles { color: #fff; animation-duration: 0.8s; }
+.wfx-p-hearts { color: #ff5f8f; text-shadow: 0 0 3px rgba(255, 95, 143, 0.8); animation-name: wfx-rise; animation-duration: 0.9s; }
+.wfx-p-bubbles {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 1.5px solid var(--c);
+  background: rgba(255, 255, 255, 0.12);
+  animation-name: wfx-rise;
+  animation-duration: 1s;
+}
+.wfx-p-fire {
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: radial-gradient(circle, #fff6c2 0%, #ffbf3d 40%, #ff5b24 68%, rgba(255, 60, 30, 0) 72%);
+  animation-name: wfx-rise;
+  animation-duration: 0.6s;
+}
+@keyframes wfx-p {
+  from { opacity: 0.95; transform: translate(0, 0) scale(var(--s, 1)) rotate(0deg); }
+  to { opacity: 0; transform: translate(var(--dx, 0), var(--dy, 0)) scale(0.2) rotate(var(--r, 0deg)); }
+}
+@keyframes wfx-rise {
+  from { opacity: 0.95; transform: translate(0, 0) scale(var(--s, 1)); }
+  to { opacity: 0; transform: translate(var(--dx, 0), calc(var(--dy, 0px) - 28px)) scale(0.35); }
+}
+
+/* ---------- clique e rodinha ---------- */
+
+.wfx-click { position: absolute; left: 0; top: 0; z-index: 2; width: 0; height: 0; pointer-events: none; animation: wfx-life 0.95s linear forwards; }
+@keyframes wfx-life { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.wfx-ring {
+  position: absolute;
+  left: -11px;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 2.5px solid var(--c);
+  border-radius: 50%;
+  animation: wfx-ring 0.55s ease-out both;
+}
+.wfx-ring-2 { animation-delay: 0.14s; }
+@keyframes wfx-ring { from { opacity: 1; transform: scale(0.3); } to { opacity: 0; transform: scale(1.9); } }
+.wfx-dot { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px #fff; animation: wfx-ring 0.6s ease-out both; }
+.wfx-chevron {
+  position: absolute;
+  left: 8px;
+  top: -8px;
+  color: var(--c);
+  font: 900 13px/1 system-ui, sans-serif;
+  text-shadow: 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.7);
+  animation: wfx-chev-up 0.6s ease-out both;
+}
+.wfx-k-down .wfx-chevron { top: 4px; animation-name: wfx-chev-down; }
+@keyframes wfx-chev-up { from { opacity: 1; transform: translateY(6px); } to { opacity: 0; transform: translateY(-14px); } }
+@keyframes wfx-chev-down { from { opacity: 1; transform: translateY(-6px); } to { opacity: 0; transform: translateY(14px); } }
+.wfx-star, .wfx-bit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--c);
+  font: 15px/1 system-ui, sans-serif;
+  text-shadow: 0 0 3px var(--c);
+  animation: wfx-burst 0.75s ease-out both;
+}
+.wfx-star { margin: -8px 0 0 -6px; }
+.wfx-bit { width: 8px; height: 4px; margin: -2px 0 0 -4px; border-radius: 1px; background: var(--c); }
+@keyframes wfx-burst {
+  from { opacity: 1; transform: rotate(var(--a)) translateX(2px) scale(0.6); }
+  to { opacity: 0; transform: rotate(var(--a)) translateX(var(--d, 18px)) scale(1.1) rotate(160deg); }
+}
+.wfx-bubble {
+  position: absolute;
+  left: 12px;
+  top: -34px;
+  padding: 2px 7px;
+  border: 2px solid #15161d;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 2px 2px 0 var(--c);
+  color: #15161d;
+  font: 900 12px/1.2 "Comic Sans MS", "Comic Neue", "Chalkboard SE", system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transform-origin: 0 100%;
+  animation: wfx-popin 0.9s ease-out both;
+}
+.wfx-bubble::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  bottom: -7px;
+  border: 6px solid transparent;
+  border-top-color: #15161d;
+  border-bottom: 0;
+}
+@keyframes wfx-popin {
+  0% { opacity: 0; transform: rotate(-8deg) scale(0.3); }
+  25% { opacity: 1; transform: rotate(-8deg) scale(1.15); }
+  40%, 80% { opacity: 1; transform: rotate(-8deg) scale(1); }
+  100% { opacity: 0; transform: rotate(-8deg) scale(1) translateY(-6px); }
+}
+
+/* ---------- ping (Alt + clique) ---------- */
+
+.wfx-ping { position: absolute; z-index: 5; width: 0; height: 0; pointer-events: none; animation: wfx-life-long 3s linear forwards; }
+@keyframes wfx-life-long { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+.wfx-ping-name {
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--c);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font: 700 12px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+.wfx-ping.flip .wfx-ping-name { left: auto; right: 14px; }
+.wfx-tg-dot { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; box-sizing: border-box; border: 2px solid #fff; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.wfx-ring-static { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; box-sizing: border-box; border: 3px solid var(--c); border-radius: 50%; background: rgba(255, 255, 255, 0.25); box-shadow: 0 0 10px var(--c); }
+.wfx-tg { position: absolute; box-sizing: border-box; border: 2.5px solid var(--c); border-radius: 50%; box-shadow: 0 0 6px var(--c); }
+.wfx-tg-1 { left: -26px; top: -26px; width: 52px; height: 52px; animation: wfx-lock 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.wfx-tg-2 { left: -15px; top: -15px; width: 30px; height: 30px; border-style: dashed; animation: wfx-spin 2.4s linear infinite; }
+.wfx-tg-cross { position: absolute; left: -24px; top: -24px; width: 48px; height: 48px; animation: wfx-lock 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.wfx-tg-cross::before, .wfx-tg-cross::after { content: ""; position: absolute; background: var(--c); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6); }
+.wfx-tg-cross::before { left: 23px; top: 0; width: 2px; height: 48px; clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%, 0 70%, 100% 70%, 100% 100%, 0 100%); }
+.wfx-tg-cross::after { left: 0; top: 23px; width: 48px; height: 2px; clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 70% 0, 100% 0, 100% 100%, 70% 100%); }
+@keyframes wfx-lock { from { opacity: 0; transform: scale(2.4) rotate(-60deg); } to { opacity: 1; transform: scale(1) rotate(0deg); } }
+@keyframes wfx-spin { to { transform: rotate(360deg); } }
+.wfx-alert {
+  position: absolute;
+  left: -14px;
+  top: -50px;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5), 0 0 12px var(--c);
+  color: #fff;
+  font: 900 18px/1 system-ui, sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  animation: wfx-hop 0.55s ease-in-out 4 alternate both;
+}
+@keyframes wfx-hop { from { transform: translateY(0) scale(1); } to { transform: translateY(-8px) scale(1.08); } }
+.wfx-drop { position: absolute; left: -11px; top: -40px; width: 22px; height: 28px; color: var(--c); filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); animation: wfx-drop 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.wfx-drop svg { display: block; width: 100%; height: 100%; overflow: visible; }
+@keyframes wfx-drop { from { opacity: 0; transform: translateY(-60px); } to { opacity: 1; transform: translateY(0); } }
+.wfx-wave { position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%; background: var(--c); opacity: 0; animation: wfx-wave 1.3s ease-out 2 both; }
+.wfx-wave-2 { animation-delay: 0.3s; }
+.wfx-wave-3 { animation-delay: 0.6s; }
+@keyframes wfx-wave { from { opacity: 0.55; transform: scale(0.2); } to { opacity: 0; transform: scale(1.6); } }
+.wfx-emoji { position: absolute; left: -17px; top: -48px; width: 34px; text-align: center; font: 28px/1 "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5)); animation: wfx-emoji 0.6s cubic-bezier(0.3, 1.7, 0.5, 1) both, wfx-hop 0.6s 0.6s ease-in-out 3 alternate; }
+@keyframes wfx-emoji { from { opacity: 0; transform: scale(0.2) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+/* ---------- pincel ---------- */
+
+.wfx-fade-seg { animation: wfx-seg 0.7s ease-in 0.3s forwards; }
+@keyframes wfx-seg { to { opacity: 0; } }
+
+/* ---------- editor (perfil e Configurações) ---------- */
+
+.wfx-ed { display: grid; gap: 14px; }
+/* A prévia gruda no topo enquanto você rola pelas opções: dá pra ver na hora como fica. */
+.wfx-ed-preview {
+  position: sticky;
+  top: 6px;
+  z-index: 4;
+  height: 170px;
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background:
+    radial-gradient(420px 180px at 20% 0%, rgba(122, 92, 255, 0.22), transparent 70%),
+    radial-gradient(360px 160px at 100% 100%, rgba(47, 194, 255, 0.16), transparent 70%),
+    #0a0c14;
+  cursor: none;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.wfx-ed-preview:focus-visible { box-shadow: 0 0 0 2px #2fc2ff; }
+.wfx-ed-hint { position: absolute; left: 0; right: 0; bottom: 8px; color: rgba(255, 255, 255, 0.42); font: 12px/1.3 system-ui, sans-serif; text-align: center; pointer-events: none; }
+.wfx-ed-board { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.wfx-ed-stroke { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; filter: drop-shadow(0 0 3px var(--c)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
+.wfx-ed-stroke path { fill: none; stroke: var(--c); stroke-width: calc(4px * var(--bw, 1)); stroke-linecap: round; stroke-linejoin: round; }
+.wfx-ed-fading { animation: wfx-seg 0.8s ease-in 1.4s forwards; }
+.wfx-ed-cursor { position: absolute; left: 0; top: 0; z-index: 6; width: 0; height: 0; pointer-events: none; }
+.wfx-ed-cursor .cursor-badge {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--c) center / cover no-repeat;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  color: var(--ink, #fff);
+  font: 800 11px/1 system-ui, sans-serif;
+  text-transform: uppercase;
+}
+.wfx-ed .click-mark { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; animation: wfx-life 0.9s ease-out forwards; }
+.wfx-ed .click-ripple { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--c); border-radius: 50%; animation: wfx-ring 0.45s ease-out forwards; }
+.wfx-ed .click-mark .click-mouse { position: absolute; left: -21px; top: -4px; width: 12px; height: 29px; overflow: visible; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75)); }
+.wfx-ed .click-mark .m-body { fill: rgba(9, 11, 19, 0.55); stroke: #fff; stroke-width: 1.4; }
+.wfx-ed .click-mark .m-part { fill: transparent; stroke: none; }
+.wfx-ed .click-mark .m-line { fill: none; stroke: #fff; stroke-width: 1.1; }
+.wfx-ed .click-mark .m-arrow { fill: none; stroke: var(--c); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.wfx-ed .click-left .m-left, .wfx-ed .click-right .m-right, .wfx-ed .click-middle .m-wheel, .wfx-ed .click-up .m-wheel, .wfx-ed .click-down .m-wheel { fill: var(--c); }
+.wfx-ed .click-up .m-up, .wfx-ed .click-down .m-down { opacity: 1; }
+
+.wfx-ed-sections { display: grid; gap: 12px; }
+.wfx-ed-row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 10px; align-items: start; }
+.wfx-ed-row[hidden] { display: none; }
+.wfx-ed-label { padding-top: 7px; color: #9ba1b6; font: 600 12px/1.3 system-ui, sans-serif; }
+.wfx-ed-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wfx-ed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #dfe3f0;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.wfx-ed-chip:hover { border-color: rgba(255, 255, 255, 0.28); background: rgba(255, 255, 255, 0.08); }
+.wfx-ed-chip.active { border-color: #2fc2ff; background: rgba(47, 194, 255, 0.16); color: #fff; box-shadow: 0 0 0 1px rgba(47, 194, 255, 0.4); }
+.wfx-ed-pack { height: 30px; border-radius: 999px; }
+.wfx-ed-icon { width: 18px; height: 18px; display: inline-grid; place-items: center; color: var(--c); }
+.wfx-ed-icon svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
+.wfx-ed-trail { font: 13px/1 system-ui, sans-serif; }
+.wfx-ed-trail-dots::before, .wfx-ed-trail-rainbow::before, .wfx-ed-trail-bubbles::before, .wfx-ed-trail-fire::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.wfx-ed-trail-rainbow::before { background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
+.wfx-ed-trail-bubbles::before { background: transparent; border: 1.5px solid var(--c); }
+.wfx-ed-trail-fire::before { background: radial-gradient(circle, #fff6c2, #ffbf3d 45%, #ff5b24 75%); }
+.wfx-ed-trail-hearts { color: #ff5f8f; }
+.wfx-ed-emojis .wfx-ed-chip { padding: 0 8px; font-size: 17px; }
+.wfx-ed-emojis .wfx-ed-text { font: 17px/1 "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
+.wfx-ed-switch { display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 0; color: #dfe3f0; font: 13px/1.3 system-ui, sans-serif; cursor: pointer; }
+.wfx-ed-switch input { width: 16px; height: 16px; margin: 0; accent-color: #2fc2ff; }
+@media (max-width: 560px) {
+  .wfx-ed-row { grid-template-columns: 1fr; gap: 4px; }
+  .wfx-ed-label { padding-top: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wfx-p { display: none; }
+  .wfx-aura-rainbow > .wfx-arrow, .wfx-aura-rainbow > .wfx-deco, .wfx-aura-pulse > .wfx-arrow, .wfx-deco-halo { animation: none !important; }
+  .wfx-ping { animation: wfx-life-long 3s linear forwards !important; }
+  .wfx-ping > * { animation: none !important; }
+  .wfx-click { animation: wfx-life 0.95s linear forwards !important; }
+}

@@ -5,7 +5,7 @@ let paused = false;
 let initialized = false;
 let pendingRestart = false;
 let dirty = false;
-const tabs = ['profile', 'pointer', 'settings', 'connection', 'obs', 'log', 'shortcuts'];
+const tabs = ['profile', 'fx', 'pointer', 'settings', 'connection', 'obs', 'log', 'shortcuts'];
 let activeTab = 'profile';
 let diagnosticTimer;
 let diagnosticsRunning = false;
@@ -54,7 +54,7 @@ function selectTab(name, focus = false) {
     $(`panel-${id}`).hidden = !active;
   }
   if (name === 'log') renderLog();
-  if (['profile', 'pointer', 'shortcuts'].includes(name)) refreshRoom();
+  if (['profile', 'fx', 'pointer', 'shortcuts'].includes(name)) refreshRoom();
   if (name === 'connection') pollDiagnostics();
   if (name === 'obs') refreshObs();
   updateLogSubscription();
@@ -173,6 +173,7 @@ async function refreshRoom() {
     node.textContent = roomState.reason || 'Entre na sala para acessar estas configurações.';
   }
   for (const node of document.querySelectorAll('.room-control')) node.disabled = !roomState.available;
+  renderFx();
   if (!roomState.available) return;
   $('profile-name').textContent = roomState.name;
   $('profile-initial').textContent = [...roomState.name][0] || '?';
@@ -526,3 +527,31 @@ $('cp-eyedropper').addEventListener('click', async () => {
 });
 
 window.WssGamepadClient.start({ panel: $('gamepad-config'), canSend: () => false, send: () => {} });
+// ---------- mouse e efeitos: o mesmo editor da sala (../shared/fx.js) ----------
+// Setinha, tamanho, enfeite, efeito, rastro, nome, clique, ping, som do ping, pincel e
+// espessura, com a prévia ao vivo. Cada escolha vai pra sala na hora.
+let fxEditor = null;
+function fxLook() {
+  const name = roomState.name || '';
+  const color = roomState.markColor || '#4d8dff';
+  return { color, ink: inkFor(color), letter: [...name][0] || '?', photo: roomState.photo || null, name };
+}
+function renderFx() {
+  const supported = roomState.available && roomState.style !== undefined;
+  $('fx-editor').hidden = !supported;
+  $('fx-status').textContent = roomState.available && !supported ? 'Atualize o servidor da sala pra escolher o estilo do mouse e das marcações.' : '';
+  if (!supported) return;
+  if (!fxEditor) {
+    fxEditor = window.WssFx.editor($('fx-editor'), {
+      get: () => roomState.style,
+      look: fxLook,
+      change: async (style) => {
+        roomState.style = style;
+        try {
+          await api.roomAction({ type: 'style', style });
+          status('Estilo do mouse aplicado na sala.');
+        } catch (error) { status(error.message, true); }
+      },
+    });
+  } else fxEditor.refresh();
+}

@@ -177,6 +177,14 @@
   const profileColors = new Map(); // nick -> cor escolhida (#rrggbb)
   const profileHues = new Map(); // nick -> tom escolhido (de antes da cor livre)
   const profileAvatars = new Map(); // nick -> endereço da foto no servidor
+  // Estilo do mouse e das marcações (setinha, enfeite, rastro, clique, ping, pincel): o
+  // catálogo e os desenhos ficam em js/fx.js. nick -> estilo.
+  const Fx = window.WssFx;
+  const profileStyles = new Map();
+  let myStyle = Fx.normalize(null);
+  try {
+    myStyle = Fx.normalize(JSON.parse(localStorage.getItem('wss-style') || 'null'));
+  } catch {}
   const AVATAR_PATH = /^\/avatar\/[0-9a-f]{32}$/;
   const HEX_COLOR = /^#[0-9a-f]{6}$/;
   let myColor = null; // a cor que você escolheu (null: automática), salva neste navegador
@@ -221,6 +229,7 @@
   }
 
   const nameHue = (name) => toneOf(name).hue;
+  const styleOf = (name) => (me && name === me.name ? myStyle : profileStyles.get(name) || Fx.normalize(null));
   const avatarFill = (tone) => tone.color || `hsl(${tone.hue} 45% 42%)`;
   // Letra em cima da cor: escura numa cor clara (amarelo, branco...), senão branca.
   const inkFor = (tone) => (tone.color && luminance(tone.color) > 0.36 ? '#12141c' : '#ffffff');
@@ -258,18 +267,23 @@
     const colors = new Map();
     const hues = new Map();
     const photos = new Map();
+    const styles = new Map();
     for (const u of users.values()) {
       if (u.kind === 'obs') continue; // o OBS usa o perfil de quem tem o mesmo nick
+      if (u.style && typeof u.style === 'object') styles.set(u.name, JSON.stringify(Fx.normalize(u.style)));
       if (typeof u.color === 'string' && HEX_COLOR.test(u.color)) colors.set(u.name, u.color);
       if (Number.isInteger(u.hue)) hues.set(u.name, u.hue);
       if (typeof u.avatar === 'string' && AVATAR_PATH.test(u.avatar)) photos.set(u.name, u.avatar);
     }
     const same = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
-    if (same(colors, profileColors) && same(hues, profileHues) && same(photos, profileAvatars)) return;
+    const knownStyles = new Map([...profileStyles].map(([k, v]) => [k, JSON.stringify(v)]));
+    if (same(colors, profileColors) && same(hues, profileHues) && same(photos, profileAvatars) && same(styles, knownStyles)) return;
     for (const [target, source] of [[profileColors, colors], [profileHues, hues], [profileAvatars, photos]]) {
       target.clear();
       for (const [k, v] of source) target.set(k, v);
     }
+    profileStyles.clear();
+    for (const [k, v] of styles) profileStyles.set(k, JSON.parse(v));
     for (const node of document.querySelectorAll('.avatar[data-name]')) paintAvatar(node, node.dataset.name);
     for (const node of document.querySelectorAll('[data-hue-name]')) {
       const saved = { hue: node.dataset.hue === undefined ? undefined : Number(node.dataset.hue), color: node.dataset.color };
@@ -378,7 +392,7 @@
   });
 
   function join() {
-    socket.emit('join', { name: wantedName, clientId, hue: myColor ? hexHue(myColor) : myHue, color: myColor }, (res) => {
+    socket.emit('join', { name: wantedName, clientId, hue: myColor ? hexHue(myColor) : myHue, color: myColor, style: Fx.isDefault(myStyle) ? null : myStyle }, (res) => {
       if (!res || res.error) {
         wantedName = null;
         stopSharing();
@@ -2163,7 +2177,8 @@
     return Number.isInteger(hue) ? hslToHex(hue, 95, 64) : markFill(toneOf(name));
   }
 
-  function createStrokeView(target, color) {
+  // style: o estilo de quem desenha (o pincel e a espessura, do js/fx.js).
+  function createStrokeView(target, color, style) {
     const { fx, video } = target;
     const width = fx.clientWidth || 1;
     const height = fx.clientHeight || 1;
@@ -2181,11 +2196,11 @@
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
     fx.append(svg);
-    return { svg, path, points: [], expire: null };
+    return { svg, path, points: [], expire: null, brush: Fx.brush(svg, path, style, color, strokePath) };
   }
 
   function drawStroke(view) {
-    view.path.setAttribute('d', strokePath(view.points));
+    view.brush.update(view.points);
   }
 
   // Terminado, o traço fica uns segundos na tela e some devagar.
@@ -2204,7 +2219,7 @@
       target,
       pending: [],
       timer: null,
-      view: createStrokeView(target, markFill(toneOf(me.name))),
+      view: createStrokeView(target, markFill(toneOf(me.name)), myStyle),
     };
     addStrokePoint(stroke, clientX, clientY);
     return stroke;
@@ -2265,14 +2280,14 @@
     const color = strokeColor(name, hue, sent);
     // hue: pro app de antes da cor livre (ele só entende o tom).
     const oldHue = Number.isInteger(hue) ? hue : HEX_COLOR.test(sent || '') ? hexHue(sent) : nameHue(name);
-    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined });
+    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined, style: styleOf(name) });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
     let view = remoteStrokes.get(key);
     if (!view) {
       if (!points.length) return;
-      view = createStrokeView(target, color);
+      view = createStrokeView(target, color, styleOf(name));
       remoteStrokes.set(key, view);
     }
     view.points.push(...points);
@@ -2443,7 +2458,8 @@
   socket.on('ping', ({ stream, x, y, name }) => {
     // O seu próprio clique no seu quadro não precisa aparecer na sua tela de verdade.
     const tone = toneOf(name);
-    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: tone.hue, color: markFill(tone) });
+    const style = styleOf(name);
+    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: tone.hue, color: markFill(tone), style });
     const target = fxTarget(stream);
     if (!target) return;
     const { fx, video } = target;
@@ -2451,9 +2467,15 @@
     const height = fx.clientHeight;
     if (!width || !height) return;
     const box = contentBox(video, width, height);
+    const left = `${((box.left + x * box.width) / width) * 100}%`;
+    const top = `${((box.top + y * box.height) / height) * 100}%`;
+    // O estilo de ping e o som que a pessoa escolheu (o clássico é este daqui).
+    if (style.pingSound === 'classic') sounds.play('ping');
+    else if (sounds.enabled) Fx.playPing(style.pingSound);
+    if (Fx.ping(fx, left, top, style, markFill(tone), name, x > 0.75)) return;
     const mark = el('span', 'fx-ping');
-    mark.style.left = `${((box.left + x * box.width) / width) * 100}%`;
-    mark.style.top = `${((box.top + y * box.height) / height) * 100}%`;
+    mark.style.left = left;
+    mark.style.top = top;
     mark.style.setProperty('--ping', markFill(tone));
     mark.classList.toggle('flip', x > 0.75); // nome do lado esquerdo perto da borda direita
     mark.append(el('span', 'fx-ping-ring'), el('span', 'fx-ping-ring'), el('span', 'fx-ping-dot'), el('span', 'fx-ping-name', name));
@@ -2461,7 +2483,6 @@
       if (e.target === mark) mark.remove();
     });
     fx.append(mark);
-    sounds.play('ping');
   });
 
   function fileStamp(date) {
@@ -3561,8 +3582,10 @@
     + '<path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
   const CLICK_KINDS = new Set(['left', 'middle', 'right', 'up', 'down']);
 
-  function showClick(node, kind) {
+  // name: de quem é o mouse (o estilo de clique que a pessoa escolheu; "mini mouse" é este).
+  function showClick(node, kind, name) {
     if (!node || !CLICK_KINDS.has(kind)) return;
+    if (name && Fx.click(node, kind, styleOf(name), markFill(toneOf(name)))) return;
     const old = node.querySelector('.click-mark');
     if (old) old.remove();
     const mark = el('span', `click-mark click-${kind}`);
@@ -3583,6 +3606,9 @@
     badge.textContent = photo ? '' : [...name][0] || '?';
     badge.style.backgroundImage = photo ? `url("${photo}")` : '';
     badge.classList.toggle('has-photo', Boolean(photo));
+    // Modelo da setinha, tamanho, enfeite, efeito e nome. No seu próprio mouse a setinha
+    // é o cursor do sistema: aqui vão só a bolinha, o enfeite e o nome.
+    Fx.applyCursor(node, styleOf(name), { name, arrow: !node.classList.contains('my-badge') });
   }
 
   // A foto fica no IndexedDB (cabe um GIF de 5 MB, o localStorage não aguenta bem).
@@ -3732,7 +3758,55 @@
   function sendDesktopIdentity() {
     if (!me || !desktop || typeof desktop.identity !== 'function') return;
     const tone = toneOf(me.name);
-    desktop.identity({ hue: tone.hue, color: markFill(tone) });
+    desktop.identity({ hue: tone.hue, color: markFill(tone), style: myStyle });
+  }
+
+  // O estilo do mouse e das marcações (aba "Mouse e efeitos" do perfil, ou as
+  // Configurações do app): salvo neste navegador e mandado pra sala na hora.
+  let styleSendTimer = null;
+  function setMyStyle(style) {
+    myStyle = Fx.normalize(style);
+    const plain = Fx.isDefault(myStyle) ? null : myStyle;
+    try {
+      if (plain) localStorage.setItem('wss-style', JSON.stringify(plain));
+      else localStorage.removeItem('wss-style');
+    } catch {}
+    if (me && users.has(me.id)) {
+      const self = users.get(me.id);
+      if (plain) self.style = plain;
+      else delete self.style;
+    }
+    clearTimeout(styleSendTimer);
+    styleSendTimer = setTimeout(() => socket.emit('profile', { style: plain }), 150);
+    onMyProfileChanged();
+  }
+
+  // A aba "Mouse e efeitos": o editor com a prévia (js/fx.js), montado na primeira vez.
+  let fxEditor = null;
+  function myLook() {
+    if (!me) return { color: '#4d8dff', ink: '#ffffff', letter: '?', photo: null, name: '' };
+    const tone = toneOf(me.name);
+    return { color: markFill(tone), ink: inkFor(tone), letter: [...me.name][0] || '?', photo: profileAvatars.get(me.name) || null, name: me.name };
+  }
+  function selectProfileTab(fx) {
+    $('ptab-look').setAttribute('aria-selected', String(!fx));
+    $('ptab-fx').setAttribute('aria-selected', String(fx));
+    $('ptab-look').tabIndex = fx ? -1 : 0;
+    $('ptab-fx').tabIndex = fx ? 0 : -1;
+    $('ppanel-look').hidden = fx;
+    $('ppanel-fx').hidden = !fx;
+    if (fx && !fxEditor) fxEditor = Fx.editor($('fx-editor'), { get: () => myStyle, look: myLook, change: setMyStyle });
+    else if (fx) fxEditor.refresh();
+  }
+  $('ptab-look').addEventListener('click', () => selectProfileTab(false));
+  $('ptab-fx').addEventListener('click', () => selectProfileTab(true));
+  for (const tab of [$('ptab-look'), $('ptab-fx')]) {
+    tab.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      selectProfileTab(tab === $('ptab-look'));
+      (tab === $('ptab-look') ? $('ptab-fx') : $('ptab-look')).focus();
+    });
   }
 
   // A sua cor ou foto mudou: a cor dos rabiscos no app, o seu mouse e a janela do perfil.
@@ -3852,6 +3926,7 @@
     renderChips($('cp-recent'), recentColors());
     $('btn-photo-remove').hidden = !photo;
     renderPicker();
+    if (fxEditor && !$('ppanel-fx').hidden) fxEditor.refresh();
   }
 
   function openProfile() {
@@ -4144,48 +4219,28 @@
   }
 
   // O seu mouse em cima da transmissão vira a mesma setinha com foto que os outros veem.
-  // A setinha é o cursor de verdade do sistema (uma imagem na sua cor), sem atraso nenhum;
-  // antes ela era desenhada pela página, chegava um ou dois quadros depois do mouse
-  // (ficava "pesado") e pulava quando a página engasgava. A bolinha com a foto continua
-  // desenhada pela página (o GIF anima), seguindo o mouse com uma folguinha.
-  // 32 px no máximo: maior que isso, o Chromium volta o mouse normal perto da borda.
-  const CURSOR_BOX = 32;
-  const CURSOR_HOT = 4; // onde fica a ponta (igual à setinha desenhada: ela começa 2 px antes)
-  const ARROW_PATH = 'M4 2.5 19.5 13l-7 1.2-3.6 6.3z';
+  // A setinha é o cursor de verdade do sistema (uma imagem no seu modelo e na sua cor, do
+  // js/fx.js), sem atraso nenhum; antes ela era desenhada pela página, chegava um ou dois
+  // quadros depois do mouse (ficava "pesado") e pulava quando a página engasgava. A
+  // bolinha com a foto, o enfeite, o nome e o rastro continuam desenhados pela página (o
+  // GIF anima), seguindo o mouse com uma folguinha. O Chromium só mostra cursor
+  // personalizado que cabe inteiro na janela: colado na borda, volta o mouse normal.
   const myCursor = { key: '', css: null };
 
-  function drawArrowImage(scale, color) {
-    const canvas = document.createElement('canvas');
-    canvas.width = CURSOR_BOX * scale;
-    canvas.height = CURSOR_BOX * scale;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(scale, scale);
-    const arrow = new Path2D(ARROW_PATH);
-    ctx.translate(CURSOR_HOT - 2, CURSOR_HOT - 2);
-    ctx.scale(26 / 24, 26 / 24); // 26 px, como a .mouse-cursor svg
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-    ctx.shadowBlur = 4 * scale; // a sombra não segue a escala do desenho
-    ctx.shadowOffsetY = 2 * scale;
-    ctx.fillStyle = color;
-    ctx.fill(arrow);
-    ctx.shadowColor = 'transparent';
-    ctx.lineWidth = 1.6;
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#ffffff';
-    ctx.stroke(arrow);
-    return canvas.toDataURL('image/png');
-  }
-
-  // Monta (de novo, se a cor mudou) a imagem do seu cursor.
   function buildMyCursor() {
     if (!me) return;
     const color = markFill(toneOf(me.name));
-    if (color === myCursor.key) return;
-    myCursor.key = color;
+    const key = `${color}|${myStyle.skin}|${myStyle.size}|${myStyle.aura}`;
+    if (key === myCursor.key) return;
+    myCursor.key = key;
     const scales = [1, 2];
     if (window.devicePixelRatio > 2) scales.push(3);
-    const images = scales.map((scale) => `url("${drawArrowImage(scale, color)}") ${scale}x`);
-    myCursor.css = `image-set(${images.join(', ')}) ${CURSOR_HOT} ${CURSOR_HOT}, auto`;
+    let hot = null;
+    const images = scales.map((scale) => {
+      hot = Fx.cursorImage(myStyle, color, scale);
+      return `url("${hot.url}") ${scale}x`;
+    });
+    myCursor.css = `image-set(${images.join(', ')}) ${hot.hotX} ${hot.hotY}, auto`;
     for (const s of streams.values()) {
       if (!s.mirrorOn) continue;
       s.mirrorCss = myCursor.css;
@@ -4221,14 +4276,17 @@
     }
     const badge = myBadgeNode(s);
     const rect = s.media.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     // Só transform: mexer a bolinha não refaz o layout nem redesenha nada.
-    badge.style.transform = `translate(${e.clientX - rect.left}px, ${e.clientY - rect.top}px)`;
+    badge.style.transform = `translate(${x}px, ${y}px)`;
     badge.hidden = false;
+    Fx.trail(s.media, s, x, y, myStyle, markFill(toneOf(me.name)), 'px');
   }
 
   // O seu clique/rolagem: a animaçãozinha vai junto da bolinha, como antes.
   function showMyClick(s, e, kind) {
-    if (s.myBadge && !s.myBadge.hidden) showClick(s.myBadge, kind);
+    if (s.myBadge && !s.myBadge.hidden) showClick(s.myBadge, kind, me.name);
   }
 
   // A sua cor ou foto mudou (ou a de alguém): repinta as setinhas na tela.
@@ -4284,9 +4342,12 @@
       peerCursors.set(key, c);
     }
     const box = contentBox(video, width, height);
-    c.node.style.left = `${((box.left + x * box.width) / width) * 100}%`;
-    c.node.style.top = `${((box.top + y * box.height) / height) * 100}%`;
-    if (click) showClick(c.node, click);
+    const left = ((box.left + x * box.width) / width) * 100;
+    const top = ((box.top + y * box.height) / height) * 100;
+    c.node.style.left = `${left}%`;
+    c.node.style.top = `${top}%`;
+    Fx.trail(fx, c, left, top, styleOf(name), markFill(toneOf(name)), '%');
+    if (click) showClick(c.node, click, name);
     clearTimeout(c.timer);
     c.timer = setTimeout(() => removePeerCursor(key), 4000); // parou de chegar: some
   }
@@ -4298,6 +4359,7 @@
     toDesktopOverlay(stream, {
       // color só de quem escolheu: a automática o app ainda separa das parecidas.
       type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name), color: toneOf(name).color,
+      style: styleOf(name), name,
       avatar: photo ? new URL(photo, window.location.href).href : null, click: msg.click,
     });
     showPeerCursor(msg);
@@ -4824,7 +4886,7 @@
       const photoColors = await window.WssColor.loadPalette(photo);
       const problem = !desktopCaps?.control ? 'O controle remoto está indisponível ou as marcações estão desligadas.'
         : !myControlStream() ? 'Transmita a tela inteira para permitir controle remoto.' : '';
-      return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue,
+      return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue, style: myStyle,
         autoFill: `hsl(${autoHue(me.name)} 45% 42%)`, markColor: markFill(toneOf(me.name)), recent: recentColors(),
         shareCursor, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
         gamepad: desktopCaps?.gamepad, controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
@@ -4849,6 +4911,7 @@
         }
         if (controlDialog.open) renderControlPanel();
       } else if (command.type === 'sounds') { sounds.enabled = command.enabled; renderSoundsButton(); }
+      else if (command.type === 'style') { setMyStyle(command.style); }
       else if (command.type === 'photo' || command.type === 'photo-remove') {
         const blob = command.type === 'photo' ? await preparePhoto(new File([Uint8Array.from(atob(command.data), (c) => c.charCodeAt(0))], command.name, { type: command.mime })) : null;
         const response = await sendPhoto(blob);

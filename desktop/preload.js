@@ -93,7 +93,11 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     obs: (on) => ipcRenderer.invoke('desktop:obs', Boolean(on)),
     setObsDisplay: (value) => ipcRenderer.invoke('desktop:obs-display', String(value)),
     // Modo desenho (Ctrl+Shift+D): a sua cor e o que você rabiscou na sua tela.
-    identity: (data) => ipcRenderer.send('desktop:identity', { hue: Number(data && data.hue), color: String((data && data.color) || '') }),
+    identity: (data) => ipcRenderer.send('desktop:identity', {
+      hue: Number(data && data.hue),
+      color: String((data && data.color) || ''),
+      style: data && data.style && typeof data.style === 'object' ? JSON.parse(JSON.stringify(data.style)) : null,
+    }),
     onLocalDraw: (callback) => { ipcRenderer.on('desktop:local-draw', (_event, data) => callback(data)); },
     // Mouse de quem assiste e controle remoto.
     readGamepadProfiles: () => ipcRenderer.invoke('desktop:gamepad-profiles'),

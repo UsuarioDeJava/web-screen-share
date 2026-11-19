@@ -7,6 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b6cff'/%3E%3Cg fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='5' width='16' height='11' rx='1.5'/%3E%3Cpath d='M9 19.5h6M12 16v3.5'/%3E%3C/g%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="js/gamepad.css">
+  <link rel="stylesheet" href="css/fx.css" />
 </head>
 <body>
   <section id="login" class="login">
@@ -279,6 +280,15 @@
         </div>
         <div id="profile-cursor" class="profile-cursor" aria-hidden="true"></div>
       </div>
+      <div class="profile-tabs" role="tablist" aria-label="Perfil">
+        <button id="ptab-look" class="profile-tab" type="button" role="tab" aria-selected="true" aria-controls="ppanel-look">Foto e cor</button>
+        <button id="ptab-fx" class="profile-tab" type="button" role="tab" aria-selected="false" aria-controls="ppanel-fx" tabindex="-1">Mouse e efeitos <span class="profile-tab-new">novo</span></button>
+      </div>
+      <div id="ppanel-fx" class="profile-panel" role="tabpanel" aria-labelledby="ptab-fx" hidden>
+        <p class="dialog-tip">Setinha, enfeite, rastro, clique, ping e pincel: quem assiste junto e quem transmite (na tela de verdade, pelo app) veem do seu jeito.</p>
+        <div id="fx-editor"></div>
+      </div>
+      <div id="ppanel-look" class="profile-panel" role="tabpanel" aria-labelledby="ptab-look">
       <div class="profile-block">
         <div class="dialog-label">Foto</div>
         <div class="profile-photo">
@@ -318,6 +328,7 @@
           <div id="cp-recent" class="cp-row" hidden><span class="cp-row-label">Recentes</span><div class="cp-chips"></div></div>
         </div>
       </div>
+      </div>
     </form>
   </dialog>
 
@@ -331,6 +342,7 @@
   <script src="js/gamepad.js"></script>
   <script src="js/gamepad-view.js"></script>
   <script src="js/gamepad-client.js"></script>
+  <script src="js/fx.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
