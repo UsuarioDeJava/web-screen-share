@@ -145,18 +145,33 @@ mapeamento com controle simulado, dois participantes autorizados, servidor real,
 transporte Socket.IO, IPC e vídeo WebRTC sintético. O driver nativo é simulado nesses
 testes: ainda é necessário validar com ViGEmBus/DLL reais e gamepads físicos em jogos.
 
-## Ajustes rápidos e vibração local
+## Mapeamento visual e gatilhos analógicos
 
-LT/L2 e RT/R2 mostram entrada e saída em porcentagem. O limite independente de cada
-um escala a pressão recebida: limite 50% e aperto completo produzem 0,5 (128 de 255
-no XInput); aperto de 50% com esse limite produz 0,25. O padrão continua 100%.
-Os limites também se aplicam a botões extras associados aos gatilhos e são salvos
-por controle. Trocar o preset preserva os limites; restaurar o preset retorna a 100%.
-Se o hardware só informar 0 ou 1, o app não consegue medir a posição intermediária:
-confira o modo de conexão, a trava e a configuração analógica no software do fabricante.
+O painel configura um controle físico por vez. Com somente um dispositivo, a escolha
+é automática. Cada linha de mapeamento aponta para o botão no desenho e mostra a
+pressão enviada, de 0 a 100%. É possível escolher a entrada ou usar Detectar e apertar
+o botão físico. Os presets Xbox e PlayStation mudam os símbolos e a posição dos
+analógicos. Botões extras, leituras técnicas e ajustes avançados ficam recolhidos.
+
+LT/L2 e RT/R2 leem o valor analógico do botão padrão. Controles DirectInput também
+podem usar eixos; cada gatilho tem origem e calibração independentes. Em Calibrar
+gatilhos, registre a posição solta e a posição até o fim. A interpolação é linear e
+suporta curso invertido ou metades opostas de um eixo compartilhado. Eixos de gatilho
+não recebem a zona morta dos analógicos. Meio curso envia aproximadamente 128 de 255
+no XInput, enquanto solto e até o fim enviam 0 e 255. O cliente usa o curso completo,
+sem os limites fixos de 50% da prévia anterior. A calibração é salva por dispositivo.
+
+A indicação de pressão intermediária exige observar valores fracionários; somente
+extremos observados não prova defeito do sensor. Se o hardware informar apenas 0 ou 1,
+o app não consegue medir o curso: confira o modo analógico e a trava no fabricante.
+Na validação local do GameSir G7 Pro, o XInput físico registrou vários valores
+intermediários nos dois gatilhos. A saída virtual com ViGEmBus real foi conferida em
+0%, 10%, 25%, 50%, 75% e 100%. O teste integrado verifica a preservação de frações
+através de Socket.IO e IPC; o comportamento de aceleração em um jogo de corrida real
+ainda depende de teste no jogo e de sua configuração de entradas.
 
 O teste de vibração dura um segundo, com intensidade ajustável e botão Parar.
 Usa o atuador disponível na Gamepad API (dual-rumble ou pulse); controles e modos
 sem suporte mostram a indisponibilidade. Fechar o painel, trocar o controle ou perder
 foco interrompe o efeito. Este é um teste local, sem retorno de vibração dos jogos
-remotos. Mapeamento numérico e leituras técnicas ficam recolhidos nas opções avançadas.
+remotos.

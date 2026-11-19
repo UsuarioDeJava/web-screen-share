@@ -164,8 +164,29 @@ test('limites dos gatilhos preservam pressão parcial e chegam ao XInput em 8 bi
   pad.buttons[6].value = 0.5; assert.equal(model.sample(pad,p).buttons[6],0.25);
   pad.buttons[6].value = 0; pad.buttons[19].value = 1;
   assert.equal(model.sample(pad,p).buttons[6],0.5);
-  assert.deepEqual(model.applyPreset('playstation',p).triggerLimits,[0.5,0.75]);
+  assert.deepEqual(model.applyPreset('playstation',p).triggerLimits,[1,1]);
   assert.deepEqual(model.profile({triggerLimits:[NaN,Infinity]}).triggerLimits,[1,1]);
   assert.deepEqual(model.profile({triggerLimits:[-1,2]}).triggerLimits,[0,1]);
   pad.buttons[19].value=0; assert.equal(report(model.sample(pad,p)).bLeftTrigger,0);
+});
+
+test('gatilhos em eixos independentes ou compartilhados preservam curso, inversão e calibração',()=>{
+  const pad={buttons:Array.from({length:17},()=>({value:0})),axes:[0,0,0,0,-1,1]};
+  const config=model.profile({triggers:[{type:'axis',source:4,min:-1,max:1},{type:'axis',source:5,min:1,max:-1}]});
+  for(const pressure of [0,.1,.25,.5,.75,1]){
+    pad.axes[4]=pressure*2-1;pad.axes[5]=1-pressure*2;
+    const state=model.sample(pad,config);
+    assert.ok(Math.abs(state.buttons[6]-pressure)<1e-10);assert.ok(Math.abs(state.buttons[7]-pressure)<1e-10);
+    assert.equal(report(state).bLeftTrigger,Math.round(pressure*255));
+  }
+  pad.axes[4]=0.4;
+  const calibrated=model.profile({triggers:[{type:'axis',source:4,min:.2,max:.6}]});
+  assert.ok(Math.abs(model.sample(pad,calibrated).buttons[6]-.5)<1e-10);
+  assert.equal(model.sample({...pad,axes:[]},config).buttons[6],0);
+  const shared=model.profile({triggers:[{type:'axis',source:4,min:0,max:1},{type:'axis',source:4,min:0,max:-1}]});
+  pad.axes[4]=.5;assert.equal(model.sample(pad,shared).buttons[6],.5);assert.equal(model.sample(pad,shared).buttons[7],0);
+  pad.axes[4]=-.5;assert.equal(model.sample(pad,shared).buttons[6],0);assert.equal(model.sample(pad,shared).buttons[7],.5);
+  const invalid=model.profile({triggers:[{type:'axis',source:999,min:1,max:1}, {type:'button',source:6,min:-1,max:NaN}]});
+  assert.deepEqual(invalid.triggers[0],{type:'axis',source:6,min:-1,max:1});
+  assert.deepEqual(invalid.triggers[1],{type:'button',source:6,min:0,max:1});
 });

@@ -53,3 +53,33 @@
 .gamepad-vibration label { flex:1; min-width:160px; }.gamepad-vibration p { flex-basis:100%; margin:0; }
 .gamepad-remap { margin:14px 0; }.gamepad-remap summary { color:#bac4df; cursor:pointer; font-size:13px; padding:10px 0; }
 @media(max-width:600px) { .gamepad-trigger-controls { grid-template-columns:1fr; } }
+/* Um controle: mapeamento junto ao desenho, teste na própria linha. */
+.gpad-config-layout { position:relative; display:grid; grid-template-columns:minmax(140px,1fr) minmax(240px,2.1fr) minmax(140px,1fr); gap:24px; align-items:center; }
+.gpad-config-side { display:grid; gap:8px; z-index:2; min-width:0; }
+.gpad-config-row { position:relative; display:grid; grid-template-columns:1fr auto; gap:3px 7px; padding:8px 10px; border:1px solid #35415c; border-radius:8px; min-width:0; background:#151c2b; }
+.gpad-config-row label { display:block; margin:0; color:#dde2f5; font-size:11px; grid-column:1; min-width:0; }
+.gpad-config-row select { display:block; width:100%; min-width:0; max-width:100%; margin-top:4px; background:#0d1320; color:#b6c1db; border:1px solid #303b55; border-radius:5px; padding:4px; font:10px system-ui; height:26px; }
+.gpad-config-row strong { font-size:11px; color:#bcaaff; grid-column:2; grid-row:1; align-self:start; padding-top:1px; }
+.gpad-learn { background:transparent; border:0; color:#aebada; cursor:pointer; font:10px system-ui; padding:2px 0; grid-column:2; grid-row:1; align-self:end; }
+.gpad-learn:hover,.gpad-learn:focus-visible { color:#e6dfff; text-decoration:underline; }
+.gpad-config-row.is-pressed { background:#292341; border-color:#a28bdf; }
+.gpad-config-layout .gpad-figure { width:100%; z-index:0; align-self:center; }
+.gpad-wiring { position:absolute; width:100%; height:100%; inset:0; overflow:visible; pointer-events:none; z-index:1; }
+.gpad-wiring path { fill:none; stroke:#7781a3; stroke-width:1; opacity:.45; }
+.gpad-wiring path.is-active { stroke:#ba9dff; stroke-width:2; opacity:1; }
+.gpad-technical,.gpad-calibration { border-top:1px solid #30384e; margin-top:16px; padding-top:12px; }
+.gpad-technical summary,.gpad-calibration summary { color:#b8c3de; font-size:12px; cursor:pointer; }
+.gpad-calibration-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+.gpad-calibration-grid>div { padding:12px; background:#151c2b; border-radius:8px; }
+.gpad-calibration-grid h4 { margin:0 0 8px; font-size:12px; }.gpad-calibration-grid p { font-size:11px; color:#acb9d4; }
+.gpad-calibration-grid button { background:#242039; color:#ddd2ff; border:1px solid #514568; border-radius:5px; padding:7px; margin:3px; font-size:10px; cursor:pointer; }
+.gamepad-quick h4 { font-size:13px; }.gamepad-vibration { margin:0; padding:0; border:0; }
+@media(max-width:650px) { .gpad-config-layout { grid-template-columns:minmax(110px,1fr) minmax(150px,1.3fr) minmax(110px,1fr); gap:10px; }.gpad-view { padding:12px; }.gpad-config-row { padding:6px; }.gpad-learn { font-size:9px; }.gpad-config-row select { font-size:9px; }.gpad-calibration-grid { grid-template-columns:1fr; } }
+@media(max-width:430px) { .gpad-config-layout { grid-template-columns:1fr 1fr; }.gpad-config-layout .gpad-figure { grid-column:1/-1; grid-row:1; max-width:280px; margin:auto; }.gpad-config-side { grid-row:2; }.gpad-wiring { display:none; } }
+.gpad-config-row progress { grid-column:1/-1; width:100%; height:4px; accent-color:#ad8fff; border:0; }
+.gpad-config-row { padding:6px 8px; }.gpad-config-side { gap:6px; }
+.gpad-config-row progress { appearance:none; -webkit-appearance:none; background:#30384e; border-radius:3px; overflow:hidden; }
+.gpad-config-row progress::-webkit-progress-bar { background:#30384e; border-radius:3px; }
+.gpad-config-row progress::-webkit-progress-value { background:#af91ff; border-radius:3px; }
+.gpad-config-row progress::-moz-progress-bar { background:#af91ff; }
+.gamepad-extras>summary { color:#d7c8ff; font-size:13px; cursor:pointer; }.gamepad-extras[open]>summary { margin-bottom:14px; }

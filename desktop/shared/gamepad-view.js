@@ -1,20 +1,36 @@
 /* Visualização SVG do estado já mapeado. Nenhuma imagem ou estado do controle sai deste componente. */
 window.WssGamepadView = {
-  create(container) {
+  create(container, { onChange = () => {} } = {}) {
     const make = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
     const root = make('section', 'gpad-view'); root.setAttribute('aria-label', 'Monitor do gamepad em tempo real');
     const title = make('h3', 'gpad-device', 'Nenhum controle conectado');
     const badge = make('span', 'gpad-preset-badge', 'Xbox'); const heading = make('div', 'gpad-heading'); heading.append(title, badge);
-    const meta = make('dl', 'gpad-meta'); const metadata = {};
-    for (const [key, label] of [['index', 'Índice'], ['connected', 'Conectado'], ['mapping', 'Mapeamento'], ['timestamp', 'Timestamp'], ['vibration', 'Vibração']]) {
-      const item = make('div'); const value = make('dd', '', '—'); item.append(make('dt', '', label), value); meta.append(item); metadata[key] = value;
-    }
-    const layout = make('div', 'gpad-layout'); const readings = make('div', 'gpad-readings');
-    const buttons = make('div', 'gpad-buttons'); const buttonNodes = [];
+    const layout = make('div', 'gpad-layout');
+    const left = make('div', 'gpad-config-side'), right = make('div', 'gpad-config-side');
+    const buttonNodes = [];
+    let activePad = null, activeProfile = window.WssGamepad.profile(), learning = null, optionKey = '';
+    const observations = [new Set(), new Set()];
+    const order = [6,4,8,16,10,12,13,14,15,7,5,3,2,1,0,9,11];
     window.WssGamepad.labels.forEach((label, i) => {
-      const tile = make('div', 'gpad-button'); tile.title = label;
-      const value = make('strong', '', '0.00'); const caption = make('small', '', `B${i} · ${label}`); tile.append(caption, value); buttons.append(tile); buttonNodes.push({ tile, value, caption });
+      const tile = make('div', 'gpad-button gpad-config-row'); tile.dataset.output = String(i); tile.classList.add('gpad-output-'+i);
+      const value = make('strong', '', '0%'); const pressure=make('progress'); pressure.max=1; pressure.value=0; pressure.setAttribute('aria-label','Pressão '+label); const caption = make('label', '', label);
+      const source = make('select'); source.setAttribute('aria-label', 'Entrada para ' + label); caption.append(source);
+      const learn = make('button', '', 'Detectar'); learn.type = 'button'; learn.className = 'gpad-learn'; learn.setAttribute('aria-label', 'Detectar entrada para ' + label);
+      source.addEventListener('change', () => {
+        const [type, index] = source.value.split(':'); onChange(p => {
+          if (i === 6 || i === 7) p.triggers[i - 6] = { type, source: Number(index), min: type === 'axis' ? -1 : 0, max: 1 };
+          else p.buttons[i] = Number(index);
+        });
+      });
+      learn.addEventListener('click', () => {
+        if (!activePad) return;
+        if (learning) learning.button.textContent = 'Detectar';
+        learning = { output: i, button: learn, until: performance.now() + 10000, buttons: activePad.buttons.map(b=>b.value), axes: [...activePad.axes] };
+        learn.textContent = 'Aperte…';
+      });
+      tile.append(caption, value, learn, pressure); buttonNodes.push({ tile, value, caption, source, learn, pressure });
     });
+    for (const i of order) (i === 7 || [5,3,2,1,0,9,11].includes(i) ? right : left).append(buttonNodes[i].tile);
     const sticks = make('div', 'gpad-sticks'); const stickNodes = [];
     for (let i = 0; i < 2; i++) {
       const item = make('div', 'gpad-stick'); item.append(make('h4', '', i ? 'ANALÓGICO DIREITO' : 'ANALÓGICO ESQUERDO'));
@@ -49,13 +65,46 @@ window.WssGamepadView = {
       <path class="gpad-control" data-button="12" d="m202 197-12 10 12 12 12-12Z"/><path class="gpad-control" data-button="13" d="m202 253-12-10 12-12 12 12Z"/>
       <path class="gpad-control" data-button="14" d="m174 225 10-12 12 12-12 12Z"/><path class="gpad-control" data-button="15" d="m230 225-10-12-12 12 12 12Z"/></g>
     </svg>`;
-    readings.append(buttons, sticks, note); layout.append(readings, figure); root.append(heading, meta, layout); container.append(root);
+    const wiring = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); wiring.classList.add('gpad-wiring'); wiring.setAttribute('aria-hidden', 'true');
+    const wires = buttonNodes.map(() => { const path = document.createElementNS(wiring.namespaceURI, 'path'); wiring.append(path); return path; });
+    const technical = make('details', 'gpad-technical'); technical.append(make('summary', '', 'Detalhes dos analógicos'), sticks);
+    layout.className = 'gpad-config-layout'; layout.append(wiring, left, figure, right); root.append(heading, layout, technical, note); container.append(root);
+    const calibration = make('details', 'gpad-calibration'); calibration.append(make('summary', '', 'Calibrar gatilhos / verificar sinal analógico'));
+    const calibrationGrid = make('div', 'gpad-calibration-grid'); const calibrationNodes = [];
+    for(let i=0;i<2;i++) {
+      const box=make('div'); const reading=make('p'); const result=make('p'); result.setAttribute('role','status');
+      const rest=make('button','','Salvar solto'), full=make('button','','Salvar até o fim'), reset=make('button','','Padrão');
+      const raw=()=>{const t=activeProfile.triggers[i]; return t.type==='axis' ? activePad?.axes[t.source] : activePad?.buttons[t.type==='button'?t.source:activeProfile.buttons[6+i]]?.value;};
+      let resting=null;
+      rest.type=full.type=reset.type='button';
+      rest.addEventListener('click',()=>{const value=raw();if(!Number.isFinite(value))return;resting=value;result.textContent='Posição solta registrada. Aperte até o fim e salve.';});
+      full.addEventListener('click',()=>{const max=raw();if(resting===null||!Number.isFinite(max)||Math.abs(max-resting)<0.05){result.textContent='Solte e registre primeiro; as duas posições precisam ser diferentes.';return;}const min=resting;onChange(p=>{p.triggers[i]={...p.triggers[i],min,max};});result.textContent='Curso calibrado. Teste um aperto lento para conferir a progressão.';});
+      reset.addEventListener('click',()=>{resting=null;observations[i].clear();onChange(p=>{p.triggers[i]={type:'mapped',source:6+i,min:0,max:1};});result.textContent='Entrada padrão restaurada.';});
+      box.append(make('h4','',i?'RT / R2':'LT / L2'),reading,rest,full,reset,result);calibrationGrid.append(box);calibrationNodes.push({reading,result,rest,full,reset,raw});
+    }
+    calibration.append(calibrationGrid,make('p','gpad-note','Para acelerar progressivamente, a entrada precisa variar entre solto e pressionado. Se houver só 0 e 100%, confira a trava de gatilho rápido e o modo analógico do controle. Para controles DirectInput, escolha o eixo do gatilho no mapeamento.'));
+    root.append(calibration);
+    let wireFrame = 0;
+    function drawWires() {
+      cancelAnimationFrame(wireFrame); wireFrame=requestAnimationFrame(()=>{
+        if(!root.isConnected||!layout.clientWidth)return;
+        const bounds=layout.getBoundingClientRect();wiring.setAttribute('viewBox','0 0 '+bounds.width+' '+bounds.height);
+        buttonNodes.forEach((node,i)=>{
+          const target=figure.querySelector('[data-button="'+i+'"]') || figure.querySelector('[data-trigger="'+i+'"]');
+          const targetBox=target.getBoundingClientRect(), box=node.tile.getBoundingClientRect();const fromLeft=node.tile.parentElement===left;
+          const x=(fromLeft?box.right:box.left)-bounds.left, y=box.top+box.height/2-bounds.top;
+          const tx=targetBox.left+targetBox.width/2-bounds.left,ty=targetBox.top+targetBox.height/2-bounds.top;
+          const bend=x+(fromLeft?14:-14);wires[i].setAttribute('d','M'+x+' '+y+'H'+bend+'L'+tx+' '+ty);
+        });
+      });
+    }
+    const resizeObserver=new ResizeObserver(drawWires);resizeObserver.observe(layout);resizeObserver.observe(figure);
     const controls = [...figure.querySelectorAll('[data-button]')]; const handles = [...figure.querySelectorAll('[data-stick]')]; const triggers = [...figure.querySelectorAll('[data-trigger]')];
     const extraVisual = make('div', 'gpad-extra-visual'); figure.append(extraVisual);
     let layoutKey = '', extrasKey = ''; const extraNodes = [];
     return {
       update(pad, state, config) {
-        const profile = window.WssGamepad.profile(config); const labels = window.WssGamepad.labelsFor(profile);
+        const profile = window.WssGamepad.profile(config); activePad=pad; activeProfile=profile; const labels = window.WssGamepad.labelsFor(profile);
         badge.textContent = window.WssGamepad.presets.find((p) => p.id === profile.preset).name;
         if (layoutKey !== profile.layout) {
           layoutKey = profile.layout; root.dataset.layout = layoutKey;
@@ -63,8 +112,35 @@ window.WssGamepadView = {
           figure.querySelector('[data-left-assembly]').setAttribute('transform', layoutKey === 'playstation' ? 'translate(55 80)' : 'translate(0 0)');
           figure.querySelector('[data-dpad-assembly]').setAttribute('transform', layoutKey === 'playstation' ? 'translate(-60 -80)' : 'translate(0 0)');
           for (const node of figure.querySelectorAll('[data-glyph]')) node.textContent = node.dataset.glyph === '16' && layoutKey === 'xbox' ? 'X' : labels[Number(node.dataset.glyph)];
-          buttonNodes.forEach((node, i) => { node.caption.textContent = 'B' + i + ' · ' + labels[i]; node.tile.title = labels[i]; });
+          buttonNodes.forEach((node, i) => { node.caption.firstChild.textContent = labels[i]; node.tile.title = labels[i]; }); drawWires();
         }
+        const nextOptionKey=JSON.stringify([pad?.id,pad?.buttons.length,pad?.axes.length,profile.buttons,profile.triggers]);
+        if(nextOptionKey!==optionKey){
+          if (learning) { learning.button.textContent='Detectar'; learning=null; } optionKey=nextOptionKey; observations.forEach(s=>s.clear());
+          buttonNodes.forEach((node,i)=>{
+            node.source.replaceChildren();
+            const add=(text,value)=>{const option=make('option','',text);option.value=value;node.source.append(option);};
+            if(i===6||i===7)add('Automático · B'+profile.buttons[i],'mapped:'+i);
+            for(let b=0;b<(pad?.buttons.length||17);b++)add('Botão '+b,'button:'+b);
+            if(i===6||i===7)for(let a=0;a<(pad?.axes.length||0);a++)add('Eixo '+a+' · analógico','axis:'+a);
+            const t=profile.triggers[i-6];node.source.value=i===6||i===7 ? t.type+':'+(t.type==='mapped'?i:t.source) : 'button:'+profile.buttons[i];
+          });drawWires();
+        }
+        buttonNodes.forEach(node=>{node.source.disabled=node.learn.disabled=!pad;});
+        if(learning&&pad){
+          const l=learning;let type='button',source=pad.buttons.findIndex((b,i)=>b.value-l.buttons[i]>.25);
+          if((l.output===6||l.output===7)&&source<0){type='axis';source=pad.axes.findIndex((v,i)=>Math.abs(v-l.axes[i])>.25);}
+          if(source>=0&&document.hasFocus()){
+            const min=type==='axis'?l.axes[source]:0;learning=null;l.button.textContent='Detectar';
+            onChange(p=>{if(l.output===6||l.output===7)p.triggers[l.output-6]={type,source,min,max:type==='axis'&&min>.5?-1:1};else p.buttons[l.output]=source;});
+          }else if(performance.now()>l.until){learning=null;l.button.textContent='Detectar';}
+        }
+        calibrationNodes.forEach((node,i)=>{
+          const raw=node.raw();if(Number.isFinite(raw))observations[i].add(Math.round(raw*1000)/1000);
+          const hasPartial=[...observations[i]].some(v=>v>0.01&&v<0.99);
+          node.reading.textContent='Entrada: '+(Number.isFinite(raw)?raw.toFixed(3):'—')+' · saída: '+Math.round(state.buttons[6+i]*100)+'% · '+(profile.triggers[i].type==='axis'?'Eixo analógico':hasPartial?'Pressão intermediária detectada':observations[i].size>1?'Somente extremos observados até agora':'Aperte devagar para testar');
+          node.rest.disabled=node.full.disabled=node.reset.disabled=!pad;
+        });
         const bindings = profile.preset === 'custom' ? profile.extraButtons : [];
         const key = JSON.stringify([profile.layout, bindings]);
         if (key !== extrasKey) {
@@ -74,10 +150,7 @@ window.WssGamepadView = {
         bindings.forEach((binding, i) => extraNodes[i].classList.toggle('is-pressed', (pad?.buttons[binding.source]?.value || 0) > 0.1));
         extraVisual.hidden = !bindings.length;
         title.textContent = pad?.id || 'Nenhum controle conectado'; root.classList.toggle('is-disconnected', !pad);
-        metadata.index.textContent = pad ? String(pad.index) : '—'; metadata.connected.textContent = pad ? 'Sim' : 'Não';
-        metadata.mapping.textContent = pad ? pad.mapping || 'personalizado' : '—'; metadata.timestamp.textContent = pad ? (Number(pad.timestamp) || 0).toFixed(2) : '—';
-        metadata.vibration.textContent = 'Teste nos ajustes rápidos';
-        state.buttons.forEach((value, i) => { buttonNodes[i].value.textContent = value.toFixed(2); buttonNodes[i].tile.classList.toggle('is-pressed', value > 0.1); buttonNodes[i].tile.style.setProperty('--pressure', `${value * 100}%`); });
+        state.buttons.forEach((value, i) => { buttonNodes[i].value.textContent = Math.round(value*100)+'%'; buttonNodes[i].pressure.value=value; wires[i].classList.toggle('is-active',value>0.01); buttonNodes[i].tile.classList.toggle('is-pressed', value > 0.1); buttonNodes[i].tile.style.setProperty('--pressure', `${value * 100}%`); });
         for (const c of controls) c.classList.toggle('is-pressed', state.buttons[Number(c.dataset.button)] > 0.1);
         for (const trigger of triggers) { const amount = state.buttons[Number(trigger.dataset.trigger)] * 27; trigger.setAttribute('height', String(amount)); trigger.setAttribute('y', String(35 - amount)); }
         stickNodes.forEach((stick, i) => {

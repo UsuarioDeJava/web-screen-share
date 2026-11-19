@@ -12,7 +12,7 @@
   }
   function applyPreset(id, current) {
     const p = profile(current);
-    return profile({ preset: id, layout: id === 'custom' ? p.layout : id, deadzone: p.deadzone, triggerLimits: p.triggerLimits, extraButtons: p.extraButtons });
+    return profile({ preset: id, layout: id === 'custom' ? p.layout : id, deadzone: p.deadzone, triggers: p.triggers, extraButtons: p.extraButtons });
   }
   const permissions = (value) => ({ keyboard: value?.keyboard === true, mouse: value?.mouse === true, gamepad: value?.gamepad === true });
   const kindDevice = (kind) => kind === 'key' ? 'keyboard' : kind === 'gamepad' ? 'gamepad' : ['move', 'button', 'wheel'].includes(kind) ? 'mouse' : null;
@@ -29,6 +29,14 @@
         .filter((v) => v && Number.isInteger(v.source) && v.source >= 0 && v.source < 64 && Number.isInteger(v.target) && v.target >= 0 && v.target < 17)
         .map((v, i) => ({ source: v.source, target: v.target, name: typeof v.name === 'string' ? v.name.replace(/[\x00-\x1f]/g, '').slice(0, 24) : `M${i + 1}` })) : [],
       triggerLimits: [0, 1].map((i) => Number.isFinite(value.triggerLimits?.[i]) ? Math.max(0, Math.min(1, value.triggerLimits[i])) : 1),
+      triggers: [0, 1].map((i) => {
+        const t = value.triggers?.[i];
+        const type = ['button', 'axis'].includes(t?.type) ? t.type : 'mapped';
+        const source = Number.isInteger(t?.source) && t.source >= 0 && t.source < (type === 'axis' ? 16 : 64) ? t.source : 6 + i;
+        const min = Number.isFinite(t?.min) && t.min >= (type === 'axis' ? -1 : 0) && t.min <= 1 ? t.min : type === 'axis' ? -1 : 0;
+        const max = Number.isFinite(t?.max) && t.max >= (type === 'axis' ? -1 : 0) && t.max <= 1 ? t.max : 1;
+        return { type, source, min: Math.abs(max - min) >= 0.01 ? min : type === 'axis' ? -1 : 0, max: Math.abs(max - min) >= 0.01 ? max : 1 };
+      }),
       buttons: labels.map((_, i) => Number.isInteger(value.buttons?.[i]) && value.buttons[i] >= 0 && value.buttons[i] < 64 ? value.buttons[i] : i),
       axes: [0, 1, 2, 3].map((i) => Number.isInteger(value.axes?.[i]) && value.axes[i] >= 0 && value.axes[i] < 16 ? value.axes[i] : i),
       invert: [0, 1, 2, 3].map((i) => value.invert?.[i] === true),
@@ -39,6 +47,10 @@
     const p = profile(config);
     const valueOf = (index) => Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
     const buttons = p.buttons.map(valueOf);
+    p.triggers.forEach((trigger, i) => {
+      const raw = trigger.type === 'axis' ? Number(pad.axes[trigger.source]) : valueOf(trigger.type === 'button' ? trigger.source : p.buttons[6 + i]);
+      buttons[6 + i] = Number.isFinite(raw) ? Math.round(Math.max(0, Math.min(1, (raw - trigger.min) / (trigger.max - trigger.min))) * 1e6) / 1e6 : 0;
+    });
     if (p.preset === 'custom') for (const binding of p.extraButtons) buttons[binding.target] = Math.max(buttons[binding.target], valueOf(binding.source));
     for (let i = 0; i < 2; i++) buttons[6 + i] *= p.triggerLimits[i];
     return {

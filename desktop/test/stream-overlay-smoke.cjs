@@ -111,7 +111,7 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     await gamepadPeer.loadURL(process.env.WSS_SERVER); await join(gamepadPeer, 'Gamepad QA');
     await evaluate(peer, 'localStorage.setItem("wss-gamepad-profiles",JSON.stringify({"Controle remoto QA":{preset:"custom",extraButtons:[{name:"M1",source:19,target:0}]}}))');
     await peer.loadURL(process.env.WSS_SERVER); await join(peer, 'Receptor QA');
-    await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:22},(_,i)=>({value:i===19?1:0})),axes:[0.75,-0.5,0,0]}]})');
+    await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:22},(_,i)=>({value:i===19?1:i===6?(window.qaTrigger||0):i===7?(window.qaRightTrigger||0):0})),axes:[0.75,-0.5,0,0]}]})');
     await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"))'), 'reentrada do receptor');
     const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
     await grantGamepad('Receptor QA'); await grantGamepad('Gamepad QA');
@@ -123,6 +123,12 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     await until(() => evaluate(peer, 'Boolean(document.querySelector(".tile:not(.tile-self) .control-btn:not([hidden])"))'), 'permissão remota');
     await evaluate(peer, 'document.querySelector(".tile:not(.tile-self) .control-btn").click()'); peer.show(); peer.focus();
     await until(() => nativeGamepads.packets.some((p) => p.buttons[0] === 1 && p.buttons[1] === 0 && p.axes[0] > 0), 'gamepad remapeado atravessa a sala e o IPC');
+    for(const pressure of [0.1,0.25,0.5,0.75,1,0]) {
+      const start=nativeGamepads.packets.length;
+      await evaluate(peer,'window.qaTrigger='+pressure+';window.qaRightTrigger='+(1-pressure));
+      await until(()=>nativeGamepads.packets.slice(start).some(p=>p.buttons[6]===pressure&&p.buttons[7]===1-pressure),'pressão analógica '+pressure+' preservada até o IPC');
+    }
+    console.log('OK: LT/RT preservam valores proporcionais de 0 a 100% através da sala e do IPC.');
     await until(() => evaluate(room, 'document.getElementById("sharing-count").textContent==="1"'), 'conexão física e confirmação nativa');
     await evaluate(room, 'document.getElementById("btn-sharing-details").click()');
     await until(() => evaluate(room, 'document.getElementById("sharing-receiving").textContent==="1"'), 'recebimento real de comandos');
