@@ -53,6 +53,7 @@ app.get('/js/gamepad-client.js', (_req, res) => res.sendFile(path.join(__dirname
 app.get('/js/gamepad.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.js')));
 app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'color.js')));
 app.get('/js/fx.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.js')));
+app.get('/js/fx-image.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx-image.js')));
 app.get('/css/fx.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.css')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -68,6 +69,46 @@ function avatarType(buf) {
   if (buf[0] === 0x89 && buf.slice(1, 4).toString('latin1') === 'PNG') return 'image/png';
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
   if (buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  return null;
+}
+
+// Guarda (ou conta mais um uso) e devolve o hash.
+function storeAvatar(buf, type) {
+  const hash = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
+  const entry = avatars.get(hash);
+  if (entry) entry.refs += 1;
+  else avatars.set(hash, { buf, type, refs: 1 });
+  return hash;
+}
+
+// Largura e altura (sem abrir a imagem): pras imagens do estilo, que têm limite de tamanho.
+const FX_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const FX_IMAGE_MAX_SIDE = 256;
+function imageSize(buf, type) {
+  try {
+    if (type === 'image/png') return buf.length >= 24 ? [buf.readUInt32BE(16), buf.readUInt32BE(20)] : null;
+    if (type === 'image/gif') return [buf.readUInt16LE(6), buf.readUInt16LE(8)];
+    if (type === 'image/webp') {
+      const chunk = buf.slice(12, 16).toString('latin1');
+      if (chunk === 'VP8X') return [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)];
+      if (chunk === 'VP8 ') return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+      if (chunk === 'VP8L') {
+        const bits = buf.readUInt32LE(21);
+        return [1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff)];
+      }
+      return null;
+    }
+    if (type === 'image/jpeg') {
+      let o = 2;
+      while (o + 9 < buf.length) {
+        if (buf[o] !== 0xff) return null;
+        const marker = buf[o + 1];
+        const len = buf.readUInt16BE(o + 2);
+        if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return [buf.readUInt16BE(o + 7), buf.readUInt16BE(o + 5)];
+        o += 2 + len;
+      }
+    }
+  } catch {}
   return null;
 }
 
@@ -291,7 +332,8 @@ function uniqueName(name) {
 // color/hue/avatar/style: a cor, a foto e o estilo do mouse e das marcações que a pessoa
 // escolheu. color é a cor exata (#rrggbb); hue, o tom dela (o app de antes da cor livre
 // só entende o tom).
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, color, avatar, style }) => {
+// cursorImg/pingImg: as imagens próprias da setinha e do ping (no mesmo lugar das fotos).
+const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, color, avatar, style, cursorImg, pingImg }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (sharing) user.since = since || startedAt || null;
   if (voice) user.voice = voice;
@@ -299,6 +341,8 @@ const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, 
   if (color) user.color = color;
   if (avatar) user.avatar = `/avatar/${avatar}`;
   if (style) user.style = style;
+  if (cursorImg) user.cursorImg = `/avatar/${cursorImg}`;
+  if (pingImg) user.pingImg = `/avatar/${pingImg}`;
   return user;
 };
 
@@ -308,7 +352,7 @@ const cleanColor = (raw) => (typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(r
 // Estilo do mouse e das marcações (setinha, enfeite, rastro, clique, ping, pincel...). O
 // que cada valor quer dizer fica com a página (public/js/fx.js, que ignora o que não
 // conhece); aqui só confere o formato: chaves conhecidas, textos curtos.
-const STYLE_KEYS = ['skin', 'size', 'deco', 'aura', 'trail', 'click', 'ping', 'emoji', 'pingSound', 'brush', 'width'];
+const STYLE_KEYS = ['skin', 'size', 'deco', 'aura', 'trail', 'click', 'ping', 'emoji', 'pingSound', 'brush', 'width', 'outline'];
 function cleanStyle(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
@@ -316,6 +360,10 @@ function cleanStyle(raw) {
     if (typeof raw[key] === 'string' && /^[a-z0-9-]{1,16}$/i.test(raw[key])) out[key] = raw[key];
   }
   if (typeof raw.name === 'boolean') out.name = raw.name;
+  // A ponta da setinha com imagem própria, em % da imagem.
+  for (const key of ['hx', 'hy']) {
+    if (Number.isInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 100) out[key] = raw[key];
+  }
   return Object.keys(out).length ? out : null;
 }
 
@@ -443,7 +491,11 @@ const revokeControlFor = remoteControl.revokeFor;
 function removeUser(socket) {
   revokeControlFor(socket.id);
   const user = users.get(socket.id);
-  if (user) releaseAvatar(user.avatar);
+  if (user) {
+    releaseAvatar(user.avatar);
+    releaseAvatar(user.cursorImg);
+    releaseAvatar(user.pingImg);
+  }
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
@@ -546,16 +598,41 @@ io.on('connection', (socket) => {
       if (buf.length > AVATAR_MAX_BYTES) return reply({ error: 'A foto passa de 5 MB.' });
       const type = avatarType(buf);
       if (!type) return reply({ error: 'Use uma foto PNG, JPG, WebP ou GIF.' });
-      hash = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
-      const entry = avatars.get(hash);
-      if (entry) entry.refs += 1;
-      else avatars.set(hash, { buf, type, refs: 1 });
+      hash = storeAvatar(buf, type);
     }
     releaseAvatar(user.avatar);
     if (hash) user.avatar = hash;
     else delete user.avatar;
     socket.to(ROOM).emit('user:updated', publicUser(user));
     reply({ ok: true, avatar: hash ? `/avatar/${hash}` : null });
+  });
+
+  // Imagens próprias do estilo (a setinha e o ping): PNG, GIF, WebP ou JPG pequenos (o
+  // navegador já reduz e converte .cur/.ani). Ficam junto das fotos de perfil.
+  socket.on('fx:image', (msg, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const user = users.get(socket.id);
+    if (!user) return reply({ error: 'Você não está na sala.' });
+    const kind = msg && msg.kind;
+    if (kind !== 'cursor' && kind !== 'ping') return reply({ error: 'Imagem de quê?' });
+    if (!allow(socket, 'fx-image', 12, 60000)) return reply({ error: 'Calma aí: muitas trocas de imagem seguidas.' });
+    let hash = null;
+    if (msg.data != null) {
+      const buf = Buffer.isBuffer(msg.data) ? msg.data : msg.data instanceof ArrayBuffer ? Buffer.from(msg.data) : null;
+      if (!buf || !buf.length) return reply({ error: 'Não deu pra ler a imagem.' });
+      if (buf.length > FX_IMAGE_MAX_BYTES) return reply({ error: 'A imagem passa de 2 MB.' });
+      const type = avatarType(buf);
+      if (!type) return reply({ error: 'Use PNG, GIF, WebP ou JPG.' });
+      const size = imageSize(buf, type);
+      if (!size || size[0] > FX_IMAGE_MAX_SIDE || size[1] > FX_IMAGE_MAX_SIDE) return reply({ error: `A imagem pode ter até ${FX_IMAGE_MAX_SIDE} px de lado.` });
+      hash = storeAvatar(buf, type);
+    }
+    const field = kind === 'cursor' ? 'cursorImg' : 'pingImg';
+    releaseAvatar(user[field]);
+    if (hash) user[field] = hash;
+    else delete user[field];
+    socket.to(ROOM).emit('user:updated', publicUser(user));
+    reply({ ok: true, url: hash ? `/avatar/${hash}` : null });
   });
 
   socket.on('chat:send', (raw, ack) => {

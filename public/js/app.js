@@ -181,10 +181,24 @@
   // catálogo e os desenhos ficam em js/fx.js. nick -> estilo.
   const Fx = window.WssFx;
   const profileStyles = new Map();
+  // myStyle: o que você escolheu (salvo; "imagem própria" continua escolhida mesmo antes de
+  // a imagem chegar no servidor). myImages: as suas imagens já mandadas. myFull: o estilo
+  // de verdade, com as imagens (é o que aparece, aqui e pros outros).
   let myStyle = Fx.normalize(null);
+  const myImages = { cursor: null, ping: null };
+  const plainStyle = (style) => {
+    const out = Fx.normalize({ ...style, keepCustom: true });
+    delete out.img;
+    delete out.pingImg;
+    return out;
+  };
   try {
-    myStyle = Fx.normalize(JSON.parse(localStorage.getItem('wss-style') || 'null'));
+    myStyle = plainStyle(JSON.parse(localStorage.getItem('wss-style') || 'null'));
   } catch {}
+  let myFull = Fx.normalize(myStyle);
+  const refreshMyFull = () => {
+    myFull = Fx.normalize({ ...myStyle, img: myImages.cursor, pingImg: myImages.ping });
+  };
   const AVATAR_PATH = /^\/avatar\/[0-9a-f]{32}$/;
   const HEX_COLOR = /^#[0-9a-f]{6}$/;
   let myColor = null; // a cor que você escolheu (null: automática), salva neste navegador
@@ -229,7 +243,14 @@
   }
 
   const nameHue = (name) => toneOf(name).hue;
-  const styleOf = (name) => (me && name === me.name ? myStyle : profileStyles.get(name) || Fx.normalize(null));
+  const styleOf = (name) => (me && name === me.name ? myFull : profileStyles.get(name) || Fx.normalize(null));
+  // Pra camada do app (uma página local): as imagens com o endereço completo do servidor.
+  const absoluteStyle = (style) => {
+    const out = { ...style };
+    for (const key of ['img', 'pingImg']) if (out[key]) out[key] = new URL(out[key], location.href).href;
+    return out;
+  };
+  const overlayStyle = (name) => absoluteStyle(styleOf(name));
   const avatarFill = (tone) => tone.color || `hsl(${tone.hue} 45% 42%)`;
   // Letra em cima da cor: escura numa cor clara (amarelo, branco...), senão branca.
   const inkFor = (tone) => (tone.color && luminance(tone.color) > 0.36 ? '#12141c' : '#ffffff');
@@ -270,7 +291,10 @@
     const styles = new Map();
     for (const u of users.values()) {
       if (u.kind === 'obs') continue; // o OBS usa o perfil de quem tem o mesmo nick
-      if (u.style && typeof u.style === 'object') styles.set(u.name, JSON.stringify(Fx.normalize(u.style)));
+      if ((u.style && typeof u.style === 'object') || u.cursorImg || u.pingImg) {
+        const imgs = { img: AVATAR_PATH.test(u.cursorImg || '') ? u.cursorImg : null, pingImg: AVATAR_PATH.test(u.pingImg || '') ? u.pingImg : null };
+        styles.set(u.name, JSON.stringify(Fx.normalize({ ...(u.style || {}), ...imgs })));
+      }
       if (typeof u.color === 'string' && HEX_COLOR.test(u.color)) colors.set(u.name, u.color);
       if (Number.isInteger(u.hue)) hues.set(u.name, u.hue);
       if (typeof u.avatar === 'string' && AVATAR_PATH.test(u.avatar)) photos.set(u.name, u.avatar);
@@ -2221,7 +2245,7 @@
       target,
       pending: [],
       timer: null,
-      view: createStrokeView(target, markFill(toneOf(me.name)), myStyle),
+      view: createStrokeView(target, markFill(toneOf(me.name)), myFull),
     };
     addStrokePoint(stroke, clientX, clientY);
     return stroke;
@@ -2246,6 +2270,7 @@
     clearTimeout(stroke.timer);
     stroke.timer = null;
     const message = (points, last) => ({ stream: stroke.stream, id: stroke.id, points, end: last, ...(stroke.alt ? { hold: 'alt' } : {}) });
+    flushStyle();
     while (stroke.pending.length > 128) socket.emit('draw', message(stroke.pending.splice(0, 128), false));
     if (stroke.pending.length || end) socket.emit('draw', message(stroke.pending.splice(0), end));
   }
@@ -2282,7 +2307,7 @@
     const color = strokeColor(name, hue, sent);
     // hue: pro app de antes da cor livre (ele só entende o tom).
     const oldHue = Number.isInteger(hue) ? hue : HEX_COLOR.test(sent || '') ? hexHue(sent) : nameHue(name);
-    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined, style: styleOf(name) });
+    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined, style: overlayStyle(name) });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
@@ -2380,7 +2405,10 @@
     const ping = (clientX, clientY) => {
       const point = videoPoint(video, clientX, clientY);
       const id = streamId();
-      if (point && id && me) socket.emit('ping', { stream: id, x: point.x, y: point.y });
+      if (point && id && me) {
+        flushStyle(); // o estilo novo chega antes do ping
+        socket.emit('ping', { stream: id, x: point.x, y: point.y });
+      }
     };
     // altKey: o Alt ainda está apertado quando o traço acaba (aí ele fica até soltar).
     const finish = (g, cancelled, altKey = false) => {
@@ -2461,7 +2489,7 @@
     // O seu próprio clique no seu quadro não precisa aparecer na sua tela de verdade.
     const tone = toneOf(name);
     const style = styleOf(name);
-    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: tone.hue, color: markFill(tone), style });
+    if (me && name !== me.name) toDesktopOverlay(stream, { type: 'ping', x, y, name, hue: tone.hue, color: markFill(tone), style: absoluteStyle(style) });
     const target = fxTarget(stream);
     if (!target) return;
     const { fx, video } = target;
@@ -3605,11 +3633,12 @@
       }
       return this.db;
     },
-    async get() {
+    // key: 'avatar' (a foto) ou 'fx-cursor' / 'fx-ping' (as imagens do estilo).
+    async get(key = 'avatar') {
       try {
         const db = await this.open();
         return await new Promise((resolve) => {
-          const req = db.transaction('files').objectStore('files').get('avatar');
+          const req = db.transaction('files').objectStore('files').get(key);
           req.onsuccess = () => resolve(req.result instanceof Blob ? req.result : null);
           req.onerror = () => resolve(null);
         });
@@ -3617,13 +3646,13 @@
         return null;
       }
     },
-    async set(blob) {
+    async set(blob, key = 'avatar') {
       try {
         const db = await this.open();
         await new Promise((resolve, reject) => {
           const tx = db.transaction('files', 'readwrite');
-          if (blob) tx.objectStore('files').put(blob, 'avatar');
-          else tx.objectStore('files').delete('avatar');
+          if (blob) tx.objectStore('files').put(blob, key);
+          else tx.objectStore('files').delete(key);
           tx.oncomplete = resolve;
           tx.onerror = () => reject(tx.error);
         });
@@ -3680,12 +3709,65 @@
     return res;
   }
 
-  // Entrou na sala: a foto salva vai junto, sem precisar escolher de novo.
+  // Entrou na sala: a foto salva vai junto, sem precisar escolher de novo (e as imagens
+  // próprias da setinha e do ping também).
   async function restoreProfilePhoto() {
+    for (const kind of ['cursor', 'ping']) {
+      photoStore.get(`fx-${kind}`).then(async (saved) => {
+        if (!saved || !me) return;
+        const res = await sendFxImage(kind, saved);
+        if (res.error) showToast(`Imagem do ${kind === 'cursor' ? 'mouse' : 'ping'}: ${res.error}`);
+      });
+    }
     const blob = await photoStore.get();
     if (!blob || !me) return;
     const res = await sendPhoto(blob);
     if (res.error) showToast(`Foto de perfil: ${res.error}`);
+  }
+
+  // Imagens próprias do estilo (a setinha e o ping): manda (ou tira, com null) e guarda o
+  // endereço que o servidor deu.
+  async function sendFxImage(kind, blob) {
+    if (!me) return { error: 'Entre na sala primeiro.' };
+    const data = blob ? await blob.arrayBuffer() : null;
+    const res = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 30000);
+      socket.emit('fx:image', { kind, data }, (reply) => {
+        clearTimeout(timer);
+        resolve(reply || { error: 'Não deu pra mandar a imagem.' });
+      });
+    });
+    if (res.ok) {
+      myImages[kind] = AVATAR_PATH.test(res.url || '') ? res.url : null;
+      if (me && users.has(me.id)) {
+        const field = kind === 'cursor' ? 'cursorImg' : 'pingImg';
+        if (myImages[kind]) users.get(me.id)[field] = myImages[kind];
+        else delete users.get(me.id)[field];
+      }
+      refreshMyFull();
+      onMyProfileChanged();
+    }
+    return res;
+  }
+
+  // Escolheu um arquivo no editor: prepara (lê .cur/.ani, reduz...), manda e guarda.
+  async function uploadFxImage(kind, file) {
+    if (!window.WssFxImage) return { error: 'Recarregue a página pra usar imagens próprias.' };
+    let prepared;
+    try {
+      prepared = await window.WssFxImage.prepare(file, kind);
+    } catch (err) {
+      return { error: err.message || 'Não deu pra usar essa imagem.' };
+    }
+    const res = await sendFxImage(kind, prepared.blob);
+    if (res.error) return res;
+    if (!(await photoStore.set(prepared.blob, `fx-${kind}`))) showToast('A imagem foi aplicada, mas não deu pra salvar neste PC.');
+    return { ok: true, url: myImages[kind], hx: prepared.hx, hy: prepared.hy };
+  }
+
+  async function removeFxImage(kind) {
+    await photoStore.set(null, `fx-${kind}`);
+    return sendFxImage(kind, null);
   }
 
   // color: '#rrggbb' ou null (automática). send 'now': manda já (soltou o mouse, clicou numa
@@ -3738,14 +3820,16 @@
   function sendDesktopIdentity() {
     if (!me || !desktop || typeof desktop.identity !== 'function') return;
     const tone = toneOf(me.name);
-    desktop.identity({ hue: tone.hue, color: markFill(tone), style: myStyle });
+    desktop.identity({ hue: tone.hue, color: markFill(tone), style: absoluteStyle(myFull) });
   }
 
   // O estilo do mouse e das marcações (aba "Mouse e efeitos" do perfil, ou as
   // Configurações do app): salvo neste navegador e mandado pra sala na hora.
   let styleSendTimer = null;
+  let pendingStyle = null; // o estilo esperando pra ir pro servidor
   function setMyStyle(style) {
-    myStyle = Fx.normalize(style);
+    myStyle = plainStyle(style);
+    refreshMyFull();
     const plain = Fx.isDefault(myStyle) ? null : myStyle;
     try {
       if (plain) localStorage.setItem('wss-style', JSON.stringify(plain));
@@ -3757,8 +3841,18 @@
       else delete self.style;
     }
     clearTimeout(styleSendTimer);
-    styleSendTimer = setTimeout(() => socket.emit('profile', { style: plain }), 150);
+    pendingStyle = { style: plain };
+    styleSendTimer = setTimeout(flushStyle, 150);
     onMyProfileChanged();
+  }
+
+  // Manda já o estilo que estava esperando (antes de um ping ou desenho, pra ele sair no
+  // estilo novo).
+  function flushStyle() {
+    clearTimeout(styleSendTimer);
+    if (!pendingStyle) return;
+    socket.emit('profile', pendingStyle);
+    pendingStyle = null;
   }
 
   // A aba "Mouse e efeitos": o editor com a prévia (js/fx.js), montado na primeira vez.
@@ -3775,7 +3869,7 @@
     $('ptab-fx').tabIndex = fx ? 0 : -1;
     $('ppanel-look').hidden = fx;
     $('ppanel-fx').hidden = !fx;
-    if (fx && !fxEditor) fxEditor = Fx.editor($('fx-editor'), { get: () => myStyle, look: myLook, change: setMyStyle });
+    if (fx && !fxEditor) fxEditor = Fx.editor($('fx-editor'), { get: () => myFull, look: myLook, change: setMyStyle, images: { upload: uploadFxImage, remove: removeFxImage } });
     else if (fx) fxEditor.refresh();
   }
   $('ptab-look').addEventListener('click', () => selectProfileTab(false));
@@ -4313,27 +4407,93 @@
   // bolinha com a foto, o enfeite, o nome e o rastro continuam desenhados pela página (o
   // GIF anima), seguindo o mouse com uma folguinha. O Chromium só mostra cursor
   // personalizado que cabe inteiro na janela: colado na borda, volta o mouse normal.
-  const myCursor = { key: '', css: null };
+  // frames: com imagem própria animada (GIF, .ani...), um cursor por quadro; troca de
+  // quadro só enquanto o seu mouse está numa transmissão ativa.
+  const myCursor = { key: '', css: null, frames: null, frame: 0, timer: null, load: 0 };
 
-  function buildMyCursor() {
-    if (!me) return;
-    const color = markFill(toneOf(me.name));
-    const key = `${color}|${myStyle.skin}|${myStyle.size}|${myStyle.aura}`;
-    if (key === myCursor.key) return;
-    myCursor.key = key;
+  function cursorCss(style, color, frame = null) {
     const scales = [1, 2];
     if (window.devicePixelRatio > 2) scales.push(3);
     let hot = null;
     const images = scales.map((scale) => {
-      hot = Fx.cursorImage(myStyle, color, scale);
+      hot = Fx.cursorImage(style, color, scale, frame);
       return `url("${hot.url}") ${scale}x`;
     });
-    myCursor.css = `image-set(${images.join(', ')}) ${hot.hotX} ${hot.hotY}, auto`;
+    return `image-set(${images.join(', ')}) ${hot.hotX} ${hot.hotY}, auto`;
+  }
+
+  function setMyCursorCss(css) {
+    myCursor.css = css;
     for (const s of streams.values()) {
       if (!s.mirrorOn) continue;
-      s.mirrorCss = myCursor.css;
-      s.media.style.cursor = myCursor.css;
+      s.mirrorCss = css;
+      s.media.style.cursor = css;
     }
+  }
+
+  function buildMyCursor() {
+    if (!me) return;
+    const style = myFull;
+    const color = markFill(toneOf(me.name));
+    const key = [color, style.skin, style.size, style.aura, style.outline, style.img || '', style.hx, style.hy].join('|');
+    if (key === myCursor.key) return;
+    myCursor.key = key;
+    stopCursorFrames();
+    if (style.skin !== 'custom') {
+      setMyCursorCss(cursorCss(style, color));
+      return;
+    }
+    // Imagem própria: enquanto ela carrega, a setinha clássica.
+    if (!myCursor.css) setMyCursorCss(cursorCss({ ...style, skin: 'classic' }, color));
+    const load = ++myCursor.load;
+    loadCursorFrames(style.img).then((frames) => {
+      if (load !== myCursor.load || !frames || !frames.length) return;
+      myCursor.frames = frames.map((f) => ({ css: cursorCss(style, color, f.canvas), duration: f.duration }));
+      myCursor.frame = 0;
+      setMyCursorCss(myCursor.frames[0].css);
+      tickCursorFrames();
+    });
+  }
+
+  // Os quadros da sua imagem (onde o navegador sabe separar; senão, a imagem parada).
+  async function loadCursorFrames(url) {
+    try {
+      const res = await fetch(url);
+      const type = (res.headers.get('content-type') || 'image/png').split(';')[0];
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const frames = window.WssFxImage && type !== 'image/jpeg' ? await window.WssFxImage.decodeFrames(bytes, type) : null;
+      if (frames && frames.length) return frames;
+      const src = URL.createObjectURL(new Blob([bytes], { type }));
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 1;
+      canvas.height = img.naturalHeight || 1;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      URL.revokeObjectURL(src);
+      return [{ canvas, duration: 0 }];
+    } catch {
+      return null;
+    }
+  }
+
+  function tickCursorFrames() {
+    clearTimeout(myCursor.timer);
+    myCursor.timer = null;
+    const frames = myCursor.frames;
+    if (!frames || frames.length < 2 || ![...streams.values()].some((s) => s.mirrorOn)) return;
+    myCursor.timer = setTimeout(() => {
+      myCursor.frame = (myCursor.frame + 1) % frames.length;
+      setMyCursorCss(frames[myCursor.frame].css);
+      tickCursorFrames();
+    }, Math.max(20, frames[myCursor.frame].duration || 100));
+  }
+
+  function stopCursorFrames() {
+    clearTimeout(myCursor.timer);
+    myCursor.timer = null;
+    myCursor.frames = null;
   }
 
   // A bolinha com a foto (ou a letrinha), que segue o mouse.
@@ -4362,6 +4522,7 @@
       if (s.myBadge) s.myBadge.hidden = true;
       return;
     }
+    if (myCursor.frames && myCursor.frames.length > 1 && !myCursor.timer) tickCursorFrames();
     const badge = myBadgeNode(s);
     const rect = s.media.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -4369,7 +4530,7 @@
     // Só transform: mexer a bolinha não refaz o layout nem redesenha nada.
     badge.style.transform = `translate(${x}px, ${y}px)`;
     badge.hidden = false;
-    Fx.trail(s.media, s, x, y, myStyle, markFill(toneOf(me.name)), 'px');
+    Fx.trail(s.media, s, x, y, myFull, markFill(toneOf(me.name)), 'px');
   }
 
   // O seu clique/rolagem: a animaçãozinha fica onde você clicou (como os outros veem).
@@ -4451,7 +4612,7 @@
     toDesktopOverlay(stream, {
       // color só de quem escolheu: a automática o app ainda separa das parecidas.
       type: 'cursor', id, x, y, gone: Boolean(gone), letter: [...name][0] || '?', hue: nameHue(name), color: toneOf(name).color,
-      style: styleOf(name), name,
+      style: overlayStyle(name), name,
       avatar: photo ? new URL(photo, window.location.href).href : null, click: msg.click,
     });
     showPeerCursor(msg);
@@ -4977,7 +5138,7 @@
       const photoColors = await window.WssColor.loadPalette(photo);
       const problem = !desktopCaps?.control ? 'O controle remoto está indisponível ou as marcações estão desligadas.'
         : !myControlStream() ? 'Transmita a tela inteira para permitir controle remoto.' : '';
-      return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue, style: myStyle,
+      return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue, style: absoluteStyle(myFull), styleImages: true,
         autoFill: `hsl(${autoHue(me.name)} 45% 42%)`, markColor: markFill(toneOf(me.name)), recent: recentColors(),
         // shareCursor: o padrão das transmissões (o seu mouse agora liga em cada uma).
         shareCursor: cursorDefault, cursorPerStream: true, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
@@ -5002,6 +5163,15 @@
         if (controlDialog.open) renderControlPanel();
       } else if (command.type === 'sounds') { sounds.enabled = command.enabled; renderSoundsButton(); }
       else if (command.type === 'style') { setMyStyle(command.style); }
+      else if (command.type === 'fx-image') {
+        const bytes = Uint8Array.from(atob(command.data), (c) => c.charCodeAt(0));
+        const res = await uploadFxImage(command.kind, new File([bytes], command.name, { type: command.mime }));
+        if (res.error) throw new Error(res.error);
+        return { ok: true, url: new URL(res.url, location.href).href, hx: res.hx, hy: res.hy };
+      } else if (command.type === 'fx-image-remove') {
+        const res = await removeFxImage(command.kind);
+        if (res.error) throw new Error(res.error);
+      }
       else if (command.type === 'photo' || command.type === 'photo-remove') {
         const blob = command.type === 'photo' ? await preparePhoto(new File([Uint8Array.from(atob(command.data), (c) => c.charCodeAt(0))], command.name, { type: command.mime })) : null;
         const response = await sendPhoto(blob);

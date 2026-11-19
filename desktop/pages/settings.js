@@ -534,6 +534,31 @@ function renderFx() {
           status('Estilo do mouse aplicado na sala.');
         } catch (error) { status(error.message, true); }
       },
+      // Imagens próprias (setinha e ping): a sala lê o arquivo e manda pro servidor.
+      images: roomState.styleImages ? {
+        upload: async (kind, file) => {
+          if (file.size > 8 * 1024 * 1024) return { error: 'Esse arquivo é grande demais (até 8 MB).' };
+          try {
+            const data = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+              reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
+              reader.readAsDataURL(file);
+            });
+            const res = await api.roomAction({ type: 'fx-image', kind, data, name: file.name, mime: file.type });
+            if (res && res.url) roomState.style = { ...roomState.style, [kind === 'cursor' ? 'img' : 'pingImg']: res.url };
+            return res;
+          } catch (error) { return { error: error.message }; }
+        },
+        remove: async (kind) => {
+          try {
+            await api.roomAction({ type: 'fx-image-remove', kind });
+            const next = { ...roomState.style };
+            delete next[kind === 'cursor' ? 'img' : 'pingImg'];
+            roomState.style = next;
+          } catch (error) { status(error.message, true); }
+        },
+      } : null,
     });
   } else fxEditor.refresh();
 }

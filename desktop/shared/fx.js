@@ -14,7 +14,8 @@
   // ---------- catálogo ----------
 
   // Setinhas num quadrado 24×24. hot: a ponta (onde o clique cai). badge: onde fica a
-  // bolinha com a foto e deco: onde o enfeite se apoia (os dois em relação à ponta).
+  // bolinha com a foto e deco: onde o enfeite se apoia (os dois em relação à ponta, na
+  // mesma escala de 24).
   // Camadas: fill/stroke 'c' = a cor da pessoa, 'w' = branco, ou uma cor fixa.
   const SKINS = {
     classic: {
@@ -24,10 +25,6 @@
     os: {
       label: 'Do PC', hot: [4, 2], badge: [11, 18], deco: [2, 1],
       layers: [{ d: 'M4 2v16.5l4.3-4.1 3 6.6 2.8-1.3-3-6.4H17z', fill: 'c', stroke: 'w', width: 1.5 }],
-    },
-    round: {
-      label: 'Redonda', hot: [3.4, 3.3], badge: [13, 15], deco: [2.5, 1.5],
-      layers: [{ d: 'M4.2 3.3c-.5-.4-1.2 0-1.1.6l1.9 15.4c.1.7 1 .9 1.4.3l3.4-4.6 5.9-.7c.7-.1 1-.9.4-1.4z', fill: 'c', stroke: 'w', width: 1.6 }],
     },
     pixel: {
       label: 'Pixel', hot: [4, 2], badge: [12, 18], deco: [2, 1],
@@ -76,7 +73,50 @@
     },
   };
 
-  const SIZES = { s: { label: 'Pequena', px: 20 }, m: { label: 'Média', px: 26 }, l: { label: 'Grande', px: 34 } };
+  // Mais setinhas. rot: girar o desenho (graus, em volta do centro); hot já é a ponta girada.
+  Object.assign(SKINS, {
+    rocket: {
+      label: 'Foguete', hot: [4.6, 4.6], badge: [13, 13], deco: [1, 1], rot: -45,
+      layers: [
+        { d: 'M9.4 17.4 12 22.6l2.6-5.2z', fill: '#ffb02e', stroke: '#ff5b24', width: 1 },
+        { d: 'M8 12.6 4.6 16.4V19L8 17.2zM16 12.6l3.4 3.8V19L16 17.2z', fill: 'c', stroke: 'w', width: 1.2 },
+        { d: 'M12 1.5c3.4 2.4 4.4 6.4 4 11.4v4.4H8v-4.4C7.6 7.9 8.6 3.9 12 1.5z', fill: 'w', stroke: 'c', width: 1.4 },
+        { d: 'M12 7a2 2 0 1 0 0 4 2 2 0 1 0 0-4z', fill: 'c', stroke: 'w', width: 1 },
+      ],
+    },
+    plane: {
+      label: 'Aviãozinho', hot: [3, 3], badge: [14, 14], deco: [2, 1],
+      layers: [
+        { d: 'M3 3 21 10l-8.5 2.5L10 21z', fill: 'c', stroke: 'w', width: 1.5 },
+        { d: 'M3 3l9.5 9.5L10 21z', fill: 'rgba(255,255,255,0.38)' },
+        { d: 'M3 3l9.5 9.5', fill: 'none', stroke: 'w', width: 1 },
+      ],
+    },
+    paw: {
+      label: 'Patinha', hot: [12, 4.4], badge: [6, 13], deco: [0, 0],
+      layers: [{
+        d: 'M12 11.2c3 0 5.4 2.2 5.4 4.8 0 2.2-1.9 3.4-3.6 3.4-.8 0-1.2-.4-1.8-.4s-1 .4-1.8.4c-1.7 0-3.6-1.2-3.6-3.4 0-2.6 2.4-4.8 5.4-4.8zM4.6 9.6a2 2.4 0 1 0 4 0 2 2.4 0 1 0-4 0zM8 6.4a2.1 2.5 0 1 0 4.2 0 2.1 2.5 0 1 0-4.2 0zM11.8 6.4a2.1 2.5 0 1 0 4.2 0 2.1 2.5 0 1 0-4.2 0zM15.4 9.6a2 2.4 0 1 0 4 0 2 2.4 0 1 0-4 0z',
+        fill: 'c', stroke: 'w', width: 1.3,
+      }],
+    },
+    ghost: {
+      label: 'Fantasminha', hot: [12, 3], badge: [7, 15], deco: [0, 0.5],
+      layers: [
+        { d: 'M12 3c-4.6 0-7 3.6-7 8v9l2.4-2 2.4 2 2.2-2 2.2 2 2.4-2 2.4 2v-9c0-4.4-2.4-8-7-8z', fill: 'w', stroke: 'c', width: 1.6 },
+        { d: 'M9.6 9.2a1.3 1.7 0 1 0 0 3.4 1.3 1.7 0 1 0 0-3.4zM14.4 9.2a1.3 1.7 0 1 0 0 3.4 1.3 1.7 0 1 0 0-3.4z', fill: '#1d1f2b' },
+      ],
+    },
+    heart: {
+      label: 'Coração', hot: [6.7, 6.7], badge: [12, 12], deco: [1, 0.5], rot: 135,
+      layers: [{ d: 'M12 19.5s-7.5-5-7.5-9.9c0-2.4 1.9-4.1 4-4.1 1.6 0 2.8.9 3.5 2.1.7-1.2 1.9-2.1 3.5-2.1 2.1 0 4 1.7 4 4.1 0 4.9-7.5 9.9-7.5 9.9z', fill: 'c', stroke: 'w', width: 1.6 }],
+    },
+    star: {
+      label: 'Estrela', hot: [12, 2], badge: [8, 15], deco: [0, 0.5],
+      layers: [{ d: 'M12 2l2.47 6.6 7.04.31-5.52 4.39 1.89 6.79L12 16.2l-5.88 3.89 1.89-6.79-5.52-4.39 7.04-.31z', fill: 'c', stroke: 'w', width: 1.5 }],
+    },
+  });
+
+  const SIZES = { s: { label: 'Pequena', px: 20 }, m: { label: 'Média', px: 26 }, l: { label: 'Grande', px: 34 }, xl: { label: 'Enorme', px: 44 } };
 
   // Enfeites: desenhos num quadrado 24×24 apoiados em cima da ponta (currentColor: a cor da pessoa).
   const DECOS = {
@@ -92,47 +132,95 @@
     antenna: { label: 'Anteninhas', svg: '<path d="M8.5 21 6 8.5M15.5 21 18 8.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M8.5 21 6 8.5M15.5 21 18 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="6.6" r="2.8" fill="#7dff8a" stroke="#fff" stroke-width="1"/><circle cx="18" cy="6.6" r="2.8" fill="#7dff8a" stroke="#fff" stroke-width="1"/>' },
   };
 
-  const AURAS = { none: 'Nenhum', glow: 'Brilho', rainbow: 'Arco-íris', pulse: 'Pulsando' };
-  const TRAILS = { none: 'Nenhum', sparkles: 'Brilhinhos', dots: 'Bolinhas', rainbow: 'Arco-íris', hearts: 'Corações', bubbles: 'Bolhas', fire: 'Fogo' };
-  const CLICKS = { mouse: 'Mini mouse', ripple: 'Ondinha', stars: 'Estrelinhas', confetti: 'Confete', pop: 'Quadrinhos', none: 'Nenhuma' };
-  const PINGS = { classic: 'Clássico', target: 'Alvo', alert: 'Alerta', arrow: 'Seta caindo', pulse: 'Pulso', emoji: 'Emoji' };
-  const EMOJIS = { eyes: '👀', target: '🎯', fire: '🔥', star: '⭐', boom: '💥', heart: '❤️', laugh: '😂', point: '👉', party: '🎉', skull: '💀' };
-  const PING_SOUNDS = { classic: 'Clássico', pop: 'Pop', bell: 'Sininho', boing: 'Boing', whistle: 'Apito', none: 'Sem som' };
-  const BRUSHES = { normal: 'Normal', neon: 'Neon', dashed: 'Tracejado', chalk: 'Giz', marker: 'Marca-texto', rainbow: 'Arco-íris', fade: 'Rastro que some' };
+  Object.assign(DECOS, {
+    wizard: { label: 'Chapéu de mago', svg: '<path d="M7 18.6 12.6 2.4c.2-.5.9-.5 1 0L17 18.6z" fill="#4b3bd6" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><path d="M8.3 15.4h8" stroke="currentColor" stroke-width="2"/><path d="m12.3 8.4.5 1.1 1.2.1-.9.8.3 1.2-1.1-.7-1 .7.3-1.2-.9-.8 1.2-.1z" fill="#ffd23f"/><circle cx="14.6" cy="12.6" r=".8" fill="#ffd23f"/><ellipse cx="12" cy="19" rx="9.5" ry="2.4" fill="#4b3bd6" stroke="#fff" stroke-width="1"/>' },
+    santa: { label: 'Gorro de Natal', svg: '<path d="M5 18 9.4 7c1-2.4 4.4-3.4 6.9-1.6L20.4 11l-2.6 1-2.6-3.1L18.6 18z" fill="#e3263b" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><circle cx="19.6" cy="12" r="2.4" fill="#fff" stroke="#d9dbe6" stroke-width=".8"/><rect x="3.4" y="16.6" width="16.8" height="3.8" rx="1.9" fill="#fff" stroke="#d9dbe6" stroke-width=".8"/>' },
+    cap: { label: 'Boné', svg: '<path d="M5 16c0-5 3-8.4 7-8.4s7 3.4 7 8.4z" fill="currentColor" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 16h10c-.2 1.6-1.7 2.4-4 2.4h-6z" fill="currentColor" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 7.6V16M8.4 9 9.6 16M15.6 9l-1.2 7" stroke="#fff" stroke-width=".7" opacity=".6"/><circle cx="12" cy="7.4" r="1.2" fill="#fff"/>' },
+    pirate: { label: 'Chapéu pirata', svg: '<path d="M2.4 14.2C5 7.6 8.6 7.4 12 9.4c3.4-2 7-1.8 9.6 4.8-6.2 3.8-13 3.8-19.2 0z" fill="#1d1f2b" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><circle cx="12" cy="12.4" r="2" fill="#fff"/><path d="M10 15.6l4-1.6M10 14l4 1.6" stroke="#fff" stroke-width="1" stroke-linecap="round"/><path d="M4 13.8c5.2 2.6 10.8 2.6 16 0" fill="none" stroke="currentColor" stroke-width="1.2"/>' },
+    viking: { label: 'Capacete viking', svg: '<path d="M6.4 12.6C4 11.6 2.6 9 3 5.2c1.2 2.8 3 4.4 5.2 5.2zM17.6 12.6c2.4-1 3.8-3.6 3.4-7.4-1.2 2.8-3 4.4-5.2 5.2z" fill="#f5e6c8" stroke="#fff" stroke-width=".9"/><path d="M6 18c0-5 2.6-8.4 6-8.4s6 3.4 6 8.4z" fill="#9aa3b5" stroke="#fff" stroke-width="1"/><path d="M5.6 17.6h12.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M12 9.8v7" stroke="#6b7385" stroke-width="1.4"/>' },
+    bunny: { label: 'Orelhas de coelho', svg: '<path d="M8.6 20c-2.6-3-3.6-9.2-2.6-14.6.4-2.2 3-2.2 3.6 0 1.2 4.6 1.4 10.4 1 14.6zM15.4 20c2.6-3 3.6-9.2 2.6-14.6-.4-2.2-3-2.2-3.6 0-1.2 4.6-1.4 10.4-1 14.6z" fill="#fff" stroke="#d9dbe6" stroke-width="1"/><path d="M8.4 17.6C7 14.8 6.8 9.6 7.6 6.6c.5 3 1.2 7.4.8 11zM15.6 17.6c1.4-2.8 1.6-8 .8-11-.5 3-1.2 7.4-.8 11z" fill="#ff9fc6"/>' },
+    propeller: { label: 'Boné de hélice', svg: '<path d="M6 18c0-4.6 2.6-7.4 6-7.4s6 2.8 6 7.4z" fill="currentColor" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><path d="M9.6 11.2 9 18M14.4 11.2 15 18" stroke="#ffd23f" stroke-width="1.4"/><path d="M12 10.6V6.8" stroke="#fff" stroke-width="1.4"/><g class="wfx-blades"><ellipse cx="8.4" cy="6.2" rx="3.6" ry="1.3" fill="#ff4d5e" stroke="#fff" stroke-width=".8"/><ellipse cx="15.6" cy="6.2" rx="3.6" ry="1.3" fill="#3fa9ff" stroke="#fff" stroke-width=".8"/></g><circle cx="12" cy="6.2" r="1.3" fill="#ffd23f" stroke="#fff" stroke-width=".8"/>' },
+  });
+
+  const AURAS = { none: 'Nenhum', glow: 'Brilho', rainbow: 'Arco-íris', pulse: 'Pulsando', bounce: 'Pulinho', wiggle: 'Balançando', twinkle: 'Estrelinhas' };
+  const TRAILS = { none: 'Nenhum', sparkles: 'Brilhinhos', rainbow: 'Arco-íris', hearts: 'Corações', bubbles: 'Bolhas', fire: 'Fogo', snow: 'Neve', notes: 'Notas musicais', smoke: 'Fumaça', pixels: 'Pixels' };
+  const CLICKS = { mouse: 'Mini mouse', ripple: 'Ondinha', stars: 'Estrelinhas', hearts: 'Corações', confetti: 'Confete', rays: 'Raios', boom: 'Explosão', pop: 'Quadrinhos', none: 'Nenhuma' };
+  const PINGS = { classic: 'Clássico', target: 'Alvo', alert: 'Alerta', arrow: 'Seta caindo', pin: 'Alfinete', flag: 'Bandeira', emoji: 'Emoji', image: 'Imagem própria' };
+  const EMOJIS = {
+    eyes: '👀', target: '🎯', fire: '🔥', star: '⭐', boom: '💥', heart: '❤️', laugh: '😂', point: '👉', party: '🎉', skull: '💀',
+    question: '❓', check: '✅', cross: '❌', warning: '⚠️', money: '💰', ghost: '👻', cool: '😎', think: '🤔', rocket: '🚀', clap: '👏', gift: '🎁', tree: '🎄',
+  };
+  const PING_SOUNDS = { classic: 'Clássico', pop: 'Pop', bell: 'Sininho', boing: 'Boing', whistle: 'Apito', coin: 'Moedinha', laser: 'Laser', none: 'Sem som' };
+  const BRUSHES = { normal: 'Normal', neon: 'Neon', outline: 'Contorno', dashed: 'Tracejado', chalk: 'Pontilhado', marker: 'Marca-texto', rainbow: 'Arco-íris', glitter: 'Purpurina', arrow: 'Flecha', fade: 'Rastro que some' };
   const WIDTHS = { s: { label: 'Fina', k: 0.6 }, m: { label: 'Média', k: 1 }, l: { label: 'Grossa', k: 1.8 } };
+  // Contorno da setinha e da bolinha: branco, preto ou uma cor (rrggbb, sem #).
+  const OUTLINES = { w: { label: 'Branco', hex: '#ffffff' }, k: { label: 'Preto', hex: '#15161d' } };
+  const OUTLINE_COLORS = ['ffd23f', 'ff8a3d', 'ff4d5e', 'ff5fa2', 'b15cff', '7c5cff', '2fc2ff', '3ee07f'];
+  const outlineHex = (value) => (OUTLINES[value] ? OUTLINES[value].hex : /^[0-9a-f]{6}$/i.test(value || '') ? `#${value.toLowerCase()}` : '#ffffff');
 
   const DEFAULTS = Object.freeze({
     skin: 'classic', size: 'm', deco: 'none', aura: 'none', trail: 'none', name: false,
     click: 'mouse', ping: 'classic', emoji: 'eyes', pingSound: 'classic', brush: 'normal', width: 'm',
+    outline: 'w', hx: 0, hy: 0,
   });
   const CHOICES = {
-    skin: SKINS, size: SIZES, deco: DECOS, aura: AURAS, trail: TRAILS, click: CLICKS,
+    size: SIZES, deco: DECOS, aura: AURAS, trail: TRAILS, click: CLICKS,
     ping: PINGS, emoji: EMOJIS, pingSound: PING_SOUNDS, brush: BRUSHES, width: WIDTHS,
   };
+  // Opções que saíram (eram repetidas): quem tinha escolhido fica com a parecida.
+  const ALIASES = { skin: { round: 'classic' }, trail: { dots: 'pixels' }, ping: { pulse: 'classic' } };
 
   // Pacotes prontos: tudo combinando, de uma vez.
   const PACKS = {
     classic: { label: 'Clássico', style: {} },
-    neon: { label: 'Neon', style: { skin: 'os', aura: 'glow', trail: 'dots', click: 'ripple', ping: 'target', pingSound: 'pop', brush: 'neon' } },
-    cute: { label: 'Fofura', style: { skin: 'round', deco: 'catears', trail: 'hearts', click: 'stars', ping: 'emoji', emoji: 'heart', pingSound: 'bell', brush: 'marker' } },
-    royal: { label: 'Realeza', style: { deco: 'crown', aura: 'glow', trail: 'sparkles', click: 'confetti', ping: 'alert', pingSound: 'bell', brush: 'rainbow' } },
-    retro: { label: 'Retrô', style: { skin: 'pixel', size: 'l', trail: 'dots', click: 'pop', ping: 'arrow', pingSound: 'boing', brush: 'dashed', width: 'l' } },
+    neon: { label: 'Neon', style: { skin: 'os', aura: 'glow', trail: 'bubbles', click: 'rays', ping: 'target', pingSound: 'laser', brush: 'neon', outline: 'k' } },
+    cute: { label: 'Fofura', style: { skin: 'heart', deco: 'catears', trail: 'hearts', click: 'hearts', ping: 'emoji', emoji: 'heart', pingSound: 'bell', brush: 'marker' } },
+    royal: { label: 'Realeza', style: { deco: 'crown', aura: 'glow', trail: 'sparkles', click: 'confetti', ping: 'alert', pingSound: 'bell', brush: 'rainbow', outline: 'ffd23f' } },
+    retro: { label: 'Retrô', style: { skin: 'pixel', size: 'l', trail: 'pixels', click: 'pop', ping: 'arrow', pingSound: 'coin', brush: 'dashed', width: 'l' } },
     party: { label: 'Festa', style: { skin: 'wand', deco: 'party', aura: 'rainbow', trail: 'rainbow', click: 'confetti', ping: 'emoji', emoji: 'party', pingSound: 'whistle', brush: 'rainbow' } },
-    adventure: { label: 'Aventura', style: { skin: 'sword', deco: 'tophat', trail: 'fire', click: 'pop', ping: 'pulse', pingSound: 'boing', brush: 'chalk' } },
-    angel: { label: 'Anjinho', style: { skin: 'round', deco: 'halo', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'pulse', pingSound: 'bell', brush: 'fade' } },
-    devil: { label: 'Diabinho', style: { deco: 'horns', aura: 'pulse', trail: 'fire', click: 'stars', ping: 'emoji', emoji: 'skull', pingSound: 'pop', brush: 'neon' } },
+    wizard: { label: 'Mago', style: { skin: 'wand', deco: 'wizard', aura: 'twinkle', trail: 'sparkles', click: 'rays', ping: 'emoji', emoji: 'star', pingSound: 'bell', brush: 'glitter', outline: 'b15cff' } },
+    adventure: { label: 'Aventura', style: { skin: 'sword', deco: 'viking', trail: 'fire', click: 'boom', ping: 'flag', pingSound: 'boing', brush: 'chalk' } },
+    pirate: { label: 'Pirata', style: { skin: 'sword', deco: 'pirate', trail: 'smoke', click: 'boom', ping: 'flag', pingSound: 'coin', brush: 'arrow', outline: 'k' } },
+    space: { label: 'Espacial', style: { skin: 'rocket', size: 'l', aura: 'glow', trail: 'fire', click: 'rays', ping: 'pin', pingSound: 'laser', brush: 'neon' } },
+    xmas: { label: 'Natal', style: { deco: 'santa', trail: 'snow', click: 'confetti', ping: 'emoji', emoji: 'gift', pingSound: 'bell', brush: 'rainbow', outline: 'ff4d5e' } },
+    angel: { label: 'Anjinho', style: { deco: 'halo', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'pin', pingSound: 'bell', brush: 'fade' } },
+    devil: { label: 'Diabinho', style: { deco: 'horns', aura: 'pulse', trail: 'fire', click: 'stars', ping: 'emoji', emoji: 'skull', pingSound: 'pop', brush: 'neon', outline: 'k' } },
+    spooky: { label: 'Assombrado', style: { skin: 'ghost', aura: 'wiggle', trail: 'smoke', click: 'pop', ping: 'emoji', emoji: 'ghost', pingSound: 'whistle', brush: 'fade' } },
+    kitty: { label: 'Gatinho', style: { skin: 'paw', deco: 'bow', aura: 'bounce', trail: 'hearts', click: 'hearts', ping: 'emoji', emoji: 'heart', pingSound: 'pop', brush: 'marker', outline: 'ff5fa2' } },
     alien: { label: 'Alienígena', style: { skin: 'hand', deco: 'antenna', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'target', pingSound: 'whistle', brush: 'fade', name: true } },
+  };
+
+  // Imagens próprias (setinha e ping): só o endereço das fotos do servidor (/avatar/hash),
+  // relativo ou completo (a camada do app recebe completo).
+  const IMAGE_URL = /^(https?:\/\/[^\s"'()<>\\]+)?\/avatar\/[a-f0-9]{32}$/;
+  const percent = (v) => {
+    const n = typeof v === 'string' && /^\d{1,3}$/.test(v) ? Number(v) : v;
+    return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
   };
 
   // Qualquer coisa que chegar (do servidor, do armazenamento) vira um estilo válido.
   function normalize(raw) {
     const style = { ...DEFAULTS };
     if (!raw || typeof raw !== 'object') return style;
-    for (const [key, options] of Object.entries(CHOICES)) {
-      const value = raw[key];
+    const pick = (key, options) => {
+      let value = raw[key];
+      if (ALIASES[key] && Object.prototype.hasOwnProperty.call(ALIASES[key], value)) value = ALIASES[key][value];
       if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(options, value)) style[key] = value;
-    }
+    };
+    pick('skin', { ...SKINS, custom: true });
+    for (const [key, options] of Object.entries(CHOICES)) pick(key, options);
     if (typeof raw.name === 'boolean') style.name = raw.name;
+    if (typeof raw.outline === 'string' && (OUTLINES[raw.outline] || /^[0-9a-f]{6}$/i.test(raw.outline))) style.outline = raw.outline.toLowerCase();
+    for (const key of ['hx', 'hy']) {
+      const n = percent(raw[key]);
+      if (n !== null) style[key] = n;
+    }
+    for (const key of ['img', 'pingImg']) {
+      if (typeof raw[key] === 'string' && IMAGE_URL.test(raw[key])) style[key] = raw[key];
+    }
+    // Sem a imagem (ainda não chegou, ou foi tirada): a setinha/o ping normal.
+    if (style.skin === 'custom' && !style.img && raw.keepCustom !== true) style.skin = 'classic';
+    if (style.ping === 'image' && !style.pingImg && raw.keepCustom !== true) style.ping = 'emoji';
     return style;
   }
 
@@ -140,14 +228,16 @@
 
   // ---------- setinha ----------
 
-  const paint = (value) => (value === 'c' ? 'currentColor' : value === 'w' ? '#ffffff' : value || 'none');
+  const paint = (value, outline = '#ffffff') => (value === 'c' ? 'currentColor' : value === 'w' ? outline : value || 'none');
+  const skinOf = (style) => SKINS[style.skin] || SKINS.classic;
 
   // Atributos de desenho (não "style" no HTML): as páginas do app têm CSP que bloqueia
-  // style escrito no HTML.
-  function skinMarkup(id, extraClass = '') {
+  // style escrito no HTML. outline: a cor do contorno (as partes brancas do desenho).
+  function skinMarkup(id, extraClass = '', outline = '#ffffff') {
     const skin = SKINS[id] || SKINS.classic;
-    const paths = skin.layers.map((layer) => `<path d="${layer.d}" fill="${paint(layer.fill)}" stroke="${layer.stroke ? paint(layer.stroke) : 'none'}" stroke-width="${layer.width || 0}" stroke-linejoin="round" stroke-linecap="round"${layer.crisp ? ' shape-rendering="crispEdges"' : ''}/>`);
-    return `<svg class="wfx-arrow${extraClass ? ` ${extraClass}` : ''}" viewBox="0 0 24 24" aria-hidden="true">${paths.join('')}</svg>`;
+    const paths = skin.layers.map((layer) => `<path d="${layer.d}" fill="${paint(layer.fill, outline)}" stroke="${layer.stroke ? paint(layer.stroke, outline) : 'none'}" stroke-width="${layer.width || 0}" stroke-linejoin="round" stroke-linecap="round"${layer.crisp ? ' shape-rendering="crispEdges"' : ''}/>`);
+    const body = skin.rot ? `<g transform="rotate(${skin.rot} 12 12)">${paths.join('')}</g>` : paths.join('');
+    return `<svg class="wfx-arrow${extraClass ? ` ${extraClass}` : ''}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
   }
 
   function decoMarkup(id) {
@@ -161,45 +251,93 @@
     return holder.firstElementChild;
   }
 
+  // Imagem própria: o tamanho (o lado maior) em cada tamanho escolhido. A ponta (hx, hy) é
+  // em % da imagem; o resto (bolinha, enfeite) se apoia no quadrado da imagem.
+  const CUSTOM_PX = { s: 24, m: 32, l: 44, xl: 56 };
+  const imageSizes = new Map(); // endereço -> [largura, altura] (quando já carregou)
+  function customBox(style, scale = 1, size = null) {
+    const side = CUSTOM_PX[style.size] * scale;
+    const natural = size || imageSizes.get(style.img);
+    const ratio = natural ? natural[0] / natural[1] : 1;
+    const w = ratio >= 1 ? side : side * ratio;
+    const h = ratio >= 1 ? side / ratio : side;
+    return { w, h, hotX: (style.hx / 100) * w, hotY: (style.hy / 100) * h };
+  }
+
   // Aplica o estilo num mouse já montado (um elemento sem tamanho, na ponta do mouse,
   // com a bolinha .cursor-badge dentro). arrow: false quando a setinha é o cursor do
   // sistema (o seu próprio mouse) e aqui só vão a bolinha, o enfeite e o nome. scale:
   // a camada do app, na tela de verdade, desenha um pouco menor.
   function applyCursor(node, rawStyle, { arrow = true, name = '', scale = 1 } = {}) {
     const style = normalize(rawStyle);
-    const skin = SKINS[style.skin];
+    const custom = style.skin === 'custom';
+    const skin = skinOf(style);
     const size = SIZES[style.size].px * scale;
     const k = size / 24;
+    const outline = outlineHex(style.outline);
     node.classList.add('wfx-cursor');
     for (const cls of [...node.classList]) {
       if (/^wfx-(aura|skin|size)-/.test(cls)) node.classList.remove(cls);
     }
     node.classList.add(`wfx-aura-${style.aura}`, `wfx-skin-${style.skin}`, `wfx-size-${style.size}`);
-    // A setinha (troca a original, se tiver).
-    for (const old of node.querySelectorAll(':scope > svg:not(.wfx-arrow)')) old.remove();
-    let svg = node.querySelector(':scope > svg.wfx-arrow');
-    if (!arrow) {
-      if (svg) svg.remove();
-    } else {
-      if (!svg || svg.dataset.skin !== style.skin) {
-        if (svg) svg.remove();
-        svg = fromMarkup(skinMarkup(style.skin));
-        svg.dataset.skin = style.skin;
-        node.prepend(svg);
+    node.style.setProperty('--o', outline);
+    // Onde ficam a bolinha e o enfeite, em relação à ponta.
+    let badgeAt;
+    let decoAt;
+    let shape; // { left, top, width, height, origin } do desenho (setinha ou imagem)
+    if (custom) {
+      const box = customBox(style, scale);
+      shape = { left: -box.hotX, top: -box.hotY, width: box.w, height: box.h };
+      badgeAt = [box.w - box.hotX - 6 * scale, box.h - box.hotY - 6 * scale];
+      decoAt = [box.w / 2 - box.hotX, -box.hotY];
+      // Ainda sem o tamanho da imagem: ajeita quando ela carregar.
+      if (!imageSizes.has(style.img)) {
+        const probe = new Image();
+        probe.onload = () => {
+          imageSizes.set(style.img, [probe.naturalWidth || 1, probe.naturalHeight || 1]);
+          if (node.isConnected) applyCursor(node, style, { arrow, name, scale });
+        };
+        probe.src = style.img;
       }
-      svg.style.width = `${size}px`;
-      svg.style.height = `${size}px`;
-      svg.style.left = `${-skin.hot[0] * k}px`;
-      svg.style.top = `${-skin.hot[1] * k}px`;
-      svg.style.transformOrigin = `${skin.hot[0] * k}px ${skin.hot[1] * k}px`;
+    } else {
+      // (bolinha e enfeite: em relação à ponta)
+      shape = { left: -skin.hot[0] * k, top: -skin.hot[1] * k, width: size, height: size };
+      badgeAt = [skin.badge[0] * k, skin.badge[1] * k];
+      decoAt = [skin.deco[0] * k, skin.deco[1] * k];
     }
-    // A bolinha com a foto: no lugar certo pra cada setinha.
+    // A setinha (troca a original, se tiver), ou a imagem própria.
+    for (const old of node.querySelectorAll(':scope > svg:not(.wfx-arrow)')) old.remove();
+    let drawn = node.querySelector(':scope > .wfx-arrow');
+    const key = custom ? `img|${style.img}` : `${style.skin}|${outline}`;
+    if (!arrow) {
+      if (drawn) drawn.remove();
+    } else {
+      if (!drawn || drawn.dataset.key !== key) {
+        if (drawn) drawn.remove();
+        if (custom) {
+          drawn = document.createElement('img');
+          drawn.className = 'wfx-arrow wfx-arrow-img';
+          drawn.alt = '';
+          drawn.draggable = false;
+          drawn.src = style.img;
+        } else drawn = fromMarkup(skinMarkup(style.skin, '', outline));
+        drawn.dataset.key = key;
+        drawn.dataset.skin = style.skin;
+        node.prepend(drawn);
+      }
+      drawn.style.width = `${shape.width}px`;
+      drawn.style.height = `${shape.height}px`;
+      drawn.style.left = `${shape.left}px`;
+      drawn.style.top = `${shape.top}px`;
+      drawn.style.transformOrigin = `${-shape.left}px ${-shape.top}px`;
+    }
+    // A bolinha com a foto: no lugar certo pra cada setinha, com a borda no contorno.
     const badge = node.querySelector(':scope > .cursor-badge');
-    const bx = skin.badge[0] * k;
-    const by = skin.badge[1] * k;
+    const [bx, by] = badgeAt;
     if (badge) {
       badge.style.left = `${bx}px`;
       badge.style.top = `${by}px`;
+      badge.style.borderColor = outline;
     }
     // Enfeite.
     let deco = node.querySelector(':scope > .wfx-deco');
@@ -214,11 +352,27 @@
         deco.innerHTML = decoMarkup(style.deco);
         node.append(deco);
       }
-      const dsize = size * 0.8;
+      const dsize = (custom ? Math.max(shape.width, shape.height) * 0.62 : size * 0.8);
       deco.style.width = `${dsize}px`;
       deco.style.height = `${dsize}px`;
-      deco.style.left = `${skin.deco[0] * k - dsize / 2}px`;
-      deco.style.top = `${skin.deco[1] * k - dsize}px`;
+      deco.style.left = `${decoAt[0] - dsize / 2}px`;
+      deco.style.top = `${decoAt[1] - dsize}px`;
+    }
+    // Estrelinhas piscando em volta (efeito "Estrelinhas").
+    let twinkle = node.querySelector(':scope > .wfx-twinkle');
+    if (style.aura !== 'twinkle') {
+      if (twinkle) twinkle.remove();
+    } else {
+      if (!twinkle) {
+        twinkle = document.createElement('span');
+        twinkle.className = 'wfx-twinkle';
+        for (let i = 0; i < 3; i += 1) twinkle.append(part(`wfx-tw wfx-tw-${i}`, '✦'));
+        node.append(twinkle);
+      }
+      twinkle.style.left = `${shape.left}px`;
+      twinkle.style.top = `${shape.top}px`;
+      twinkle.style.width = `${shape.width}px`;
+      twinkle.style.height = `${shape.height}px`;
     }
     // Nome junto.
     let label = node.querySelector(':scope > .wfx-name');
@@ -238,21 +392,48 @@
   }
 
   // A setinha como imagem (o cursor de verdade do sistema, pro seu próprio mouse). Devolve
-  // a imagem (data URL), o tamanho e a ponta, em pixels CSS.
-  function cursorImage(rawStyle, color, scale = 1) {
+  // a imagem (data URL), o tamanho e a ponta, em pixels CSS. frame: pra imagem própria, o
+  // desenho já carregado (uma <img>, ImageBitmap ou canvas; um quadro, se for animada).
+  function cursorImage(rawStyle, color, scale = 1, frame = null) {
     const style = normalize(rawStyle);
-    const skin = SKINS[style.skin];
+    const pad = 4;
+    const canvas = document.createElement('canvas');
+    if (style.skin === 'custom') {
+      const natural = frame ? [frame.naturalWidth || frame.width || 1, frame.naturalHeight || frame.height || 1] : null;
+      if (natural && style.img) imageSizes.set(style.img, natural);
+      const box = customBox(style, 1, natural);
+      const w = Math.ceil(box.w + pad * 2);
+      const h = Math.ceil(box.h + pad * 2);
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      if (frame) {
+        if (style.aura === 'glow') {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 6 * scale;
+        }
+        ctx.drawImage(frame, pad, pad, box.w, box.h);
+      }
+      return { url: canvas.toDataURL('image/png'), box: Math.max(w, h), hotX: Math.round(pad + box.hotX), hotY: Math.round(pad + box.hotY) };
+    }
+    const skin = skinOf(style);
+    const outline = outlineHex(style.outline);
     const size = SIZES[style.size].px;
     const k = size / 24;
-    const pad = 4;
     const box = Math.ceil(size + pad * 2);
-    const canvas = document.createElement('canvas');
     canvas.width = Math.round(box * scale);
     canvas.height = Math.round(box * scale);
     const ctx = canvas.getContext('2d');
     ctx.scale(scale, scale);
     ctx.translate(pad, pad);
     ctx.scale(k, k);
+    if (skin.rot) {
+      ctx.translate(12, 12);
+      ctx.rotate((skin.rot * Math.PI) / 180);
+      ctx.translate(-12, -12);
+    }
+    const colorOf = (value) => (value === 'c' ? color : value === 'w' ? outline : value);
     skin.layers.forEach((layer, i) => {
       const path = new Path2D(layer.d);
       ctx.save();
@@ -262,7 +443,7 @@
         ctx.shadowBlur = (style.aura === 'glow' ? 6 : 4) * scale;
         ctx.shadowOffsetY = style.aura === 'glow' ? 0 : 2 * scale;
       }
-      const fill = layer.fill === 'c' ? color : layer.fill === 'w' ? '#ffffff' : layer.fill;
+      const fill = colorOf(layer.fill);
       if (fill && fill !== 'none') {
         ctx.fillStyle = fill;
         ctx.fill(path);
@@ -272,7 +453,7 @@
         ctx.lineWidth = layer.width || 1;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
-        ctx.strokeStyle = layer.stroke === 'c' ? color : layer.stroke === 'w' ? '#ffffff' : layer.stroke;
+        ctx.strokeStyle = colorOf(layer.stroke);
         ctx.stroke(path);
       }
       ctx.restore();
@@ -314,6 +495,8 @@
       p.style.setProperty('--r', `${Math.round(Math.random() * 120 - 60)}deg`);
       if (style.trail === 'hearts') p.textContent = '♥';
       else if (style.trail === 'sparkles') p.textContent = '✦';
+      else if (style.trail === 'snow') p.textContent = '❄';
+      else if (style.trail === 'notes') p.textContent = state.trailN % 2 ? '♪' : '♫';
       p.addEventListener('animationend', () => {
         p.remove();
         alive.set(layer, Math.max(0, (alive.get(layer) || 1) - 1));
@@ -360,17 +543,30 @@
         mark.append(part('wfx-ring'));
         if (kind === 'right') mark.append(part('wfx-ring wfx-ring-2'));
       }
-    } else if (style.click === 'stars' || style.click === 'confetti') {
-      const n = style.click === 'stars' ? 6 : 10;
+    } else if (style.click === 'stars' || style.click === 'confetti' || style.click === 'hearts') {
+      const n = style.click === 'confetti' ? 10 : 6;
+      const glyph = style.click === 'stars' ? '✦' : style.click === 'hearts' ? '♥' : '';
       for (let i = 0; i < n; i += 1) {
         const angle = scroll ? (kind === 'up' ? -90 : 90) + (i - (n - 1) / 2) * 14 : (360 / n) * i + Math.random() * 20;
-        const piece = part(style.click === 'stars' ? 'wfx-star' : 'wfx-bit', style.click === 'stars' ? '✦' : '');
+        const piece = part(style.click === 'confetti' ? 'wfx-bit' : `wfx-star${style.click === 'hearts' ? ' wfx-heart' : ''}`, glyph);
         piece.style.setProperty('--a', `${angle}deg`);
         piece.style.setProperty('--d', `${(scroll ? 26 : 22) + Math.random() * 12}px`);
         if (style.click === 'confetti') piece.style.setProperty('--c', RAINBOW(i * 3 + Math.floor(Math.random() * 9)));
         else if (kind === 'right' && i % 2) piece.style.setProperty('--c', '#ffffff');
         mark.append(piece);
       }
+    } else if (style.click === 'rays') {
+      // Raios saindo (rodinha: só pra cima ou pra baixo).
+      const n = scroll ? 3 : kind === 'right' ? 12 : 8;
+      for (let i = 0; i < n; i += 1) {
+        const ray = part('wfx-ray');
+        const angle = scroll ? (kind === 'up' ? -90 : 90) + (i - 1) * 28 : (360 / n) * i;
+        ray.style.setProperty('--a', `${angle}deg`);
+        if (kind === 'middle' && i % 2) ray.style.setProperty('--c', '#ffffff');
+        mark.append(ray);
+      }
+    } else if (style.click === 'boom') {
+      mark.append(part('wfx-boom-ring'), part('wfx-boom', scroll ? (kind === 'up' ? '💨' : '💫') : kind === 'right' ? '💢' : '💥'));
     } else if (style.click === 'pop') {
       mark.append(part('wfx-bubble', POP_WORDS[kind] || 'CLICK!'));
     }
@@ -411,6 +607,21 @@
       mark.append(part('wfx-wave'), part('wfx-wave wfx-wave-2'), part('wfx-wave wfx-wave-3'), part('wfx-tg-dot'));
     } else if (style.ping === 'emoji') {
       mark.append(part('wfx-ring-static'), part('wfx-emoji', EMOJIS[style.emoji] || EMOJIS.eyes));
+    } else if (style.ping === 'pin') {
+      const pin = part('wfx-pin');
+      pin.innerHTML = '<svg viewBox="0 0 24 30" aria-hidden="true"><path d="M12 1.5a8 8 0 0 0-8 8c0 6 8 18 8 18s8-12 8-18a8 8 0 0 0-8-8z" fill="currentColor" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="9.6" r="3" fill="#fff"/></svg>';
+      mark.append(part('wfx-pin-shadow'), pin);
+    } else if (style.ping === 'flag') {
+      const flag = part('wfx-flag');
+      flag.innerHTML = '<svg viewBox="0 0 24 32" aria-hidden="true"><path d="M3.5 31V2" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/><path d="M3.5 31V2" stroke="#6b4a2b" stroke-width="1.6" stroke-linecap="round"/><path class="wfx-flag-cloth" d="M4.5 3c4-2 7 2 11 0s5 0 6 1v10c-1-1-2-3-6-1s-7-2-11 0z" fill="currentColor" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+      mark.append(part('wfx-ring-static'), flag);
+    } else if (style.ping === 'image' && style.pingImg) {
+      const img = document.createElement('img');
+      img.className = 'wfx-ping-img';
+      img.alt = '';
+      img.draggable = false;
+      img.src = style.pingImg;
+      mark.append(part('wfx-ring-static'), img);
     }
     if (name) mark.append(part('wfx-ping-name', name));
     mark.addEventListener('animationend', (e) => { if (e.target === mark) mark.remove(); });
@@ -427,6 +638,8 @@
     bell: [[1567.98, 0, 0.5, { gain: 0.05 }], [2349.32, 0, 0.35, { gain: 0.025 }], [1318.51, 0.09, 0.45, { gain: 0.035 }]],
     boing: [[180, 0, 0.32, { slideTo: 620, type: 'triangle', gain: 0.09 }], [620, 0.3, 0.12, { slideTo: 380, type: 'triangle', gain: 0.05 }]],
     whistle: [[1200, 0, 0.14, { slideTo: 2400, gain: 0.05 }], [2400, 0.15, 0.18, { slideTo: 1500, gain: 0.05 }]],
+    coin: [[987.77, 0, 0.08, { type: 'square', gain: 0.035 }], [1318.51, 0.08, 0.28, { type: 'square', gain: 0.035 }]],
+    laser: [[1800, 0, 0.22, { slideTo: 160, type: 'sawtooth', gain: 0.04 }]],
     none: [],
   };
   let audio = null;
@@ -600,13 +813,83 @@
       path.style.stroke = `url(#${id})`;
     }
     const trail = kind === 'fade' ? fadeTrail(svg, path, pathFor) : null;
+    // Contorno: o traço na cor com um miolo branco por cima.
+    let inner = null;
+    if (kind === 'outline') {
+      svg.style.setProperty('--bw', String(WIDTHS[style.width].k * 1.7));
+      inner = document.createElementNS(SVG_NS, 'path');
+      inner.setAttribute('vector-effect', 'non-scaling-stroke');
+      inner.setAttribute('class', 'wfx-inner');
+      inner.style.stroke = '#ffffff';
+      svg.append(inner);
+    }
+    // Flecha: a ponta acompanha o fim do traço.
+    let head = null;
+    if (kind === 'arrow') {
+      head = document.createElementNS(SVG_NS, 'path');
+      head.setAttribute('vector-effect', 'non-scaling-stroke');
+      head.setAttribute('class', 'wfx-head');
+      head.style.fill = color;
+      head.style.stroke = color;
+      head.style.strokeLinejoin = 'round';
+      svg.append(head);
+    }
+    const glitter = kind === 'glitter' ? {} : null;
+    let box = null; // tamanho do traço e onde ele está na camada (lido uma vez)
+    let width = 0; // grossura do traço em px (lida uma vez)
+    const measure = () => {
+      if (box || !svg.isConnected) return box;
+      const r = svg.getBoundingClientRect();
+      const parent = svg.parentNode && svg.parentNode.getBoundingClientRect ? svg.parentNode.getBoundingClientRect() : r;
+      box = { w: r.width || 1, h: r.height || 1, x: r.left - parent.left, y: r.top - parent.top };
+      width = parseFloat(getComputedStyle(path).strokeWidth) || 4;
+      if (inner) inner.style.strokeWidth = `${Math.max(1.2, width * 0.42)}px`;
+      return box;
+    };
     return {
       update(points) {
         if (trail) {
           trail.update(points);
           return;
         }
-        path.setAttribute('d', pathFor(points));
+        const d = pathFor(points);
+        path.setAttribute('d', d);
+        if (inner) {
+          measure();
+          inner.setAttribute('d', d);
+        }
+        if (head && points.length >= 4 && measure()) {
+          // Direção do fim do traço (em px de verdade: o desenho estica em x e y).
+          const n = points.length;
+          const ex = points[n - 2] * box.w;
+          const ey = points[n - 1] * box.h;
+          let dx = 0;
+          let dy = 0;
+          for (let i = n - 4; i >= 0; i -= 2) {
+            dx = ex - points[i] * box.w;
+            dy = ey - points[i + 1] * box.h;
+            if (Math.hypot(dx, dy) >= 10) break;
+          }
+          const len = Math.hypot(dx, dy);
+          if (len > 0.5) {
+            const ux = dx / len;
+            const uy = dy / len;
+            const size = Math.max(11, width * 3.2);
+            const wing = (sign) => {
+              const a = Math.PI - sign * 0.5; // ±~29° pra trás
+              const wx = ex + size * (ux * Math.cos(a) - uy * Math.sin(a));
+              const wy = ey + size * (ux * Math.sin(a) + uy * Math.cos(a));
+              return `${(wx / box.w).toFixed(4)} ${(wy / box.h).toFixed(4)}`;
+            };
+            const tip = `${((ex + ux * width * 0.6) / box.w).toFixed(4)} ${((ey + uy * width * 0.6) / box.h).toFixed(4)}`;
+            head.setAttribute('d', `M${tip}L${wing(1)}L${wing(-1)}Z`);
+          }
+        }
+        if (glitter && points.length >= 2 && measure()) {
+          // Purpurina: brilhinhos coloridos caindo do traço.
+          const n = points.length;
+          sprinkle(svg.parentNode, glitter, box.x + points[n - 2] * box.w, box.y + points[n - 1] * box.h);
+        }
         if (gradient) {
           let x1 = 1;
           let y1 = 1;
@@ -626,6 +909,33 @@
         }
       },
     };
+  }
+
+  // Brilhinhos da purpurina (as mesmas partículas do rastro, coloridas, no máximo ~25/s).
+  function sprinkle(layer, state, x, y) {
+    if (!layer) return;
+    const now = performance.now();
+    if (now - (state.at || 0) < 40) return;
+    state.at = now;
+    state.n = (state.n || 0) + 1;
+    const count = alive.get(layer) || 0;
+    if (count > 70) return;
+    alive.set(layer, count + 1);
+    const p = document.createElement('span');
+    p.className = 'wfx-p wfx-p-glitter';
+    p.textContent = state.n % 3 ? '✦' : '✧';
+    p.style.left = `${x}px`;
+    p.style.top = `${y}px`;
+    p.style.setProperty('--c', RAINBOW(state.n * 2));
+    p.style.setProperty('--dx', `${(Math.random() - 0.5) * 16}px`);
+    p.style.setProperty('--dy', `${8 + Math.random() * 14}px`);
+    p.style.setProperty('--s', String(0.6 + Math.random() * 0.6));
+    p.style.setProperty('--r', `${Math.round(Math.random() * 160 - 80)}deg`);
+    p.addEventListener('animationend', () => {
+      p.remove();
+      alive.set(layer, Math.max(0, (alive.get(layer) || 1) - 1));
+    }, { once: true });
+    layer.append(p);
   }
 
   // ---------- editor (perfil da sala e Configurações do app) ----------
@@ -687,7 +997,7 @@
     sections.append(packs);
 
     const groups = [];
-    function group(label, key, entries, { icon, onPick, wide } = {}) {
+    function group(label, key, entries, { icon, onPick, wide, beforePick } = {}) {
       const row = el('div', 'wfx-ed-row');
       row.append(el('div', 'wfx-ed-label', label));
       const list = el('div', `wfx-ed-chips${wide ? ' wfx-ed-wide' : ''}`);
@@ -703,6 +1013,7 @@
         }
         btn.append(el('span', 'wfx-ed-text', text));
         btn.addEventListener('click', () => {
+          if (beforePick && beforePick(id) === false) return;
           set({ [key]: id });
           if (onPick) onPick(id);
         });
@@ -719,11 +1030,121 @@
       return span;
     };
 
-    group('Setinha', 'skin', Object.entries(SKINS).map(([id, s]) => [id, s.label]), { icon: (id) => swatch(skinMarkup(id)), onPick: () => demo('move') });
-    group('Tamanho', 'size', Object.entries(SIZES).map(([id, s]) => [id, s.label]), { onPick: () => demo('move') });
+    // Imagens próprias (setinha e ping): só aparecem se a página souber mandar (opts.images).
+    const images = opts.images || null;
+    const fileInput = el('input');
+    fileInput.type = 'file';
+    fileInput.hidden = true;
+    let fileKind = null;
+    container.append(fileInput);
+    const pickFile = (kind) => {
+      if (!images) return;
+      fileKind = kind;
+      fileInput.accept = kind === 'cursor' ? '.png,.gif,.webp,.cur,.ani,image/png,image/gif,image/webp' : '.png,.gif,.webp,.jpg,.jpeg,image/png,image/gif,image/webp,image/jpeg';
+      fileInput.value = '';
+      fileInput.click();
+    };
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      const kind = fileKind;
+      if (!file || !kind) return;
+      const status = kind === 'cursor' ? skinStatus : pingStatus;
+      status.textContent = 'Enviando…';
+      status.classList.remove('wfx-ed-error');
+      let res;
+      try {
+        res = await images.upload(kind, file);
+      } catch (err) {
+        res = { error: (err && err.message) || 'Não deu pra usar essa imagem.' };
+      }
+      if (!res || res.error) {
+        status.textContent = (res && res.error) || 'Não deu pra usar essa imagem.';
+        status.classList.add('wfx-ed-error');
+        return;
+      }
+      status.textContent = '';
+      if (kind === 'cursor') set({ skin: 'custom', hx: res.hx || 0, hy: res.hy || 0, keepCustom: true });
+      else set({ ping: 'image', keepCustom: true });
+      demo(kind === 'cursor' ? 'move' : 'ping');
+    });
+    const thumb = (url) => {
+      const span = el('span', 'wfx-ed-icon wfx-ed-thumb');
+      if (url) {
+        const img = el('img');
+        img.alt = '';
+        img.src = url;
+        span.append(img);
+      } else span.textContent = '+';
+      return span;
+    };
+
+    const skinEntries = Object.entries(SKINS).map(([id, sk]) => [id, sk.label]);
+    if (images) skinEntries.push(['custom', 'Imagem própria']);
+    const skinRow = group('Setinha', 'skin', skinEntries, {
+      icon: (id) => (id === 'custom' ? thumb(null) : swatch(skinMarkup(id))),
+      beforePick: (id) => {
+        if (id === 'custom' && !current().img) {
+          pickFile('cursor');
+          return false;
+        }
+        return true;
+      },
+      onPick: () => demo('move'),
+    });
+    // A sua imagem: trocar, tirar e marcar a ponta (onde o clique cai).
+    const customRow = el('div', 'wfx-ed-row wfx-ed-custom wfx-ed-custom-cursor');
+    customRow.append(el('div', 'wfx-ed-label', 'Sua setinha'));
+    const customBody = el('div', 'wfx-ed-custom-body');
+    const hotBox = el('div', 'wfx-ed-hot');
+    hotBox.title = 'Clique na imagem pra marcar a ponta do mouse';
+    const hotImg = el('img');
+    hotImg.alt = 'A sua setinha';
+    hotImg.draggable = false;
+    const hotMark = el('span', 'wfx-ed-hotmark');
+    hotBox.append(hotImg, hotMark);
+    hotBox.addEventListener('click', (e) => {
+      const r = hotImg.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const hx = Math.round(Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)));
+      const hy = Math.round(Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)));
+      set({ hx, hy });
+      demo('click');
+    });
+    const customSide = el('div', 'wfx-ed-custom-side');
+    customSide.append(el('p', 'wfx-ed-note', 'PNG, GIF (animado também), .cur ou .ani do Windows. Clique na imagem pra marcar onde fica a ponta.'));
+    const customBtns = el('div', 'wfx-ed-chips');
+    const btnSkinFile = el('button', 'wfx-ed-chip', 'Enviar imagem…');
+    btnSkinFile.type = 'button';
+    btnSkinFile.addEventListener('click', () => pickFile('cursor'));
+    const btnSkinRemove = el('button', 'wfx-ed-chip', 'Tirar');
+    btnSkinRemove.type = 'button';
+    btnSkinRemove.addEventListener('click', async () => {
+      if (images && images.remove) await images.remove('cursor');
+      set({ skin: 'classic', hx: 0, hy: 0 });
+    });
+    customBtns.append(btnSkinFile, btnSkinRemove);
+    const skinStatus = el('p', 'wfx-ed-note wfx-ed-status');
+    skinStatus.setAttribute('role', 'status');
+    customSide.append(customBtns, skinStatus);
+    customBody.append(hotBox, customSide);
+    customRow.append(customBody);
+    if (images) sections.append(customRow);
+
+    group('Tamanho', 'size', Object.entries(SIZES).map(([id, sz]) => [id, sz.label]), { onPick: () => demo('move') });
+    const outlineEntries = [...Object.entries(OUTLINES).map(([id, o]) => [id, o.label]), ...OUTLINE_COLORS.map((hex) => [hex, `#${hex}`])];
+    const outlineRow = group('Contorno', 'outline', outlineEntries, {
+      icon: (id) => {
+        const dot = el('span', 'wfx-ed-icon wfx-ed-dot');
+        dot.style.background = outlineHex(id);
+        return dot;
+      },
+      onPick: () => demo('move'),
+    });
+    outlineRow.classList.add('wfx-ed-outlines');
     group('Enfeite', 'deco', Object.entries(DECOS).map(([id, d]) => [id, d.label]), { icon: (id) => (id === 'none' ? null : swatch(decoMarkup(id))), onPick: () => demo('move') });
     group('Efeito na setinha', 'aura', Object.entries(AURAS), { onPick: () => demo('move') });
-    group('Rastro', 'trail', Object.entries(TRAILS), { icon: (id) => (id === 'none' ? null : el('span', `wfx-ed-icon wfx-ed-trail wfx-ed-trail-${id}`, id === 'hearts' ? '♥' : id === 'sparkles' ? '✦' : '')), onPick: () => demo('trail') });
+    const trailGlyph = { hearts: '♥', sparkles: '✦', snow: '❄', notes: '♪' };
+    group('Rastro', 'trail', Object.entries(TRAILS), { icon: (id) => (id === 'none' ? null : el('span', `wfx-ed-icon wfx-ed-trail wfx-ed-trail-${id}`, trailGlyph[id] || '')), onPick: () => demo('trail') });
     // Nome junto do mouse.
     const nameRow = el('div', 'wfx-ed-row');
     nameRow.append(el('div', 'wfx-ed-label', 'Nome junto'));
@@ -735,9 +1156,45 @@
     nameRow.append(nameLabel);
     sections.append(nameRow);
     group('Clique e rodinha', 'click', Object.entries(CLICKS), { onPick: () => demo('click') });
-    group('Ping (Alt + clique)', 'ping', Object.entries(PINGS), { onPick: () => demo('ping') });
+    const pingEntries = Object.entries(PINGS).filter(([id]) => id !== 'image' || images);
+    group('Ping (Alt + clique)', 'ping', pingEntries, {
+      icon: (id) => (id === 'image' ? thumb(null) : null),
+      beforePick: (id) => {
+        if (id === 'image' && !current().pingImg) {
+          pickFile('ping');
+          return false;
+        }
+        return true;
+      },
+      onPick: () => demo('ping'),
+    });
     const emojiRow = group('Emoji do ping', 'emoji', Object.entries(EMOJIS).map(([id, e]) => [id, e]), { onPick: () => demo('ping') });
     emojiRow.classList.add('wfx-ed-emojis');
+    // A imagem do ping.
+    const pingRow = el('div', 'wfx-ed-row wfx-ed-custom wfx-ed-custom-ping');
+    pingRow.append(el('div', 'wfx-ed-label', 'Imagem do ping'));
+    const pingBody = el('div', 'wfx-ed-custom-body');
+    const pingThumb = el('img', 'wfx-ed-pingthumb');
+    pingThumb.alt = 'A imagem do seu ping';
+    const pingSide = el('div', 'wfx-ed-custom-side');
+    pingSide.append(el('p', 'wfx-ed-note', 'PNG, JPG, WebP ou GIF: aparece pulando onde você der o ping.'));
+    const pingBtns = el('div', 'wfx-ed-chips');
+    const btnPingFile = el('button', 'wfx-ed-chip', 'Enviar imagem…');
+    btnPingFile.type = 'button';
+    btnPingFile.addEventListener('click', () => pickFile('ping'));
+    const btnPingRemove = el('button', 'wfx-ed-chip', 'Tirar');
+    btnPingRemove.type = 'button';
+    btnPingRemove.addEventListener('click', async () => {
+      if (images && images.remove) await images.remove('ping');
+      set({ ping: 'emoji' });
+    });
+    pingBtns.append(btnPingFile, btnPingRemove);
+    const pingStatus = el('p', 'wfx-ed-note wfx-ed-status');
+    pingStatus.setAttribute('role', 'status');
+    pingSide.append(pingBtns, pingStatus);
+    pingBody.append(pingThumb, pingSide);
+    pingRow.append(pingBody);
+    if (images) sections.append(pingRow);
     group('Som do ping', 'pingSound', Object.entries(PING_SOUNDS), { onPick: (id) => playPing(id) });
     group('Pincel (Alt + arrastar)', 'brush', Object.entries(BRUSHES), { onPick: () => demo('draw') });
     group('Espessura', 'width', Object.entries(WIDTHS).map(([id, w]) => [id, w.label]), { onPick: () => demo('draw') });
@@ -755,6 +1212,17 @@
       }
       emojiRow.hidden = style.ping !== 'emoji';
       nameBox.checked = style.name;
+      // Setinha própria: a miniatura no botão e o quadro pra marcar a ponta.
+      const skinThumb = skinRow.querySelector('[data-value="custom"] .wfx-ed-thumb');
+      if (skinThumb) skinThumb.replaceWith(thumb(style.img || null));
+      customRow.hidden = style.skin !== 'custom';
+      if (style.img && hotImg.getAttribute('src') !== style.img) hotImg.src = style.img;
+      hotMark.style.left = `${style.hx}%`;
+      hotMark.style.top = `${style.hy}%`;
+      const pingChipThumb = sections.querySelector('[data-key="ping"][data-value="image"] .wfx-ed-thumb');
+      if (pingChipThumb) pingChipThumb.replaceWith(thumb(style.pingImg || null));
+      pingRow.hidden = style.ping !== 'image';
+      if (style.pingImg && pingThumb.getAttribute('src') !== style.pingImg) pingThumb.src = style.pingImg;
       for (const btn of packList.children) {
         const pack = normalize({ ...DEFAULTS, ...PACKS[btn.dataset.pack].style });
         const on = Object.keys(DEFAULTS).every((key) => pack[key] === style[key]);
@@ -912,8 +1380,8 @@
   }
 
   const api = {
-    DEFAULTS, SKINS, SIZES, DECOS, AURAS, TRAILS, CLICKS, PINGS, EMOJIS, PING_SOUNDS, BRUSHES, WIDTHS, PACKS,
-    normalize, isDefault, skinMarkup, decoMarkup, applyCursor, cursorImage, trail, click, ping, playPing, brush, editor,
+    DEFAULTS, SKINS, SIZES, DECOS, AURAS, TRAILS, CLICKS, PINGS, EMOJIS, PING_SOUNDS, BRUSHES, WIDTHS, PACKS, OUTLINES, OUTLINE_COLORS,
+    normalize, isDefault, outlineHex, skinMarkup, decoMarkup, applyCursor, cursorImage, customBox, trail, click, ping, playPing, brush, editor,
   };
   if (typeof window !== 'undefined') window.WssFx = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

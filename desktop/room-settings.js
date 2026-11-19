@@ -251,6 +251,13 @@ function validateRoomAction(value) {
     return { type: value.type, color: value.color === null ? null : value.color.toLowerCase(), commit: value.commit !== false };
   }
   if (['photo-remove', 'diagnostics', 'check-updates'].includes(value.type)) return { type: value.type };
+  // Imagens próprias do estilo (setinha e ping): a sala lê o arquivo (.cur, .ani, PNG...) e
+  // reduz; aqui só o tamanho e o formato do pedido.
+  if (value.type === 'fx-image-remove' && ['cursor', 'ping'].includes(value.kind)) return { type: value.type, kind: value.kind };
+  if (value.type === 'fx-image' && ['cursor', 'ping'].includes(value.kind) && typeof value.data === 'string'
+    && value.data.length <= 16777216 && /^[A-Za-z0-9+/]*={0,2}$/.test(value.data) && Buffer.from(value.data, 'base64').length > 0) {
+    return { type: value.type, kind: value.kind, data: value.data, name: String(value.name || 'imagem').slice(0, 120), mime: /^[a-z]+\/[a-z0-9.+-]{1,60}$/i.test(value.mime || '') ? value.mime : '' };
+  }
   if (value.type === 'photo' && ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(value.mime)
     && typeof value.data === 'string' && value.data.length <= 6990510 && /^[A-Za-z0-9+/]*={0,2}$/.test(value.data)
     && Buffer.from(value.data, 'base64').length > 0 && Buffer.from(value.data, 'base64').length <= 5 * 1024 * 1024) {
@@ -281,7 +288,7 @@ function createRoomSettings({ getContents, isServer }) {
     const result = Promise.race([task, new Promise((_, reject) => {
       cancel = () => reject(new Error('Operação cancelada.'));
       waiting.add(cancel);
-      timer = setTimeout(() => reject(new Error('A operação demorou demais. Tente novamente.')), lane === 'photo' ? 70000 : 25000);
+      timer = setTimeout(() => reject(new Error('A operação demorou demais. Tente novamente.')), lane === 'photo' || lane === 'fx-image' ? 70000 : 25000);
     })]).finally(() => { clearTimeout(timer); waiting.delete(cancel); });
     if (lane) {
       const tail = result.catch(() => {});
@@ -294,7 +301,7 @@ function createRoomSettings({ getContents, isServer }) {
     read: (section) => run(readRoomSettings, ['diagnostics', 'obs', 'media'].includes(section) ? section : undefined),
     action(value) {
       const command = validateRoomAction(value);
-      const lane = command.type.startsWith('photo') ? 'photo' : command.type === 'color' ? 'color' : command.type === 'control' ? undefined : command.type;
+      const lane = command.type.startsWith('photo') ? 'photo' : command.type.startsWith('fx-image') ? 'fx-image' : command.type === 'color' ? 'color' : command.type === 'control' ? undefined : command.type;
       return run(applyRoomAction, command, lane);
     },
     cancel() { generation++; for (const cancel of waiting) cancel(); lanes.clear(); },
