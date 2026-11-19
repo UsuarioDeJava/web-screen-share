@@ -4,3 +4,7 @@ npm-debug.log*
 *.crt
 *.key
 desktop/dist/
+
+# Runtime local (perfis, certificados e logs ficam fora do Git)
+local-server/desktop-profile/
+local-server/*.log

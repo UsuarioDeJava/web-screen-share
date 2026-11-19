@@ -94,6 +94,7 @@ api.onLog((value) => {
 
 async function load() {
   const value = await api.read();
+  $('gamepad-client-path').textContent = `Componente para receber gamepads: ${value.gamepadClientPath || 'indisponível'}. Reinicie o aplicativo após configurar o driver e a DLL.`;
   if (!initialized || !dirty) {
     $('server').value = value.server || '';
     $('fullscreen').value = value.preferences.fullscreen;
@@ -174,16 +175,25 @@ async function refreshRoom() {
   $('room-sounds').checked = roomState.sounds;
   $('share-cursor').disabled = $('show-cursors').disabled = !roomState.controlsAvailable;
   renderColor();
+  $('gamepad-native-status').textContent = roomState.gamepad?.available ? 'Gamepad virtual disponível. Até quatro participantes com gamepad.' : roomState.gamepad?.reason || 'Atualize o aplicativo e o servidor para receber gamepads.';
   $('control-note').textContent = roomState.controlNote || 'Escolha quem pode controlar seu mouse e teclado.';
   const people = document.createDocumentFragment();
   for (const person of roomState.controlPeople || []) {
     const row = document.createElement('div'); row.className = 'control-person';
     const label = document.createElement('span'); label.textContent = `${person.name}${person.active ? ' · controlando' : ''}`;
     if (person.active) label.className = 'active';
+    const devices = {};
+    row.append(label);
+    for (const [key, title] of [['keyboard', 'Teclado'], ['mouse', 'Mouse'], ['gamepad', 'Gamepad']]) {
+      const field = document.createElement('label'); field.textContent = title + ' '; const input = document.createElement('input'); input.type = 'checkbox'; input.checked = person.devices?.[key] === true;
+      input.disabled = person.disabled || (key === 'gamepad' && !roomState.gamepad?.available); devices[key] = input; field.append(input); row.append(field);
+    }
     const button = document.createElement('button'); button.type = 'button'; button.className = 'btn';
-    button.textContent = person.active ? 'Revogar controle' : 'Permitir controle'; button.disabled = person.disabled;
-    button.addEventListener('click', () => roomAction({ type: 'control', name: person.name, grant: !person.active }));
-    row.append(label, button); people.append(row);
+    button.textContent = person.active ? 'Aplicar permissões' : 'Permitir'; button.disabled = person.disabled;
+    button.addEventListener('click', () => roomAction({ type: 'control', name: person.name, grant: true, devices: Object.fromEntries(Object.entries(devices).map(([k, input]) => [k, input.checked])) }));
+    row.append(button);
+    if (person.active) { const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'btn'; revoke.textContent = 'Revogar'; revoke.addEventListener('click', () => roomAction({ type: 'control', name: person.name, grant: false })); row.append(revoke); }
+    people.append(row);
   }
   $('control-people').replaceChildren(people);
   const keys = document.createDocumentFragment();
@@ -529,3 +539,4 @@ function renderFx() {
     });
   } else fxEditor.refresh();
 }
+window.WssGamepadClient.start({ panel: $('gamepad-config'), canSend: () => false, send: () => {} });

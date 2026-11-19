@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktopSettings', {
+  readGamepadProfiles: () => ipcRenderer.invoke('settings:gamepad-profiles'),
+  saveGamepadProfile: (value) => ipcRenderer.invoke('settings:gamepad-profile-save', value),
   read: () => ipcRenderer.invoke('settings:read'),
   save: (value) => ipcRenderer.invoke('settings:save', value),
   restart: () => ipcRenderer.invoke('settings:restart'),

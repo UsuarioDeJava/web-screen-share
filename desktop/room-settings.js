@@ -246,7 +246,7 @@ function validateRoomAction(value) {
   if (value.type === 'cursor' && ['share', 'show'].includes(value.field) && typeof value.enabled === 'boolean') return { type: value.type, field: value.field, enabled: value.enabled };
   if (value.type === 'sounds' && typeof value.enabled === 'boolean') return { type: value.type, enabled: value.enabled };
   if (value.type === 'obs-display' && typeof value.value === 'string' && (value.value === 'off' || /^-?\d{1,20}$/.test(value.value))) return { type: value.type, value: value.value };
-  if (value.type === 'control' && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 80 && typeof value.grant === 'boolean') return { type: value.type, name: value.name, grant: value.grant };
+  if (value.type === 'control' && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 80 && typeof value.grant === 'boolean') return { type: value.type, name: value.name, grant: value.grant, ...(value.devices ? { devices: require('./shared/gamepad').permissions(value.devices) } : {}) };
   if (value.type === 'color' && (value.color === null || /^#[0-9a-f]{6}$/i.test(value.color))) {
     return { type: value.type, color: value.color === null ? null : value.color.toLowerCase(), commit: value.commit !== false };
   }
