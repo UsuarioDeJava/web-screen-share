@@ -5,6 +5,16 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 1.8.1 — 2026-11-19
+
+- **Rolagem pros lados nas animações**: Shift + rodinha (e a rolagem lateral do touchpad)
+  agora aparece como as outras rolagens, pra esquerda ou pra direita, em todos os estilos
+  de clique (mini mouse com a setinha do lado, ondinha, estrelinhas, corações, confete,
+  raios, explosão e quadrinhos). Antes ela era ignorada.
+- **Controle remoto**: rolar pros lados controlando alguém (Shift + rodinha ou touchpad)
+  agora rola pros lados no PC de lá; antes o Chrome transformava Shift + rodinha em
+  rolagem lateral e o controle só mandava a vertical, então nada acontecia.
+
 ## 1.8.0 — 2026-11-19
 
 ### Correções

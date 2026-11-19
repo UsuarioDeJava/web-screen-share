@@ -74,6 +74,7 @@ function windowsInput() {
     move: (x, y) => SetCursorPos(Math.round(x), Math.round(y)),
     button: (button, down) => mouseEvent(BUTTONS[button][down ? 0 : 1], 0, 0, 0, 0),
     wheel: (notches) => mouseEvent(0x0800, 0, 0, Math.round(-notches * 120), 0),
+    hwheel: (notches) => mouseEvent(0x1000, 0, 0, Math.round(notches * 120), 0), // MOUSEEVENTF_HWHEEL: + = direita
     key: (code, down) => {
       const [scan, extended] = SCAN[code];
       keybdEvent(0, scan, 0x0008 | (extended ? 0x0001 : 0) | (down ? 0 : 0x0002), 0);
@@ -100,6 +101,9 @@ function xdotoolInput() {
     button: (button, down) => run(`${down ? 'mousedown' : 'mouseup'} ${[1, 2, 3][button]}`),
     wheel: (notches) => {
       for (let i = 0; i < Math.min(10, Math.abs(Math.round(notches))); i += 1) run(`click ${notches > 0 ? 5 : 4}`);
+    },
+    hwheel: (notches) => {
+      for (let i = 0; i < Math.min(10, Math.abs(Math.round(notches))); i += 1) run(`click ${notches > 0 ? 7 : 6}`);
     },
     key: (code, down) => run(`${down ? 'keydown' : 'keyup'} ${XKEYS[code]}`),
     supports: (code) => Boolean(XKEYS[code]),
@@ -129,6 +133,7 @@ function createInput() {
       backend.button(button, down);
     },
     wheel: (notches) => backend.wheel(Math.max(-10, Math.min(10, notches))),
+    hwheel: (notches) => backend.hwheel(Math.max(-10, Math.min(10, notches))),
     key(code, down) {
       if (!backend.supports(code)) return;
       if (down) keys.add(code);

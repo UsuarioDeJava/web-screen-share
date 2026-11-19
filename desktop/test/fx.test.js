@@ -60,3 +60,14 @@ test('Configurações do app: o estilo só passa validado', () => {
   assert.throws(() => validateRoomAction({ type: 'style', style: [] }));
   assert.throws(() => validateRoomAction({ type: 'style' }));
 });
+
+test('rolagem: pra cima/baixo e pros lados (Shift + rodinha, touchpad)', () => {
+  assert.equal(fx.scrollKind({ deltaY: -100, deltaX: 0 }), 'up');
+  assert.equal(fx.scrollKind({ deltaY: 100, deltaX: 0 }), 'down');
+  assert.equal(fx.scrollKind({ deltaY: 0, deltaX: -100 }), 'sleft'); // o navegador já virou deltaX
+  assert.equal(fx.scrollKind({ deltaY: 0, deltaX: 100 }), 'sright');
+  assert.equal(fx.scrollKind({ deltaY: 100, deltaX: 0, shiftKey: true }), 'sright'); // não virou: Shift diz
+  assert.equal(fx.scrollKind({ deltaY: -100, deltaX: 0, shiftKey: true }), 'sleft');
+  assert.equal(fx.scrollKind({ deltaY: 10, deltaX: -60 }), 'sleft'); // touchpad meio de lado: o que pesa mais
+  assert.equal(fx.scrollKind({ deltaY: 0, deltaX: 0 }), null);
+});

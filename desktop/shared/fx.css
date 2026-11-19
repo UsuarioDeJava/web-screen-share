@@ -141,8 +141,8 @@
 .wfx-click-mouse .m-part { fill: transparent; stroke: none; }
 .wfx-click-mouse .m-line { fill: none; stroke: #fff; stroke-width: 1.1; }
 .wfx-click-mouse .m-arrow { fill: none; stroke: var(--c); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
-.wfx-k-left .m-left, .wfx-k-right .m-right, .wfx-k-middle .m-wheel, .wfx-k-up .m-wheel, .wfx-k-down .m-wheel { fill: var(--c); }
-.wfx-k-up .m-up, .wfx-k-down .m-down { opacity: 1; }
+.wfx-k-left .m-left, .wfx-k-right .m-right, .wfx-k-middle .m-wheel, .wfx-k-up .m-wheel, .wfx-k-down .m-wheel, .wfx-k-sleft .m-wheel, .wfx-k-sright .m-wheel { fill: var(--c); }
+.wfx-k-up .m-up, .wfx-k-down .m-down, .wfx-k-sleft .m-sl, .wfx-k-sright .m-sr { opacity: 1; }
 .wfx-ring {
   position: absolute;
   left: -11px;
@@ -167,6 +167,11 @@
   animation: wfx-chev-up 0.6s ease-out both;
 }
 .wfx-k-down .wfx-chevron { top: 4px; animation-name: wfx-chev-down; }
+.wfx-k-sleft .wfx-chevron { left: -18px; top: -6px; animation-name: wfx-chev-left; }
+.wfx-k-sright .wfx-chevron { left: 10px; top: -6px; animation-name: wfx-chev-right; }
+@keyframes wfx-chev-left { from { opacity: 1; transform: translateX(6px); } to { opacity: 0; transform: translateX(-14px); } }
+@keyframes wfx-chev-right { from { opacity: 1; transform: translateX(-6px); } to { opacity: 0; transform: translateX(14px); } }
+.wfx-k-sleft .wfx-boom { scale: -1 1; } /* o 💨 sopra pra esquerda */
 @keyframes wfx-chev-up { from { opacity: 1; transform: translateY(6px); } to { opacity: 0; transform: translateY(-14px); } }
 @keyframes wfx-chev-down { from { opacity: 1; transform: translateY(-6px); } to { opacity: 0; transform: translateY(14px); } }
 .wfx-star, .wfx-bit {

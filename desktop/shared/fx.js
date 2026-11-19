@@ -507,18 +507,31 @@
 
   // ---------- clique e rolagem ----------
 
-  const POP_WORDS = { left: 'CLICK!', right: 'CLACK!', middle: 'TOC!', up: 'VUSH ▲', down: 'VUSH ▼' };
+  const POP_WORDS = { left: 'CLICK!', right: 'CLACK!', middle: 'TOC!', up: 'VUSH ▲', down: 'VUSH ▼', sleft: '◀ VUSH', sright: 'VUSH ▶' };
+  // Rolagem: pra onde (graus; 0 = direita). sleft/sright: pros lados (Shift + rodinha, touchpad).
+  const SCROLL_ANGLE = { up: -90, down: 90, sleft: 180, sright: 0 };
+  const SCROLL_GLYPH = { up: '▲', down: '▼', sleft: '◀', sright: '▶' };
 
   // A animação do clique no mouse da pessoa (node: o elemento do mouse). kind: left,
   // middle, right, up, down. Devolve false pro estilo "mini mouse" (cada página desenha o
   // dela, que já existia).
   // "Mini mouse": qual botão foi apertado (ou pra onde a rodinha girou).
-  const MINI_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true"><rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/><path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/><path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/><path class="m-line" d="M7 1v7M1 8h12"/><rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/><path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/><path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
+  const MINI_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true"><rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/><path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/><path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/><path class="m-line" d="M7 1v7M1 8h12"/><rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/><path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/><path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/><path class="m-arrow m-sl" d="M-1.5 7 -4.5 10 -1.5 13"/><path class="m-arrow m-sr" d="M15.5 7 18.5 10 15.5 13"/></svg>';
+  // O tipo de rolagem de um evento da rodinha: pra cima/baixo ou pros lados (Shift + rodinha
+  // vira rolagem lateral; alguns navegadores já mandam como deltaX, outros não).
+  function scrollKind(e) {
+    const sideways = Math.abs(e.deltaX || 0) > Math.abs(e.deltaY || 0);
+    if (sideways) return e.deltaX < 0 ? 'sleft' : 'sright';
+    if (!e.deltaY) return null;
+    if (e.shiftKey) return e.deltaY < 0 ? 'sleft' : 'sright';
+    return e.deltaY < 0 ? 'up' : 'down';
+  }
+
   // Cada clique (ou giro da rodinha) vira uma marquinha própria, parada no lugar onde
   // aconteceu: não segue o mouse e não apaga as anteriores (os confetes de antes terminam
   // de cair). layer: o elemento posicionado onde ela entra; left/top: CSS com a unidade.
   // opts.scale: menor/maior (a camada na tela de quem transmite usa um pouco menor).
-  const CLICK_KINDS = ['left', 'middle', 'right', 'up', 'down'];
+  const CLICK_KINDS = ['left', 'middle', 'right', 'up', 'down', 'sleft', 'sright'];
   const MAX_CLICKS = 24; // por camada, ao mesmo tempo
   function click(layer, left, top, kind, rawStyle, color, opts = {}) {
     if (!layer || !CLICK_KINDS.includes(kind)) return false;
@@ -532,12 +545,12 @@
     mark.style.top = top;
     mark.style.setProperty('--c', color);
     if (opts.scale && opts.scale !== 1) mark.style.scale = String(opts.scale);
-    const scroll = kind === 'up' || kind === 'down';
+    const scroll = Object.prototype.hasOwnProperty.call(SCROLL_ANGLE, kind);
     if (style.click === 'mouse') {
       mark.innerHTML = MINI_MOUSE;
       if (!scroll) mark.prepend(part('wfx-mm-ring'));
     } else if (style.click === 'ripple') {
-      if (scroll) mark.append(part('wfx-chevron', kind === 'up' ? '▲' : '▼'));
+      if (scroll) mark.append(part('wfx-chevron', SCROLL_GLYPH[kind]));
       else if (kind === 'middle') mark.append(part('wfx-dot'));
       else {
         mark.append(part('wfx-ring'));
@@ -547,7 +560,7 @@
       const n = style.click === 'confetti' ? 10 : 6;
       const glyph = style.click === 'stars' ? '✦' : style.click === 'hearts' ? '♥' : '';
       for (let i = 0; i < n; i += 1) {
-        const angle = scroll ? (kind === 'up' ? -90 : 90) + (i - (n - 1) / 2) * 14 : (360 / n) * i + Math.random() * 20;
+        const angle = scroll ? SCROLL_ANGLE[kind] + (i - (n - 1) / 2) * 14 : (360 / n) * i + Math.random() * 20;
         const piece = part(style.click === 'confetti' ? 'wfx-bit' : `wfx-star${style.click === 'hearts' ? ' wfx-heart' : ''}`, glyph);
         piece.style.setProperty('--a', `${angle}deg`);
         piece.style.setProperty('--d', `${(scroll ? 26 : 22) + Math.random() * 12}px`);
@@ -560,13 +573,13 @@
       const n = scroll ? 3 : kind === 'right' ? 12 : 8;
       for (let i = 0; i < n; i += 1) {
         const ray = part('wfx-ray');
-        const angle = scroll ? (kind === 'up' ? -90 : 90) + (i - 1) * 28 : (360 / n) * i;
+        const angle = scroll ? SCROLL_ANGLE[kind] + (i - 1) * 28 : (360 / n) * i;
         ray.style.setProperty('--a', `${angle}deg`);
         if (kind === 'middle' && i % 2) ray.style.setProperty('--c', '#ffffff');
         mark.append(ray);
       }
     } else if (style.click === 'boom') {
-      mark.append(part('wfx-boom-ring'), part('wfx-boom', scroll ? (kind === 'up' ? '💨' : '💫') : kind === 'right' ? '💢' : '💥'));
+      mark.append(part('wfx-boom-ring'), part('wfx-boom', scroll ? (kind === 'down' ? '💫' : '💨') : kind === 'right' ? '💢' : '💥'));
     } else if (style.click === 'pop') {
       mark.append(part('wfx-bubble', POP_WORDS[kind] || 'CLICK!'));
     }
@@ -1313,7 +1326,8 @@
     preview.addEventListener('pointercancel', release);
     preview.addEventListener('wheel', (e) => {
       e.preventDefault();
-      showClick(e.deltaY < 0 ? 'up' : 'down');
+      const kind = scrollKind(e);
+      if (kind) showClick(kind);
     }, { passive: false });
 
     function showClick(kind) {
@@ -1381,7 +1395,7 @@
 
   const api = {
     DEFAULTS, SKINS, SIZES, DECOS, AURAS, TRAILS, CLICKS, PINGS, EMOJIS, PING_SOUNDS, BRUSHES, WIDTHS, PACKS, OUTLINES, OUTLINE_COLORS,
-    normalize, isDefault, outlineHex, skinMarkup, decoMarkup, applyCursor, cursorImage, customBox, trail, click, ping, playPing, brush, editor,
+    normalize, isDefault, outlineHex, scrollKind, skinMarkup, decoMarkup, applyCursor, cursorImage, customBox, trail, click, ping, playPing, brush, editor,
   };
   if (typeof window !== 'undefined') window.WssFx = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

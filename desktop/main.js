@@ -829,7 +829,10 @@ ipcMain.on('desktop:control', (event, msg) => {
     if (recentMoves.length > 64) recentMoves.shift();
   }
   if (msg.kind === 'button') device.button(Number(msg.button), Boolean(msg.down));
-  else if (msg.kind === 'wheel' && Number.isFinite(msg.dy)) device.wheel(msg.dy);
+  else if (msg.kind === 'wheel') {
+    if (Number.isFinite(msg.dy) && msg.dy) device.wheel(msg.dy);
+    if (Number.isFinite(msg.dx) && msg.dx) device.hwheel(msg.dx); // pros lados
+  }
   else if (msg.kind === 'key' && typeof msg.code === 'string') device.key(msg.code, Boolean(msg.down));
 });
 

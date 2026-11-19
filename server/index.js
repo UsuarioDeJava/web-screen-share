@@ -740,7 +740,8 @@ io.on('connection', (socket) => {
   });
 
   const unit = (v) => Number.isFinite(v) && v >= 0 && v <= 1;
-  const CLICKS = new Set(['left', 'middle', 'right', 'up', 'down']);
+  // sleft/sright: rolagem pros lados (Shift + rodinha, touchpad).
+  const CLICKS = new Set(['left', 'middle', 'right', 'up', 'down', 'sleft', 'sright']);
 
   // Mouse de quem assiste passando por cima da transmissão: vai pra sala toda (quem
   // assiste vê nos quadros; quem transmite, pelo app, vê na tela dela).

@@ -4385,9 +4385,10 @@
     });
     let lastWheel = 0;
     s.media.addEventListener('wheel', (e) => {
-      if (!e.deltaY || performance.now() - lastWheel < 150) return;
+      const kind = Fx.scrollKind(e); // pra cima/baixo, ou pros lados (Shift + rodinha, touchpad)
+      if (!kind || performance.now() - lastWheel < 150) return;
       lastWheel = performance.now();
-      sendClick(e, e.deltaY < 0 ? 'up' : 'down');
+      sendClick(e, kind);
     }, { passive: true });
 
     // O botão em cima da transmissão: o seu mouse nela (ligado/desligado).
@@ -5050,8 +5051,10 @@
     media.addEventListener('wheel', (e) => {
       if (!mouseActive()) return;
       e.preventDefault();
-      const notches = e.deltaMode === 1 ? e.deltaY / 3 : e.deltaMode === 2 ? e.deltaY * 3 : e.deltaY / 100;
-      sendControl({ kind: 'wheel', dy: Math.round(notches * 100) / 100, ...point(e) });
+      // dx: rolagem pros lados (Shift + rodinha vira deltaX no navegador; touchpad).
+      const notches = (d) => Math.round((e.deltaMode === 1 ? d / 3 : e.deltaMode === 2 ? d * 3 : d / 100) * 100) / 100;
+      const dx = notches(e.deltaX || 0);
+      sendControl({ kind: 'wheel', dy: notches(e.deltaY || 0), ...(dx ? { dx } : {}), ...point(e) });
     }, { passive: false });
     media.addEventListener('contextmenu', (e) => {
       if (mouseActive()) e.preventDefault();

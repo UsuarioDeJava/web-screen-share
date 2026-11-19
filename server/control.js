@@ -121,6 +121,8 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
           } else if (msg.kind === 'wheel') {
             if (!Number.isFinite(msg.dy)) return;
             out.dy = Math.max(-10, Math.min(10, msg.dy));
+            // dx: rolagem pros lados (Shift + rodinha, touchpad).
+            if (Number.isFinite(msg.dx) && msg.dx) out.dx = Math.max(-10, Math.min(10, msg.dx));
           } else if (out.x === undefined) return;
         }
         io.to(owner.id).emit('control:input', out);

@@ -524,7 +524,8 @@ que o navegador não faz:
   Clicar (botão esquerdo, direito ou a rodinha) ou rolar em cima da transmissão mostra
   uma animaçãozinha parada onde a pessoa clicou (não vai junto do mouse, e um clique
   novo não apaga o anterior): um mini mouse com a parte apertada acesa (e, rolando,
-  uma setinha pra cima ou pra baixo), ou o estilo que ela escolheu. Quem assiste liga
+  uma setinha pra cima, pra baixo ou pros lados, com Shift + rodinha ou o touchpad), ou
+  o estilo que ela escolheu. Quem assiste liga
   e desliga o próprio mouse em cada transmissão, no botão da setinha em cima dela; o
   botão embaixo da lista de pessoas abre o painel **Mouse e controle**, onde quem
   transmite desliga o mouse de todo mundo.
