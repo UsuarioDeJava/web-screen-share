@@ -232,7 +232,6 @@
 
 /* ---------- pincel ---------- */
 
-.wfx-fade-seg { animation: wfx-seg 0.7s ease-in 0.3s forwards; }
 @keyframes wfx-seg { to { opacity: 0; } }
 
 /* ---------- editor (perfil e Configurações) ---------- */

@@ -450,6 +450,103 @@
     return `#${v.map((c) => Math.round(c + (255 - c) * 0.55).toString(16).padStart(2, '0')).join('')}`;
   };
 
+  // "Rastro que some": o traço vai apagando do mais velho pro mais novo. São só alguns
+  // traços fixos (um por faixa de idade, cada um mais transparente) redesenhados no máximo
+  // uma vez por quadro, sem animação por pedaço e sem o desfoque da sombra: com um
+  // elemento animado novo a cada mexida, o navegador redesenhava a imagem inteira com
+  // desfoque a cada quadro e criava/destruía camadas sem parar (o app piscava em preto).
+  const FADE_LIFE = 900;
+  const FADE_LEVELS = 5;
+  function fadeTrail(svg, path, pathFor) {
+    svg.style.filter = 'none';
+    path.setAttribute('d', '');
+    const make = () => {
+      const p = document.createElementNS(SVG_NS, 'path');
+      p.setAttribute('vector-effect', 'non-scaling-stroke');
+      svg.append(p);
+      return p;
+    };
+    const unders = [];
+    const tops = [];
+    for (let i = 0; i < FADE_LEVELS; i += 1) {
+      const p = make();
+      p.setAttribute('class', 'wfx-fade-under');
+      p.setAttribute('stroke-opacity', String(0.45 * (1 - i / FADE_LEVELS)));
+      p.style.stroke = '#000';
+      if (i) p.style.strokeLinecap = 'butt'; // emendas retas: pontas redondas sobrepostas viram bolinhas
+      unders.push(p);
+    }
+    for (let i = 0; i < FADE_LEVELS; i += 1) {
+      const p = make();
+      p.setAttribute('class', 'wfx-fade-lvl');
+      p.setAttribute('stroke-opacity', String(1 - i / FADE_LEVELS));
+      if (i) p.style.strokeLinecap = 'butt';
+      tops.push(p);
+    }
+    const pts = []; // só os pontos ainda vivos
+    const times = [];
+    let seen = 0;
+    let lastAt = 0;
+    let raf = 0;
+    let painted = 0;
+    let widthSet = false;
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    function render(t) {
+      let cut = 0;
+      while (cut < times.length && t - times[cut] > FADE_LIFE) cut += 1;
+      if (cut) {
+        times.splice(0, cut);
+        pts.splice(0, cut * 2);
+      }
+      if (!widthSet && svg.isConnected) {
+        // A sombra é um traço preto um pouco mais grosso por baixo (barato, sem desfoque).
+        const w = parseFloat(getComputedStyle(tops[0]).strokeWidth) || 4;
+        for (const p of unders) p.style.strokeWidth = `${w + 3}px`;
+        widthSet = true;
+      }
+      let end = times.length;
+      for (let i = 0; i < FADE_LEVELS; i += 1) {
+        const oldest = t - ((i + 1) * FADE_LIFE) / FADE_LEVELS;
+        let start = end;
+        while (start > 0 && times[start - 1] >= oldest) start -= 1;
+        if (i === FADE_LEVELS - 1) start = 0;
+        // Cada faixa vai até o primeiro ponto da faixa mais nova: os pedaços se emendam.
+        const stop = Math.min(times.length, end + 1);
+        const d = stop - start >= 2 ? pathFor(pts.slice(start * 2, stop * 2)) : '';
+        tops[i].setAttribute('d', d);
+        unders[i].setAttribute('d', d);
+        end = start;
+      }
+      return times.length > 0;
+    }
+    function tick() {
+      raf = 0;
+      if (!svg.isConnected && painted) return; // o traço já saiu da tela
+      const t = now();
+      if (t - painted >= 15) {
+        painted = t;
+        if (!render(t)) return;
+      }
+      raf = requestAnimationFrame(tick);
+    }
+    return {
+      update(points) {
+        const n = Math.floor(points.length / 2);
+        if (n <= seen) return;
+        const t = now();
+        // Pontos que chegam juntos (de outra pessoa, em lotes) ganham horários espalhados
+        // desde o lote anterior: o rastro some liso, não aos degraus.
+        const from = lastAt && t - lastAt < 250 ? lastAt : t;
+        const k = n - seen;
+        for (let j = 0; j < k; j += 1) times.push(from + ((t - from) * (j + 1)) / k);
+        pts.push(...points.slice(seen * 2, n * 2));
+        seen = n;
+        lastAt = t;
+        if (!raf) raf = requestAnimationFrame(tick);
+      },
+    };
+  }
+
   // Prepara o traço (svg com viewBox 0..1 e o path dentro) no estilo do pincel de quem
   // desenha. Devolve { update(points) }: chame a cada pontos novos (pathFor monta o "d").
   function brush(svg, path, rawStyle, color, pathFor) {
@@ -488,20 +585,11 @@
       svg.prepend(defs);
       path.style.stroke = `url(#${id})`;
     }
-    let drawn = 0; // fade: quantos pontos já viraram pedacinho
+    const trail = kind === 'fade' ? fadeTrail(svg, path, pathFor) : null;
     return {
       update(points) {
-        if (kind === 'fade') {
-          // Cada pedaço novo vira um traço próprio que some logo depois: um rastro.
-          if (points.length < 4 || points.length <= drawn) return;
-          const start = Math.max(0, drawn - 2);
-          const seg = document.createElementNS(SVG_NS, 'path');
-          seg.setAttribute('vector-effect', 'non-scaling-stroke');
-          seg.setAttribute('class', 'wfx-fade-seg');
-          seg.setAttribute('d', pathFor(points.slice(start)));
-          seg.addEventListener('animationend', () => seg.remove(), { once: true });
-          svg.append(seg);
-          drawn = points.length;
+        if (trail) {
+          trail.update(points);
           return;
         }
         path.setAttribute('d', pathFor(points));
