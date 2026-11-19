@@ -453,7 +453,7 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
       **espessuras**.
 
     Todo mundo vê do seu jeito: quem assiste junto, nos quadros, e quem transmite, na
-    tela de verdade (pelo app 1.7 ou mais novo pras novidades). Fica salvo como a cor e
+    tela de verdade (pelo app 1.8 ou mais novo pras novidades). Fica salvo como a cor e
     a foto (as imagens próprias também, e vão de novo sozinhas quando você entra). No
     seu próprio mouse, a setinha é o cursor do sistema (sem atraso; a imagem própria
     animada troca de quadro também) e o resto vem junto logo atrás; o efeito animado na
