@@ -99,6 +99,15 @@
 
 .wfx-click { position: absolute; left: 0; top: 0; z-index: 2; width: 0; height: 0; pointer-events: none; animation: wfx-life 0.95s linear forwards; }
 @keyframes wfx-life { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+/* Mini mouse: qual botão foi (ou pra onde a rodinha girou), parado onde clicou. */
+.wfx-mm-ring { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--c); border-radius: 50%; animation: wfx-ring 0.45s ease-out both; }
+.wfx-click-mouse .click-mouse { position: absolute; left: -21px; top: -4px; width: 12px; height: 29px; overflow: visible; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75)); }
+.wfx-click-mouse .m-body { fill: rgba(9, 11, 19, 0.55); stroke: #fff; stroke-width: 1.4; }
+.wfx-click-mouse .m-part { fill: transparent; stroke: none; }
+.wfx-click-mouse .m-line { fill: none; stroke: #fff; stroke-width: 1.1; }
+.wfx-click-mouse .m-arrow { fill: none; stroke: var(--c); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.wfx-k-left .m-left, .wfx-k-right .m-right, .wfx-k-middle .m-wheel, .wfx-k-up .m-wheel, .wfx-k-down .m-wheel { fill: var(--c); }
+.wfx-k-up .m-up, .wfx-k-down .m-down { opacity: 1; }
 .wfx-ring {
   position: absolute;
   left: -11px;
@@ -278,15 +287,6 @@
   font: 800 11px/1 system-ui, sans-serif;
   text-transform: uppercase;
 }
-.wfx-ed .click-mark { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; animation: wfx-life 0.9s ease-out forwards; }
-.wfx-ed .click-ripple { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--c); border-radius: 50%; animation: wfx-ring 0.45s ease-out forwards; }
-.wfx-ed .click-mark .click-mouse { position: absolute; left: -21px; top: -4px; width: 12px; height: 29px; overflow: visible; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75)); }
-.wfx-ed .click-mark .m-body { fill: rgba(9, 11, 19, 0.55); stroke: #fff; stroke-width: 1.4; }
-.wfx-ed .click-mark .m-part { fill: transparent; stroke: none; }
-.wfx-ed .click-mark .m-line { fill: none; stroke: #fff; stroke-width: 1.1; }
-.wfx-ed .click-mark .m-arrow { fill: none; stroke: var(--c); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
-.wfx-ed .click-left .m-left, .wfx-ed .click-right .m-right, .wfx-ed .click-middle .m-wheel, .wfx-ed .click-up .m-wheel, .wfx-ed .click-down .m-wheel { fill: var(--c); }
-.wfx-ed .click-up .m-up, .wfx-ed .click-down .m-down { opacity: 1; }
 
 .wfx-ed-sections { display: grid; gap: 12px; }
 .wfx-ed-row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 10px; align-items: start; }

@@ -329,17 +329,31 @@
   // A animação do clique no mouse da pessoa (node: o elemento do mouse). kind: left,
   // middle, right, up, down. Devolve false pro estilo "mini mouse" (cada página desenha o
   // dela, que já existia).
-  function click(node, kind, rawStyle, color) {
+  // "Mini mouse": qual botão foi apertado (ou pra onde a rodinha girou).
+  const MINI_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true"><rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/><path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/><path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/><path class="m-line" d="M7 1v7M1 8h12"/><rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/><path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/><path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
+  // Cada clique (ou giro da rodinha) vira uma marquinha própria, parada no lugar onde
+  // aconteceu: não segue o mouse e não apaga as anteriores (os confetes de antes terminam
+  // de cair). layer: o elemento posicionado onde ela entra; left/top: CSS com a unidade.
+  // opts.scale: menor/maior (a camada na tela de quem transmite usa um pouco menor).
+  const CLICK_KINDS = ['left', 'middle', 'right', 'up', 'down'];
+  const MAX_CLICKS = 24; // por camada, ao mesmo tempo
+  function click(layer, left, top, kind, rawStyle, color, opts = {}) {
+    if (!layer || !CLICK_KINDS.includes(kind)) return false;
     const style = normalize(rawStyle);
-    if (style.click === 'mouse') return false;
-    if (style.click === 'none' || !node) return true;
-    const old = node.querySelector(':scope > .wfx-click');
-    if (old) old.remove();
+    if (style.click === 'none') return true;
+    const alive = layer.querySelectorAll(':scope > .wfx-click');
+    for (let i = 0; i <= alive.length - MAX_CLICKS; i += 1) alive[i].remove();
     const mark = document.createElement('span');
     mark.className = `wfx-click wfx-click-${style.click} wfx-k-${kind}`;
+    mark.style.left = left;
+    mark.style.top = top;
     mark.style.setProperty('--c', color);
+    if (opts.scale && opts.scale !== 1) mark.style.scale = String(opts.scale);
     const scroll = kind === 'up' || kind === 'down';
-    if (style.click === 'ripple') {
+    if (style.click === 'mouse') {
+      mark.innerHTML = MINI_MOUSE;
+      if (!scroll) mark.prepend(part('wfx-mm-ring'));
+    } else if (style.click === 'ripple') {
       if (scroll) mark.append(part('wfx-chevron', kind === 'up' ? '▲' : '▼'));
       else if (kind === 'middle') mark.append(part('wfx-dot'));
       else {
@@ -361,7 +375,7 @@
       mark.append(part('wfx-bubble', POP_WORDS[kind] || 'CLICK!'));
     }
     mark.addEventListener('animationend', (e) => { if (e.target === mark) mark.remove(); });
-    node.append(mark);
+    layer.append(mark);
     return true;
   }
 
@@ -762,7 +776,9 @@
       const r = preview.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top, r];
     };
+    let fakeAt = [0, 0]; // onde a setinha de mentira está (o clique de teste sai ali)
     const place = (x, y) => {
+      fakeAt = [x, y];
       fake.hidden = false;
       fake.style.transform = `translate(${x}px, ${y}px)`;
       trail(preview, state, x, y, current(), look().color || '#4d8dff', 'px');
@@ -834,7 +850,7 @@
 
     function showClick(kind) {
       const { color = '#4d8dff' } = look();
-      if (!click(fake, kind, current(), color)) mouseClick(fake, kind);
+      click(preview, `${fakeAt[0]}px`, `${fakeAt[1]}px`, kind, current(), color);
     }
     function showPing(x, y) {
       const { color = '#4d8dff', name = '' } = look();
@@ -883,18 +899,7 @@
     return { refresh: render, demo };
   }
 
-  // O "mini mouse" e o ping clássico, só pra prévia do editor (as páginas têm os delas).
-  const MINI_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true"><rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/><path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/><path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/><path class="m-line" d="M7 1v7M1 8h12"/><rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/><path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/><path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
-  function mouseClick(node, kind) {
-    const old = node.querySelector(':scope > .click-mark');
-    if (old) old.remove();
-    const mark = document.createElement('span');
-    mark.className = `click-mark click-${kind}`;
-    mark.innerHTML = MINI_MOUSE;
-    if (kind === 'left' || kind === 'middle' || kind === 'right') mark.prepend(part('click-ripple'));
-    mark.addEventListener('animationend', (e) => { if (e.target === mark) mark.remove(); });
-    node.append(mark);
-  }
+  // O ping clássico, só pra prévia do editor (as páginas têm o delas).
   function classicPing(layer, x, y, color, name) {
     const mark = document.createElement('div');
     mark.className = 'wfx-ping wfx-ping-classic';

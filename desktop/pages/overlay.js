@@ -351,29 +351,10 @@ function paintBadge(c, letter, avatar) {
   img.src = photo;
 }
 
-// Clique e rolagem: um mini mouse ao lado da setinha, com a parte apertada acesa.
-const CLICK_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true">'
-  + '<rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/>'
-  + '<path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/>'
-  + '<path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/>'
-  + '<path class="m-line" d="M7 1v7M1 8h12"/>'
-  + '<rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/>'
-  + '<path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/>'
-  + '<path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
-const CLICK_KINDS = new Set(['left', 'middle', 'right', 'up', 'down']);
-
-function showClick(node, kind, style, hex) {
-  if (!CLICK_KINDS.has(kind)) return;
-  if (Fx && Fx.click(node, kind, style, hex)) return;
-  const old = node.querySelector('.click-mark');
-  if (old) old.remove();
-  const mark = el('span', `click-mark click-${kind}`);
-  mark.innerHTML = CLICK_MOUSE;
-  if (kind === 'left' || kind === 'middle' || kind === 'right') mark.prepend(el('span', 'click-ripple'));
-  mark.addEventListener('animationend', (e) => {
-    if (e.target === mark) mark.remove();
-  });
-  node.append(mark);
+// Clique e rolagem de quem assiste: a animação fica parada onde a pessoa clicou (não vai
+// junto do mouse, e um clique novo não apaga o anterior). O desenho é o do ../shared/fx.js.
+function showClick(left, top, kind, style, hex) {
+  if (Fx) Fx.click(cursorsEl, left, top, kind, style, hex, { scale: OVERLAY_SCALE });
 }
 
 function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact, style, name }) {
@@ -404,9 +385,9 @@ function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact, styl
   paintBadge(c, letter, avatar);
   const hex = c.custom || color(c.hue);
   if (Fx) Fx.applyCursor(c.node, style, { name: text(name), scale: OVERLAY_SCALE });
-  if (click) showClick(c.node, click, style, hex);
   c.node.style.left = `${unit(x) * 100}%`;
   c.node.style.top = `${unit(y) * 100}%`;
+  if (click) showClick(c.node.style.left, c.node.style.top, click, style, hex);
   if (Fx) Fx.trail(cursorsEl, c, unit(x) * 100, unit(y) * 100, style, hex, '%');
   clearTimeout(c.timer);
   c.timer = setTimeout(() => removeCursor(id), 4000); // parou de mandar: some

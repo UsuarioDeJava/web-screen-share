@@ -3569,32 +3569,10 @@
     return node;
   }
 
-  // Mini mouse ao lado da setinha quando a pessoa clica ou rola: a parte apertada acende
-  // (esquerdo, rodinha, direito); rolando, a rodinha acende com uma setinha pra cima ou
-  // pra baixo. Clique também faz uma ondinha na ponta.
-  const CLICK_MOUSE = '<svg class="click-mouse" viewBox="0 -6 14 34" aria-hidden="true">'
-    + '<rect class="m-body" x="1" y="1" width="12" height="20" rx="6"/>'
-    + '<path class="m-part m-left" d="M7 1.6V8H1.6V7A5.4 5.4 0 0 1 7 1.6z"/>'
-    + '<path class="m-part m-right" d="M7 1.6V8h5.4V7A5.4 5.4 0 0 0 7 1.6z"/>'
-    + '<path class="m-line" d="M7 1v7M1 8h12"/>'
-    + '<rect class="m-part m-wheel" x="5.8" y="3" width="2.4" height="4" rx="1.2"/>'
-    + '<path class="m-arrow m-up" d="M4 -1.5 7 -4.5 10 -1.5"/>'
-    + '<path class="m-arrow m-down" d="M4 23.5 7 26.5 10 23.5"/></svg>';
-  const CLICK_KINDS = new Set(['left', 'middle', 'right', 'up', 'down']);
-
-  // name: de quem é o mouse (o estilo de clique que a pessoa escolheu; "mini mouse" é este).
-  function showClick(node, kind, name) {
-    if (!node || !CLICK_KINDS.has(kind)) return;
-    if (name && Fx.click(node, kind, styleOf(name), markFill(toneOf(name)))) return;
-    const old = node.querySelector('.click-mark');
-    if (old) old.remove();
-    const mark = el('span', `click-mark click-${kind}`);
-    mark.innerHTML = CLICK_MOUSE;
-    if (kind === 'left' || kind === 'middle' || kind === 'right') mark.prepend(el('span', 'click-ripple'));
-    mark.addEventListener('animationend', (e) => {
-      if (e.target === mark) mark.remove();
-    });
-    node.append(mark);
+  // Clique/rodinha de alguém: a animação fica parada onde aconteceu (js/fx.js), não vai
+  // junto do mouse. layer: onde ela entra; left/top: CSS com a unidade.
+  function showClick(layer, left, top, kind, name) {
+    Fx.click(layer, left, top, kind, styleOf(name), markFill(toneOf(name)));
   }
 
   function paintCursor(node, name) {
@@ -4284,9 +4262,11 @@
     Fx.trail(s.media, s, x, y, myStyle, markFill(toneOf(me.name)), 'px');
   }
 
-  // O seu clique/rolagem: a animaçãozinha vai junto da bolinha, como antes.
+  // O seu clique/rolagem: a animaçãozinha fica onde você clicou (como os outros veem).
   function showMyClick(s, e, kind) {
-    if (s.myBadge && !s.myBadge.hidden) showClick(s.myBadge, kind, me.name);
+    if (!s.myBadge || s.myBadge.hidden) return;
+    const rect = s.media.getBoundingClientRect();
+    showClick(s.media, `${e.clientX - rect.left}px`, `${e.clientY - rect.top}px`, kind, me.name);
   }
 
   // A sua cor ou foto mudou (ou a de alguém): repinta as setinhas na tela.
@@ -4347,7 +4327,7 @@
     c.node.style.left = `${left}%`;
     c.node.style.top = `${top}%`;
     Fx.trail(fx, c, left, top, styleOf(name), markFill(toneOf(name)), '%');
-    if (click) showClick(c.node, click, name);
+    if (click) showClick(fx, `${left}%`, `${top}%`, click, name);
     clearTimeout(c.timer);
     c.timer = setTimeout(() => removePeerCursor(key), 4000); // parou de chegar: some
   }
