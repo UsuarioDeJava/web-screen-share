@@ -46,6 +46,8 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
+app.get('/js/gamepad-view.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-view.js')));
+app.get('/js/gamepad.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.css')));
 app.get('/js/gamepad-client.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-client.js')));
 app.get('/js/gamepad.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.js')));
 app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'color.js')));

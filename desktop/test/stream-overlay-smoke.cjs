@@ -3,6 +3,7 @@ const { app, BrowserWindow, session, desktopCapturer, screen } = require('electr
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
+const fs = require('node:fs');
 const os = require('node:os');
 const assert = require('node:assert/strict');
 let server, captureHandler;
@@ -115,9 +116,34 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
     await grantGamepad('Receptor QA'); await grantGamepad('Gamepad QA');
     assert.equal(nativeGamepads.ids.size, 2);
+    await evaluate(room, 'document.getElementById("btn-sharing-details").click()');
+    await until(() => evaluate(room, 'document.getElementById("sharing-dialog").open && document.getElementById("sharing-allowed").textContent.startsWith("2")'), 'painel de detalhes com duas permissões');
+    assert.equal(await evaluate(room, 'document.getElementById("sharing-connected").textContent'), '0');
+    await evaluate(room, 'document.getElementById("sharing-close").click()');
     await until(() => evaluate(peer, 'Boolean(document.querySelector(".tile:not(.tile-self) .control-btn:not([hidden])"))'), 'permissão remota');
     await evaluate(peer, 'document.querySelector(".tile:not(.tile-self) .control-btn").click()'); peer.show(); peer.focus();
     await until(() => nativeGamepads.packets.some((p) => p.buttons[0] === 1 && p.buttons[1] === 0 && p.axes[0] > 0), 'gamepad remapeado atravessa a sala e o IPC');
+    await until(() => evaluate(room, 'document.getElementById("sharing-count").textContent==="1"'), 'conexão física e confirmação nativa');
+    await evaluate(room, 'document.getElementById("btn-sharing-details").click()');
+    await until(() => evaluate(room, 'document.getElementById("sharing-receiving").textContent==="1"'), 'recebimento real de comandos');
+    const screenshotDir = process.env.WSS_TEST_SCREENSHOT_DIR;
+    if (screenshotDir) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+      await evaluate(room, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(screenshotDir, 'sharing-details.png'), (await room.webContents.capturePage()).toPNG());
+      const originalSize = room.getSize(); room.setSize(480, 820);
+      await evaluate(room, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      assert.equal(await evaluate(room, 'document.getElementById("sharing-dialog").scrollWidth<=document.getElementById("sharing-dialog").clientWidth+2'), true);
+      fs.writeFileSync(path.join(screenshotDir, 'sharing-details-mobile.png'), (await room.webContents.capturePage()).toPNG());
+      room.setSize(...originalSize);
+    }
+    await evaluate(room, 'document.getElementById("sharing-tab-options").click();document.getElementById("sharing-paused").checked=true;document.getElementById("sharing-paused").dispatchEvent(new Event("change"));document.getElementById("sharing-save-options").click()');
+    await until(() => nativeGamepads.ids.size === 0, 'pausa desconecta os gamepads virtuais');
+    assert.equal((await evaluate(room, 'window.wssRoomSettings.read()')).controlPeople.filter((p) => p.active).length, 2);
+    await evaluate(room, 'document.getElementById("sharing-paused").checked=false;document.getElementById("sharing-paused").dispatchEvent(new Event("change"));document.getElementById("sharing-save-options").click();document.getElementById("sharing-close").click()');
+    peer.focus();
+    await until(() => nativeGamepads.ids.size === 2, 'retomar preserva permissões');
+    await until(() => evaluate(room, 'document.getElementById("sharing-count").textContent==="1"'), 'controle reconectado depois de retomar');
     await evaluate(room, 'window.wssRoomSettings.action({type:"control",name:"Gamepad QA",grant:false})');
     assert.equal(nativeGamepads.ids.size, 1);
     assert.equal((await evaluate(room, 'window.wssRoomSettings.read()')).controlPeople.find((p) => p.name === 'Receptor QA').active, true);

@@ -64,6 +64,7 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad') });
 let controlPeople = new Map();
+const gamepadReceivers = new Map();
 let controller = null; // quem está controlando agora: { name }
 let picker = null; // seletor de tela aberto: { win, finish }
 let keyHook; // gancho de teclado (Windows): undefined até a primeira vez, null se não tem
@@ -739,6 +740,9 @@ function setController(next) {
   const people = Array.isArray(next?.people) ? next.people.slice(0, 16) : [];
   controlPeople = new Map(people.filter((p) => typeof p.id === 'string').map((p) => [p.id, gamepadModel.permissions(p.devices)]));
   gamepads.retain(new Set([...controlPeople].filter(([, devices]) => devices.gamepad).map(([id]) => id)));
+  for (const id of gamepadReceivers.keys()) if (!controlPeople.get(id)?.gamepad) {
+    gamepadReceivers.delete(id); toPage('desktop:gamepad-state', { id, connected: false });
+  }
   if (input && [...previousPeople].some(([id, devices]) =>
     (devices.keyboard && !controlPeople.get(id)?.keyboard) || (devices.mouse && !controlPeople.get(id)?.mouse))) input.releaseAll();
   controller = next && next.name ? { name: String(next.name).slice(0, 40), hue: Number(next.hue) || 0 } : null;
@@ -798,7 +802,11 @@ ipcMain.on('desktop:control', (event, msg) => {
   const kind = gamepadModel.kindDevice(msg.kind);
   if (!allowed || !kind || !allowed[kind]) return;
   if (msg.kind === 'gamepad') {
-    if (!gamepads.update(msg.from, msg) && Date.now() - lastGamepadError > 3000) {
+    const connected = gamepads.update(msg.from, msg);
+    if (gamepadReceivers.get(msg.from) !== connected) {
+      gamepadReceivers.set(msg.from, connected); toPage('desktop:gamepad-state', { id: msg.from, connected, failed: !connected });
+    }
+    if (!connected && Date.now() - lastGamepadError > 3000) {
       lastGamepadError = Date.now();
       toPage('desktop:gamepad-error', gamepads.status().reason);
     }

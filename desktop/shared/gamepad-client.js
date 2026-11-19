@@ -1,6 +1,6 @@
 /* Gamepad físico -> perfil local -> estado Xbox normalizado enviado ao proprietário. */
 window.WssGamepadClient = {
-  async start({ panel, canSend, send }) {
+  async start({ panel, canSend, send, onStatus = () => {} }) {
     const bridge = window.wssDesktop || window.desktopSettings;
     const model = window.WssGamepad;
     const make = (tag, text) => { const node = document.createElement(tag); if (text) node.textContent = text; return node; };
@@ -13,7 +13,9 @@ window.WssGamepadClient = {
     const mapping = make('div'); mapping.className = 'gamepad-mapping';
     const preview = make('p'); preview.className = 'dialog-sub'; preview.setAttribute('aria-live', 'off');
     const hint = make('p', 'Configure uma vez neste aplicativo. Todos os computadores que você controlar recebem o mesmo mapeamento como um controle Xbox 360. Abra esta seção para testar sem enviar comandos.'); hint.className = 'dialog-sub';
-    panel.append(hint, select, status, mapping, preview);
+    const monitor = make('div'); const view = window.WssGamepadView.create(monitor);
+    const remap = make('details'); remap.className = 'gamepad-remap'; remap.append(make('summary', 'Editar mapeamento, inversões e zona morta'), mapping);
+    panel.append(hint, select, status, monitor, remap, preview);
     let pads = [], selected = '', signature = '', lastSent = '', sentAt = 0, wasSending = false, lastPaint = 0;
     const current = () => pads.find((pad) => String(pad.index) === selected);
     const getProfile = () => model.profile(profiles[current()?.id]);
@@ -42,7 +44,7 @@ window.WssGamepadClient = {
       const reset = make('button', 'Restaurar padrão'); reset.type = 'button'; reset.className = 'btn'; reset.addEventListener('click', () => { save(model.profile()); editor(); }); mapping.append(reset);
     }
     select.addEventListener('change', () => { if (wasSending) send(model.neutral()); selected = select.value; lastSent = ''; editor(); });
-    let profilePoll = 0;
+    let profilePoll = 0, lastStatus = '', statusAt = 0;
     const timer = setInterval(() => {
       if (bridge?.readGamepadProfiles && performance.now() - profilePoll > 2000) {
         profilePoll = performance.now(); bridge.readGamepadProfiles().then((value) => { if (JSON.stringify(value) !== JSON.stringify(profiles)) { profiles = value; editor(); } }).catch(() => {});
@@ -64,15 +66,19 @@ window.WssGamepadClient = {
         if (packet !== lastSent || time - sentAt >= 250) { send(state); lastSent = packet; sentAt = time; }
       } else if (wasSending) { send(model.neutral()); lastSent = ''; }
       wasSending = sending;
-      if (panel.open && time - lastPaint > 150) {
+      const presence = { connected: Boolean(pad), name: pad?.id || '', sending };
+      const statusKey = JSON.stringify(presence);
+      if (statusKey !== lastStatus || time - statusAt > 1000) { lastStatus = statusKey; statusAt = time; onStatus(presence); }
+      if (panel.open && !document.hidden && time - lastPaint > 33) {
         lastPaint = time;
+        view.update(pad, state);
         status.textContent = pad ? `${pad.mapping === 'standard' ? 'Mapeamento padrão' : 'Controle sem padrão: ajuste os índices físicos abaixo'}. ${sending ? 'Enviando' : 'Teste local'}.` : 'Conecte o gamepad e pressione um botão.';
         const raw = pad ? pad.buttons.map((b, i) => b.value > 0.1 ? `${i}=${b.value.toFixed(2)}` : '').filter(Boolean).join(' ') : '';
         const rawAxes = pad ? pad.axes.map((v, i) => `${i}=${v.toFixed(2)}`).join(' ') : 'nenhum';
         preview.textContent = `Botões físicos: ${raw || 'nenhum'} | Eixos físicos: ${rawAxes} | Saída: ${state.buttons.map((v, i) => v > 0.1 ? model.labels[i] : '').filter(Boolean).join(' ') || 'neutro'} | Eixos mapeados: ${state.axes.join(', ')}`;
       }
     }, 16);
-    window.addEventListener('pagehide', () => { if (wasSending) send(model.neutral()); clearInterval(timer); }, { once: true });
+    window.addEventListener('pagehide', () => { if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); }, { once: true });
     return { profiles: () => profiles };
   },
 };

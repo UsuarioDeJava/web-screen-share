@@ -24,6 +24,37 @@ No navegador, fica no armazenamento local daquele endereço. Dois controles fís
 com a mesma identificação compartilham o perfil; cada participante envia um controle
 selecionado por vez.
 
+O monitor visual mostra os 17 botões, intensidade dos gatilhos e posição dos dois
+analógicos tanto no desenho do controle quanto nos gráficos de eixos. Os valores são
+da **saída mapeada** enviada ao jogo. **Editar mapeamento, inversões e zona morta**
+expande os ajustes. **Testar circularidade** registra até 64 setores por analógico;
+a cobertura indica quanto da volta foi percorrido e o desvio radial é a distância
+média dos pontos registrados ao círculo unitário. É uma visualização de diagnóstico
+da saída configurada, sem alterar a calibração do dispositivo.
+
+## Detalhes de compartilhamento
+
+O botão **Detalhes**, ao lado de **Compartilhar tela** no canto superior direito,
+abre duas abas. **Participantes e permissões** mostra as pessoas da sala, dispositivos
+permitidos, nome do gamepad e estado de cada conexão. As contagens distinguem:
+
+- **Com permissão de gamepad:** pessoas autorizadas, mesmo sem controle conectado.
+- **Controles conectados:** controle físico informado pelo participante e dispositivo
+  virtual confirmado pelo aplicativo do proprietário.
+- **Enviando comandos:** conexões confirmadas, com envio ativo e pacotes recentes.
+
+Uma concessão sozinha não é contada como conexão. O painel recebe atualizações
+somente das concessões do próprio proprietário; cada participante continua vendo
+somente as permissões recebidas para controlar a transmissão. O nome do gamepad é
+texto informado pelo cliente, não uma identidade autenticada do hardware.
+
+Em **Configurações**, o proprietário pode reduzir o limite de 1 a 4 participantes,
+pausar todos os gamepads e revogar todos os dispositivos. Reduzir o limite exige
+revogar permissões excedentes primeiro. Pausar remove os gamepads virtuais e mantém
+as permissões; retomar permite conectá-los novamente. As opções valem para a sessão
+atual. Encerrar a transmissão ou desconectar continua encerrando as concessões.
+Para esta contagem e os novos controles, atualize **servidor e aplicativos**.
+
 O mapeamento é aplicado **antes de enviar os comandos**. Assim, qualquer computador
 que autorizar essa pessoa recebe o mesmo layout, apresentado ao jogo como um controle
 **Xbox 360/XInput**. O modelo físico original não é clonado. O estado é enviado somente

@@ -102,6 +102,7 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     controlState: (data) => ipcRenderer.send('desktop:control-state', data && data.on
       ? { on: true, name: String(data.name || ''), hue: Number(data.hue) || 0, people: Array.isArray(data.people) ? data.people.slice(0, 16).map((p) => ({ id: String(p.id), devices: p.devices })) : [] } : { on: false }),
     onGamepadError: (callback) => { ipcRenderer.on('desktop:gamepad-error', (_event, reason) => callback(reason)); },
+    onGamepadState: (callback) => { ipcRenderer.on('desktop:gamepad-state', (_event, state) => callback(state)); },
     control: (msg) => ipcRenderer.send('desktop:control', msg),
     onControlRevoke: (callback) => { ipcRenderer.on('desktop:control-revoke', () => callback()); },
     // Controlando alguém: o app pega todas as teclas (Win, Alt+Tab...) e manda pra cá.

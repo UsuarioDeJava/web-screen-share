@@ -86,12 +86,19 @@ async function until(check, label, timeout = 12000) {
 
     await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").open=true; Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle de teste",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0,0,0,0]}]})');
     await until(() => inPanel('document.querySelectorAll("#gamepad-config input[type=number]").length===22'), 'editor do gamepad');
+    await until(() => inPanel('document.querySelectorAll(".gpad-button").length===17 && document.querySelector(".gpad-device").textContent==="Controle de teste"'), 'visualização do gamepad');
     await inPanel('const gamepadField=document.querySelector("#gamepad-config input[type=number]"); gamepadField.value="1"; gamepadField.dispatchEvent(new Event("change"));');
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste']?.buttons[0] === 1, 'perfil nativo do gamepad');
     assert.equal((await inRoom('window.wssDesktop.readGamepadProfiles()'))['Controle de teste'].buttons[0], 1);
     const gamepadConfig = JSON.parse(fs.readFileSync(path.join(process.env.WSS_USER_DATA, 'config.json'), 'utf8'));
     assert.equal(gamepadConfig.gamepadProfiles['Controle de teste'].buttons[0], 1);
     await until(() => inPanel('document.querySelector("#gamepad-config > p:last-child").textContent.includes("A B")'), 'teste do mapeamento normalizado');
+    assert.equal(await inPanel('document.querySelectorAll(".gpad-control.is-pressed").length>=2'), true);
+    assert.equal(await inPanel('document.querySelector(".gpad-button strong").textContent'), '1.00');
+    await inPanel('document.querySelector(".gpad-test-button").click()');
+    assert.equal(await inPanel('document.querySelector(".gpad-test-button").getAttribute("aria-pressed")'), 'true');
+    await inPanel('Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>{const angle=(window.qaCircle=(window.qaCircle||0)+1)*Math.PI/32;return [{index:0,id:"Controle de teste",timestamp:performance.now(),mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[Math.cos(angle),Math.sin(angle),0,0]}]}})');
+    await until(() => inPanel('document.querySelector(".gpad-circularity-score").textContent.includes("desvio radial") && document.querySelector(".gpad-trace").getAttribute("d").length>20'), 'percurso e circularidade ao vivo');
     if (outputPath) {
       await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(outputPath, 'gamepad-settings.png'), (await panel.webContents.capturePage()).toPNG());

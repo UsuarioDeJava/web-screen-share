@@ -4,13 +4,13 @@ const { createControl } = require('../../server/control');
 const model = require('../shared/gamepad');
 const { createGamepads, report } = require('../gamepad');
 
-function room() {
+function room(settings = {}) {
   const sent = [], users = new Map();
-  const service = createControl({ io: { to: (id) => ({ emit: (event, value) => sent.push({ id, event, value }) }) }, users, ownsStream: (u, id) => id === u.id, allow: () => true, logEvent: () => {} });
+  const service = createControl({ io: { to: (id) => ({ emit: (event, value) => sent.push({ id, event, value }) }) }, users, ownsStream: (u, id) => id === u.id, allow: () => true, logEvent: () => {}, schedule: false, ...settings });
   function add(id) {
     users.set(id, { id, name: id }); const handlers = {};
     service.attach({ id, on: (event, handler) => { handlers[event] = handler; } });
-    return { emit(event, value) { let reply; handlers[event](value, (v) => { reply = v; }); return reply; } };
+    return { emit(event, value) { let reply; const ack = (v) => { reply = v; }; if (event === 'control:details') handlers[event](ack); else handlers[event](value, ack); return reply; } };
   }
   return { sent, users, service, add };
 }
@@ -81,4 +81,45 @@ test('gamepads nativos são isolados; watchdog neutraliza, revogação remove e 
   pads.close(); assert.deepEqual(calls.slice(-2), [['disconnect'], ['free']]);
   const failed = createGamepads({ directory: '.', platform: 'win32', load: () => ({ ...api, connect: () => 0 }), schedule: false });
   assert.equal(failed.status().available, false); assert.match(failed.status().reason, /Driver/); failed.close();
+});
+
+test('detalhes distinguem permissão, presença física, confirmação nativa e comandos recentes', () => {
+  let clock = 100;
+  const r = room({ now: () => clock }), host = r.add('host'), player = r.add('player'), stranger = r.add('stranger');
+  host.emit('control:grant', { stream: 'host', to: 'player', devices: { gamepad: true } });
+  const state = () => r.service.details(r.users.get('host'));
+  assert.deepEqual(state().counts, { allowed: 1, physical: 0, connected: 0, receiving: 0 });
+  stranger.emit('control:presence', { stream: 'host', connected: true, sending: true, name: 'Falso' });
+  assert.equal(state().counts.physical, 0);
+  player.emit('control:presence', { stream: 'host', connected: true, sending: true, name: '<Controle>\nXbox' });
+  assert.equal(state().counts.physical, 1); assert.equal(state().counts.connected, 0);
+  player.emit('control:receiver', { stream: 'host', from: 'player', connected: true });
+  assert.equal(state().counts.connected, 0);
+  host.emit('control:receiver', { stream: 'host', from: 'player', connected: true });
+  assert.equal(state().counts.connected, 1); assert.equal(state().counts.receiving, 0);
+  player.emit('control:input', { stream: 'host', kind: 'gamepad', ...model.neutral() });
+  assert.equal(state().counts.receiving, 1); assert.equal(state().people[0].deviceName, '<Controle>Xbox');
+  clock += 1201; assert.equal(state().counts.receiving, 0);
+  player.emit('control:presence', { stream: 'host', connected: false, sending: false });
+  assert.equal(state().counts.connected, 0); assert.equal(state().counts.allowed, 1);
+  // Somente o próprio proprietário recebe os detalhes de suas concessões.
+  assert.equal(player.emit('control:details').people.length, 0);
+  assert.ok(r.sent.filter((p) => p.event === 'control:sharing').every((p) => p.id === 'host'));
+});
+
+test('pausar bloqueia gamepad sem retirar permissão; limite não descarta pessoas silenciosamente', () => {
+  const r = room(), host = r.add('host'), a = r.add('a'); r.add('b');
+  for (const to of ['a', 'b']) host.emit('control:grant', { to, stream: 'host', devices: { gamepad: true } });
+  assert.ok(host.emit('control:options', { maxGamepads: 1, gamepadPaused: false }).error);
+  assert.ok(host.emit('control:options', { maxGamepads: 5, gamepadPaused: false }).error);
+  assert.equal(host.emit('control:options', { maxGamepads: 2, gamepadPaused: true }).ok, true);
+  const count = r.sent.filter((p) => p.event === 'control:input').length;
+  a.emit('control:input', { stream: 'host', kind: 'gamepad', ...model.neutral() });
+  assert.equal(r.sent.filter((p) => p.event === 'control:input').length, count);
+  assert.equal(r.service.details(r.users.get('host')).counts.allowed, 2);
+  assert.equal(host.emit('control:options', { maxGamepads: 2, gamepadPaused: false }).ok, true);
+  a.emit('control:input', { stream: 'host', kind: 'gamepad', ...model.neutral() });
+  assert.equal(r.sent.filter((p) => p.event === 'control:input').length, count + 1);
+  host.emit('control:revoke', { to: 'b' });
+  assert.equal(host.emit('control:options', { maxGamepads: 1, gamepadPaused: false }).ok, true);
 });

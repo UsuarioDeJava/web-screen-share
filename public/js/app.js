@@ -4307,6 +4307,115 @@
 
   const controlGrants = new Map(); // participante -> dispositivos autorizados
   let desktopCaps = null;
+  const sharingDialog = $('sharing-dialog');
+  let sharingState = { options: { gamepadPaused: false, maxGamepads: 4 }, people: [], counts: { connected: 0, receiving: 0, allowed: 0, physical: 0 } };
+  const sharingDrafts = new Map();
+  let sharingPeopleKey = '';
+  let sharingOptionsDirty = false;
+  const sharingNodes = new Map();
+
+  function sharingStatus(person) {
+    if (!person?.devices.gamepad) return 'Sem permissão de gamepad';
+    if (sharingState.options.gamepadPaused) return 'Gamepads pausados pelo proprietário';
+    if (!person.physicalConnected) return 'Aguardando conectar o controle físico';
+    if (person.receiverError) return 'Falha ao conectar o controle virtual';
+    if (!person.receiverConnected) return 'Controle físico conectado · aguardando o aplicativo receptor';
+    return person.receiving ? 'Conectado · recebendo comandos' : 'Conectado · envio pausado';
+  }
+  function renderSharingDetails() {
+    const counts = sharingState.counts;
+    $('sharing-count').textContent = String(counts.connected);
+    $('sharing-connected').textContent = String(counts.connected);
+    $('sharing-receiving').textContent = String(counts.receiving);
+    $('sharing-allowed').textContent = `${counts.allowed} / ${sharingState.options.maxGamepads}`;
+    if (!sharingDialog.open) return;
+    const problem = !desktopCaps?.control ? 'Para liberar dispositivos, use o aplicativo Windows com as marcações habilitadas.'
+      : !myControlStream() ? 'Inicie a transmissão de tela inteira para liberar dispositivos.' : '';
+    $('sharing-note').textContent = problem || (sharingState.options.gamepadPaused ? 'Os gamepads estão pausados. As permissões foram mantidas.' : 'Contagem confirmada pelo aplicativo que recebe os controles.');
+    $('sharing-physical').textContent = `${counts.physical} controle(s) físico(s) conectado(s) entre os participantes autorizados. Cada pessoa precisa clicar em Controlar na sua transmissão.`;
+    if (!sharingOptionsDirty) {
+      $('sharing-paused').checked = sharingState.options.gamepadPaused;
+      $('sharing-limit').value = String(sharingState.options.maxGamepads);
+    }
+    const people = [...users.values()].filter((u) => me && u.id !== me.id && u.kind !== 'obs').sort((a, b) => a.name.localeCompare(b.name));
+    const granted = new Map(sharingState.people.map((p) => [p.id, p]));
+    const key = JSON.stringify(people.map((u) => [u.id, u.name, granted.get(u.id)?.devices, Boolean(problem), desktopCaps?.gamepad?.available]));
+    if (key !== sharingPeopleKey) {
+      sharingPeopleKey = key; sharingNodes.clear();
+      $('sharing-people').replaceChildren(...people.map((user) => {
+        const state = granted.get(user.id); const li = el('li', 'sharing-person');
+        const heading = el('div', 'sharing-person-heading'); heading.append(avatar(user.name), el('strong', null, user.name));
+        const status = el('p', 'sharing-person-status'); const device = el('p', 'sharing-device-name');
+        const fields = {}; const choices = el('div', 'control-devices');
+        const selected = sharingDrafts.get(user.id) || state?.devices || { keyboard: false, mouse: false, gamepad: false };
+        for (const [kind, title] of [['keyboard', 'Teclado'], ['mouse', 'Mouse'], ['gamepad', 'Gamepad']]) {
+          const label = el('label'); const field = el('input'); field.type = 'checkbox'; field.checked = selected[kind];
+          field.disabled = Boolean(problem) || (kind === 'gamepad' && !desktopCaps?.gamepad?.available);
+          field.setAttribute('aria-label', `${title} para ${user.name}`); fields[kind] = field;
+          field.addEventListener('change', () => sharingDrafts.set(user.id, Object.fromEntries(Object.entries(fields).map(([k, input]) => [k, input.checked]))));
+          label.append(field, document.createTextNode(title)); choices.append(label);
+        }
+        const actions = el('div', 'sharing-person-actions'); const apply = el('button', 'btn', state ? 'Aplicar permissões' : 'Permitir'); apply.type = 'button'; apply.disabled = Boolean(problem);
+        apply.addEventListener('click', () => {
+          apply.disabled = true;
+          grantControl(user, (res) => { apply.disabled = Boolean(problem); if (!res.error) sharingDrafts.delete(user.id); $('sharing-feedback').textContent = res.error || `Permissões de ${user.name} aplicadas.`; refreshSharingDetails(); }, Object.fromEntries(Object.entries(fields).map(([k, input]) => [k, input.checked])));
+        }); actions.append(apply);
+        if (state) { const revoke = el('button', 'btn btn-danger', 'Revogar'); revoke.type = 'button'; revoke.title = 'Revogar todos os dispositivos desta pessoa'; revoke.addEventListener('click', () => { sharingDrafts.delete(user.id); revokeControl(user.id); }); actions.append(revoke); }
+        li.append(heading, status, device, choices, actions); sharingNodes.set(user.id, { status, device }); return li;
+      }));
+      if (!people.length) $('sharing-people').append(el('li', 'control-empty', 'Nenhum outro participante na sala.'));
+    }
+    for (const person of people) {
+      const state = granted.get(person.id); const nodes = sharingNodes.get(person.id);
+      nodes.status.textContent = sharingStatus(state); nodes.status.classList.toggle('is-live', Boolean(state?.receiving && state?.receiverConnected));
+      nodes.device.textContent = state?.deviceName || ''; nodes.device.hidden = !state?.deviceName;
+    }
+    $('sharing-revoke-all').disabled = !sharingState.people.length;
+  }
+  function acceptSharingDetails(state) {
+    if (!state?.options || !Array.isArray(state.people) || !state.counts) return;
+    const pausedChanged = sharingState.options.gamepadPaused !== state.options.gamepadPaused;
+    sharingState = state;
+    if (pausedChanged) syncHostControl();
+    renderSharingDetails();
+  }
+  function refreshSharingDetails() {
+    if (!me || !socket.connected) return;
+    socket.timeout(2500).emit('control:details', (error, state) => {
+      if (error) { if (sharingDialog.open) $('sharing-feedback').textContent = 'Não foi possível consultar os detalhes. Verifique a conexão e atualize o servidor.'; return; }
+      acceptSharingDetails(state);
+    });
+  }
+  socket.on('control:sharing', acceptSharingDetails);
+  $('btn-sharing-details').addEventListener('click', async () => {
+    if (desktop?.caps) desktopCaps = await desktop.caps().catch(() => desktopCaps);
+    if (!sharingDialog.open) sharingDialog.showModal();
+    $('sharing-feedback').textContent = ''; sharingPeopleKey = ''; renderSharingDetails(); refreshSharingDetails();
+  });
+  $('sharing-close').addEventListener('click', () => sharingDialog.close());
+  sharingDialog.addEventListener('click', (event) => { if (event.target === sharingDialog) sharingDialog.close(); });
+  const sharingTabs = ['people', 'options'];
+  function selectSharingTab(tab) {
+    for (const name of sharingTabs) { $('sharing-tab-' + name).setAttribute('aria-selected', String(name === tab)); $('sharing-tab-' + name).tabIndex = name === tab ? 0 : -1; }
+    $('sharing-people-panel').hidden = tab !== 'people'; $('sharing-options-panel').hidden = tab !== 'options';
+  }
+  for (const tab of sharingTabs) {
+    $('sharing-tab-' + tab).addEventListener('click', () => selectSharingTab(tab));
+    $('sharing-tab-' + tab).addEventListener('keydown', (event) => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const target = event.key === 'Home' ? 'people' : event.key === 'End' ? 'options' : sharingTabs.find((name) => name !== tab); selectSharingTab(target); $('sharing-tab-' + target).focus(); } });
+  }
+  for (const id of ['sharing-paused', 'sharing-limit']) $(id).addEventListener('change', () => { sharingOptionsDirty = true; });
+  $('sharing-save-options').addEventListener('click', () => {
+    socket.timeout(2500).emit('control:options', { gamepadPaused: $('sharing-paused').checked, maxGamepads: Number($('sharing-limit').value) }, (error, res) => {
+      $('sharing-feedback').textContent = error ? 'Não foi possível salvar: verifique a conexão.' : res?.error || 'Configurações aplicadas.';
+      if (!error && res?.ok) { sharingOptionsDirty = false; refreshSharingDetails(); }
+    });
+  });
+  $('sharing-revoke-all').addEventListener('click', () => { sharingDrafts.clear(); revokeControl(); });
+  setInterval(() => { if (sharingDialog.open) refreshSharingDetails(); }, 2000);
+  desktop?.onGamepadState?.((state) => {
+    const grant = controlGrants.get(state?.id);
+    if (grant) socket.emit('control:receiver', { from: state.id, stream: grant.stream, connected: state.connected === true, failed: state.failed === true });
+  });
 
   // A sua transmissão que dá pra controlar: a tela inteira pelo app, ou o OBS com a
   // camada ligada (é ela que sabe em qual monitor cada ponto cai).
@@ -4421,7 +4530,7 @@
   function syncHostControl() {
     const people = [...controlGrants.values()];
     desktop?.controlState?.({ on: people.length > 0, name: people.map((p) => p.name).join(', '), hue: 200,
-      people: people.map((p) => ({ id: p.to, devices: p.devices })) });
+      people: people.map((p) => ({ id: p.to, devices: { ...p.devices, gamepad: p.devices.gamepad && !sharingState.options.gamepadPaused } })) });
   }
   function revokeControl(to) {
     if (typeof to === 'string') controlGrants.delete(to); else controlGrants.clear();
@@ -4455,6 +4564,8 @@
     stopControlling();
     controlAllowed.clear();
     controlGrants.clear();
+    sharingState = { options: { gamepadPaused: false, maxGamepads: 4 }, people: [], counts: { connected: 0, receiving: 0, allowed: 0, physical: 0 } };
+    sharingDrafts.clear(); sharingPeopleKey = ''; sharingOptionsDirty = false; renderSharingDetails();
     for (const s of streams.values()) renderControlButton(s);
   }
 
@@ -4688,9 +4799,10 @@
   });
 
   window.WssGamepadClient.start({
-    canSend: () => Boolean(controlling && document.hasFocus() && !document.hidden && !controlDialog.open && controlAllowed.get(controlling)?.devices.gamepad),
+    canSend: () => Boolean(controlling && document.hasFocus() && !document.hidden && !controlDialog.open && !sharingDialog.open && controlAllowed.get(controlling)?.devices.gamepad),
     send: (state) => sendControl({ kind: 'gamepad', ...state }),
     panel: $('gamepad-config'),
+    onStatus: (status) => { for (const [stream, grant] of controlAllowed) if (grant.devices.gamepad) socket.emit('control:presence', { stream, ...status, sending: status.sending && controlling === stream }); },
   });
 
   // Contrato usado pelo app local. O adaptador de DOM fica apenas como compatibilidade
