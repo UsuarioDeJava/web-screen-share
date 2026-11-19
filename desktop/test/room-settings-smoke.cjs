@@ -84,6 +84,20 @@ async function until(check, label, timeout = 12000) {
     assert.equal(state.photo, null);
     console.log('OK: foto enviada e removida pelo fluxo original do servidor e armazenamento da sala.');
 
+    await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").open=true; Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle de teste",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0,0,0,0]}]})');
+    await until(() => inPanel('document.querySelectorAll("#gamepad-config input[type=number]").length===22'), 'editor do gamepad');
+    await inPanel('const gamepadField=document.querySelector("#gamepad-config input[type=number]"); gamepadField.value="1"; gamepadField.dispatchEvent(new Event("change"));');
+    await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste']?.buttons[0] === 1, 'perfil nativo do gamepad');
+    assert.equal((await inRoom('window.wssDesktop.readGamepadProfiles()'))['Controle de teste'].buttons[0], 1);
+    const gamepadConfig = JSON.parse(fs.readFileSync(path.join(process.env.WSS_USER_DATA, 'config.json'), 'utf8'));
+    assert.equal(gamepadConfig.gamepadProfiles['Controle de teste'].buttons[0], 1);
+    await until(() => inPanel('document.querySelector("#gamepad-config > p:last-child").textContent.includes("A B")'), 'teste do mapeamento normalizado');
+    if (outputPath) {
+      await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(outputPath, 'gamepad-settings.png'), (await panel.webContents.capturePage()).toPNG());
+    }
+    console.log('OK: gamepad simulado detectado, remapeado, testado e salvo no perfil nativo compartilhado com a sala.');
+
     await inPanel('document.getElementById("tab-connection").click()');
     await until(() => inPanel('!document.getElementById("run-diagnostics").disabled'), 'diagnóstico disponível');
     await inPanel('document.getElementById("run-diagnostics").click()');

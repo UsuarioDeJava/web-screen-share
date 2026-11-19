@@ -14,6 +14,8 @@ const { app, BrowserWindow, Menu, Notification, desktopCapturer, dialog, globalS
 const fs = require('fs');
 const path = require('path');
 const { createInput } = require('./input');
+const { createGamepads } = require('./gamepad');
+const gamepadModel = require('./shared/gamepad');
 const { createUpdates } = require('./updates');
 const { createKeyHook } = require('./keyhook');
 const { createBorderlessFullscreen } = require('./borderless-fullscreen');
@@ -60,6 +62,8 @@ let drawMode = false; // você está rabiscando a sua tela (a camada pega o mous
 let identity = { hue: 200, color: null }; // a sua cor na sala (color: #rrggbb)
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
+const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad') });
+let controlPeople = new Map();
 let controller = null; // quem está controlando agora: { name }
 let picker = null; // seletor de tela aberto: { win, finish }
 let keyHook; // gancho de teclado (Windows): undefined até a primeira vez, null se não tem
@@ -221,7 +225,7 @@ function createMainWindow() {
     if (borderlessFullscreen) borderlessFullscreen.exit();
     setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
-  webContents.on('render-process-gone', () => setKeyCapture(false));
+  webContents.on('render-process-gone', () => { setKeyCapture(false); setController(null); });
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
     serverLoadFailed = true;
@@ -352,6 +356,7 @@ function settingsState() {
     || pendingPreferences.hardwareAcceleration !== activePreferences.hardwareAcceleration;
   return {
     server: config.pendingServer || config.server, activeServer: config.server,
+    gamepadClientPath: path.join(app.getPath('userData'), 'gamepad', process.arch, 'ViGEmClient.dll'),
     preferences: pendingPreferences, active: activePreferences, restartRequired, log: activity.snapshot(),
     environment: {
       app: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome,
@@ -730,6 +735,12 @@ function renderControlBanner() {
 
 function setController(next) {
   const wasOn = Boolean(controller);
+  const previousPeople = controlPeople;
+  const people = Array.isArray(next?.people) ? next.people.slice(0, 16) : [];
+  controlPeople = new Map(people.filter((p) => typeof p.id === 'string').map((p) => [p.id, gamepadModel.permissions(p.devices)]));
+  gamepads.retain(new Set([...controlPeople].filter(([, devices]) => devices.gamepad).map(([id]) => id)));
+  if (input && [...previousPeople].some(([id, devices]) =>
+    (devices.keyboard && !controlPeople.get(id)?.keyboard) || (devices.mouse && !controlPeople.get(id)?.mouse))) input.releaseAll();
   controller = next && next.name ? { name: String(next.name).slice(0, 40), hue: Number(next.hue) || 0 } : null;
   if (wasOn && !controller && input) input.releaseAll(); // nada fica apertado
   if (controller && !wasOn) {
@@ -757,9 +768,21 @@ function toPage(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
 }
 
+function readGamepadProfiles() { return Object.fromEntries(Object.entries(config.gamepadProfiles || {}).slice(0, 32).map(([id, p]) => [id, gamepadModel.profile(p)])); }
+function saveGamepadProfile(value) {
+  if (typeof value?.id !== 'string' || !value.id || value.id.length > 512) throw new Error('Controle inválido.');
+  const previous = config.gamepadProfiles;
+  const profiles = readGamepadProfiles(); delete profiles[value.id];
+  config.gamepadProfiles = Object.fromEntries([...Object.entries(profiles).slice(-31), [value.id, gamepadModel.profile(value.profile)]]);
+  if (!saveConfig()) { config.gamepadProfiles = previous; throw new Error('Não foi possível salvar o gamepad.'); }
+  return { ok: true };
+}
+ipcMain.handle('desktop:gamepad-profiles', (event) => fromServer(event) ? readGamepadProfiles() : {});
+ipcMain.handle('desktop:gamepad-profile-save', (event, value) => { if (!fromServer(event)) throw new Error('Não permitido.'); return saveGamepadProfile(value); });
+
 ipcMain.handle('desktop:caps', (event) => {
   if (!fromServer(event)) return {};
-  return { overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && pendingPreferences.overlay && Boolean(getInput()) };
+  return { gamepad: gamepads.status(), overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && pendingPreferences.overlay && Boolean(getInput()) };
 });
 ipcMain.handle('desktop:overlay-state', (event) => fromServer(event) ? overlayState() : null);
 
@@ -768,15 +791,26 @@ ipcMain.on('desktop:control-state', (event, data) => {
 });
 
 // O que quem controla fez em cima da sua transmissão, já validado pelo servidor.
+let lastGamepadError = 0;
 ipcMain.on('desktop:control', (event, msg) => {
   if (!fromServer(event) || !controller || !msg || !overlay || overlay.isDestroyed()) return;
+  const allowed = controlPeople.get(msg.from);
+  const kind = gamepadModel.kindDevice(msg.kind);
+  if (!allowed || !kind || !allowed[kind]) return;
+  if (msg.kind === 'gamepad') {
+    if (!gamepads.update(msg.from, msg) && Date.now() - lastGamepadError > 3000) {
+      lastGamepadError = Date.now();
+      toPage('desktop:gamepad-error', gamepads.status().reason);
+    }
+    return;
+  }
   const device = getInput();
   const display = screen.getAllDisplays().find((d) => d.id === overlay.displayId);
   if (!device || !display) return;
   // Você mexendo no seu mouse: o da pessoa espera (só soltar tecla/botão passa).
   const release = (msg.kind === 'button' || msg.kind === 'key') && !msg.down;
   if (localActive() && !release) return;
-  if (Number.isFinite(msg.x) && Number.isFinite(msg.y) && !release) {
+  if (kind === 'mouse' && Number.isFinite(msg.x) && Number.isFinite(msg.y) && !release) {
     const point = toScreen(display, msg.x, msg.y);
     const target = toDevice(point);
     device.move(target.x, target.y);
@@ -975,6 +1009,7 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(null);
     roomSettings = createRoomSettings({ getContents: () => mainWindow?.webContents, isServer: isServerUrl });
     settingsPanel = createSettingsPanel({
+      readGamepadProfiles, saveGamepadProfile,
       getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity,
       room: roomSettings,
       restart: () => {
@@ -1036,6 +1071,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    gamepads.close();
     if (input) input.close();
     if (keyHook) keyHook.stop();
   });

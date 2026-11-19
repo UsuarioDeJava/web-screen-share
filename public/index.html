@@ -241,8 +241,9 @@
         <input id="show-cursors" type="checkbox" checked />
         <span><b>Mostrar o mouse de quem assiste</b><small>As setinhas de quem passa o mouse pelas transmissões que você vê e, transmitindo pelo app, na sua tela de verdade.</small></span>
       </label>
+      <details id="gamepad-config"><summary>Configurar meu gamepad</summary></details>
       <div id="control-section" class="control-section desktop-only" hidden>
-        <p class="dialog-sub"><b>Deixar alguém controlar o meu mouse e teclado</b>: pelo botão <b>🎮</b> ao lado da pessoa, na lista da sala, ou aqui. A pessoa ganha o botão <b>Controlar</b> no seu quadro e mexe no seu PC pela transmissão. Uma pessoa por vez. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> tira o controle na hora, de qualquer programa, e mexer no seu mouse pausa o da pessoa.</p>
+        <p class="dialog-sub"><b>Permissões de teclado, mouse e gamepad</b>: pelo botão <b>🎮</b> ao lado da pessoa, na lista da sala, ou aqui. A pessoa ganha o botão <b>Controlar</b> no seu quadro e mexe no seu PC pela transmissão. Escolha teclado, mouse e gamepad para cada participante. Até quatro gamepads simultâneos. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> tira o controle na hora, de qualquer programa, e mexer no seu mouse pausa o da pessoa.</p>
         <p id="control-note" class="obs-check" hidden></p>
         <ul id="control-list" class="control-list"></ul>
       </div>
@@ -314,6 +315,8 @@
   <script src="js/sounds.js"></script>
   <script src="js/color.js"></script>
   <script src="js/video-health.js"></script>
+  <script src="js/gamepad.js"></script>
+  <script src="js/gamepad-client.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

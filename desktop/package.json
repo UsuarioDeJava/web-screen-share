@@ -42,7 +42,8 @@
       "preload.js",
       "picker-preload.js",
       "overlay-preload.js",
-      "pages/**"
+      "pages/**",
+      "gamepad.js"
     ],
     "publish": [
       {

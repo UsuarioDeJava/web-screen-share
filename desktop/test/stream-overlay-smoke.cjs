@@ -43,6 +43,14 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     // entregue ao Chromium. O único stream enviado será o canvas acima.
     session.defaultSession.setDisplayMediaRequestHandler = (handler) => { captureHandler = handler; };
     desktopCapturer.getSources = async () => [{ id: 'screen:fixture', display_id: String(screen.getPrimaryDisplay().id), name: 'Tela de teste', thumbnail: null, appIcon: null }];
+    // Driver simulado; toda a sala, o vídeo, as permissões e o IPC continuam reais.
+    const nativeGamepads = { packets: [], ids: new Set() };
+    require('../gamepad');
+    require.cache[require.resolve('../gamepad')].exports = { createGamepads: () => ({
+      status: () => ({ available: true, max: 4, reason: '' }),
+      update: (id, value) => { nativeGamepads.packets.push({ id, ...value }); return true; },
+      retain: (ids) => { nativeGamepads.ids = ids; }, close() {},
+    }) };
     require('../main');
     let room;
     await until(() => { room = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith(process.env.WSS_SERVER)); return room; }, 'janela principal');
@@ -98,6 +106,25 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     await join(peer, 'Receptor QA');
     await until(async () => await frames(peer) > 5, 'quadros WebRTC no receptor', 30000);
     console.log('OK: receptor decodifica vídeo WebRTC real do canvas animado.');
+    const gamepadPeer = new BrowserWindow({ width: 900, height: 680, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
+    await gamepadPeer.loadURL(process.env.WSS_SERVER); await join(gamepadPeer, 'Gamepad QA');
+    await evaluate(peer, 'localStorage.setItem("wss-gamepad-profiles",JSON.stringify({"Controle remoto QA":{buttons:[1,0]}}))');
+    await peer.loadURL(process.env.WSS_SERVER); await join(peer, 'Receptor QA');
+    await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0.75,-0.5,0,0]}]})');
+    await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"))'), 'reentrada do receptor');
+    const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
+    await grantGamepad('Receptor QA'); await grantGamepad('Gamepad QA');
+    assert.equal(nativeGamepads.ids.size, 2);
+    await until(() => evaluate(peer, 'Boolean(document.querySelector(".tile:not(.tile-self) .control-btn:not([hidden])"))'), 'permissão remota');
+    await evaluate(peer, 'document.querySelector(".tile:not(.tile-self) .control-btn").click()'); peer.show(); peer.focus();
+    await until(() => nativeGamepads.packets.some((p) => p.buttons[0] === 1 && p.buttons[1] === 0 && p.axes[0] > 0), 'gamepad remapeado atravessa a sala e o IPC');
+    await evaluate(room, 'window.wssRoomSettings.action({type:"control",name:"Gamepad QA",grant:false})');
+    assert.equal(nativeGamepads.ids.size, 1);
+    assert.equal((await evaluate(room, 'window.wssRoomSettings.read()')).controlPeople.find((p) => p.name === 'Receptor QA').active, true);
+    await evaluate(room, 'window.wssRoomSettings.action({type:"control",name:"Receptor QA",grant:false})');
+    await until(() => evaluate(peer, 'document.querySelector(".tile:not(.tile-self) .control-btn").hidden'), 'revogação do receptor');
+    assert.equal(nativeGamepads.ids.size, 0); gamepadPeer.close();
+    console.log('OK: dois gamepads autorizados; mapeamento atravessa Socket.IO e IPC; revogação individual preserva o outro participante.');
     await evaluate(room, 'document.getElementById("btn-share").click()');
     await until(() => evaluate(room, '!document.querySelector(".tile-self")'), 'parar transmissão');
     await evaluate(peer, canvasCapture + 'document.getElementById("btn-share").click()');

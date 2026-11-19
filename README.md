@@ -1,5 +1,8 @@
 # web-screen-share
 
+Gamepad e permissões individuais de teclado/mouse/controle: veja [GAMEPAD.md](GAMEPAD.md)
+para configurar o aplicativo e os componentes de controle virtual no Windows.
+
 Uma sala de compartilhamento de tela pelo navegador, tipo um mini Discord só pra
 transmissão (sem voz nem câmera): cada pessoa entra com um nick, pode compartilhar a
 própria tela e assistir as telas dos outros, tudo na mesma página. Funciona na rede
