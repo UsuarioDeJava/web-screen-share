@@ -1655,6 +1655,7 @@
     const s = streams.get(id);
     if (!s) return;
     if (ended) s.prefs.endedAt = Date.now();
+    if (activeStream === id) deactivateCursor();
     streams.delete(id);
     if (controlling === id) stopControlling();
     leavePip(s);
@@ -1677,6 +1678,7 @@
   // Parar de assistir tira o quadro da tela (pra sobrar espaço pras outras
   // transmissões); pra voltar, é o botão Assistir na lista de pessoas.
   function stopWatching(s) {
+    if (activeStream === s.id) deactivateCursor();
     s.watching = false;
     s.prefs.watching = false;
     if (pinnedKey === s.key) pinnedKey = null;
@@ -4104,31 +4106,124 @@
   const controlDialog = $('control-dialog');
   const btnCursor = $('btn-cursor');
   const round4 = (v) => Math.round(v * 10000) / 10000;
-  let shareCursor = true; // o seu mouse aparece na tela de quem transmite (no app dela)
+  // O seu mouse em cima das transmissões funciona como janelas do Windows: ele só aparece
+  // (pra quem transmite, na tela dela, e pra quem assiste junto) na transmissão que você
+  // clicou, a "ativa". Clicou fora dela (outro quadro, o chat, a lista...), trocou de
+  // programa ou escondeu a página: ela fica inativa e o seu mouse some de lá. Cada
+  // transmissão ainda tem um botão (em cima dela) pra desligar o seu mouse só ali; a
+  // escolha fica salva por pessoa que transmite.
+  let cursorDefault = true; // transmissões sem escolha própria (o antigo "mostrar o meu mouse")
+  let cursorPrefs = {}; // nick de quem transmite -> true/false
   let showCursors = true; // você (transmitindo pelo app) vê o mouse de quem assiste
+  let activeStream = null; // a transmissão "ativa" (a última que você clicou)
   try {
-    shareCursor = localStorage.getItem('wss-cursor') !== '0';
+    cursorDefault = localStorage.getItem('wss-cursor') !== '0';
     showCursors = localStorage.getItem('wss-show-cursors') !== '0';
+    const saved = JSON.parse(localStorage.getItem('wss-cursor-streams') || '{}');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      for (const [name, on] of Object.entries(saved)) if (typeof on === 'boolean') cursorPrefs[name] = on;
+    }
   } catch {}
+  const TILE_CONTROLS = '.tile-tools, .tile-audio, .tile-stats, .cursor-hint, button, select, input';
+  const cursorOnFor = (s) => (typeof cursorPrefs[s.name] === 'boolean' ? cursorPrefs[s.name] : cursorDefault);
+  const cursorLive = (s) => activeStream === s.id && cursorOnFor(s) && controlling !== s.id && s.watching;
 
-  // O botão de mouse embaixo da lista abre o painel "Mouse e controle"; o ícone mostra se
-  // o seu mouse aparece pra quem transmite.
-  function renderCursorButton() {
-    setIcon(btnCursor, shareCursor ? 'pointer' : 'pointerOff', shareCursor
-      ? 'Mouse e controle (o seu mouse aparece na tela de quem transmite pelo app)'
-      : 'Mouse e controle (o seu mouse não aparece pra quem transmite)');
-    btnCursor.setAttribute('aria-pressed', String(shareCursor));
-  }
+  // O botão embaixo da lista abre o painel "Mouse e controle".
+  setIcon(btnCursor, 'pointer', 'Mouse e controle');
   btnCursor.addEventListener('click', () => openControlPanel());
-  $('share-cursor').addEventListener('change', (e) => {
-    shareCursor = e.target.checked;
-    try { localStorage.setItem('wss-cursor', shareCursor ? '1' : '0'); } catch {}
-    renderCursorButton();
-  });
-  renderCursorButton();
 
-  // Passando o mouse por cima de uma transmissão: a posição vai (no máximo ~20 vezes por
-  // segundo) só pra quem transmite, que vê uma setinha na sua cor, na tela dela.
+  function saveCursorPrefs() {
+    try {
+      localStorage.setItem('wss-cursor', cursorDefault ? '1' : '0');
+      localStorage.setItem('wss-cursor-streams', JSON.stringify(cursorPrefs));
+    } catch {}
+  }
+
+  // Liga/desliga o seu mouse numa transmissão só (o botão em cima dela).
+  function setCursorFor(s, on) {
+    cursorPrefs[s.name] = on;
+    saveCursorPrefs();
+    if (!on && activeStream === s.id) deactivateCursor();
+    renderCursorToggle(s);
+  }
+
+  // O antigo "mostrar o meu mouse" (Configurações do app de antes): vale pra todas.
+  function setCursorDefault(on) {
+    cursorDefault = on;
+    cursorPrefs = {};
+    saveCursorPrefs();
+    if (!on) deactivateCursor();
+    for (const s of streams.values()) renderCursorToggle(s);
+  }
+
+  function activateCursor(s, e) {
+    if (activeStream === s.id) return;
+    deactivateCursor();
+    activeStream = s.id;
+    s.tile.classList.add('cursor-active');
+    if (me) s.tile.style.setProperty('--cursor-c', markFill(toneOf(me.name)));
+    hideCursorHint(s);
+    renderCursorToggle(s);
+    if (s.cursorShare && e) s.cursorShare.update(e);
+  }
+
+  function deactivateCursor() {
+    const s = activeStream && streams.get(activeStream);
+    activeStream = null;
+    if (!s) return;
+    s.tile.classList.remove('cursor-active');
+    if (s.cursorShare) s.cursorShare.hide();
+    renderCursorToggle(s);
+  }
+
+  // Clicou fora da transmissão ativa (os botões dela, como a barra de título de uma
+  // janela, não contam), trocou de programa ou escondeu a página: fica inativa.
+  document.addEventListener('pointerdown', (e) => {
+    const s = activeStream && streams.get(activeStream);
+    if (s && !s.tile.contains(e.target)) deactivateCursor();
+  }, true);
+  window.addEventListener('blur', () => deactivateCursor());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) deactivateCursor();
+  });
+
+  function renderCursorToggle(s) {
+    if (!s.btnCursorShare) return;
+    const on = cursorOnFor(s);
+    const live = on && activeStream === s.id;
+    setIcon(s.btnCursorShare, on ? 'pointer' : 'pointerOff', !on
+      ? `O seu mouse está desligado nesta transmissão. Clique pra ligar (ele aparece quando você clica na transmissão de ${s.name}).`
+      : live
+        ? `O seu mouse aparece nesta transmissão agora. Clique fora dela pra ele sumir, ou aqui pra desligar só nesta.`
+        : `O seu mouse aparece aqui quando você clica na transmissão de ${s.name}. Clique pra desligar só nesta.`);
+    s.btnCursorShare.classList.toggle('cursor-off', !on);
+    s.btnCursorShare.classList.toggle('active', live);
+    s.btnCursorShare.setAttribute('aria-pressed', String(on));
+  }
+
+  // "Clique pra mostrar o seu mouse": aparece um pouquinho ao passar por uma transmissão
+  // inativa (uma vez a cada entrada).
+  function showCursorHint(s) {
+    if (s.hintShown || cursorLive(s) || !cursorOnFor(s) || controlling === s.id || !s.watching) return;
+    s.hintShown = true;
+    clearTimeout(s.hintTimer);
+    s.hintTimer = setTimeout(() => {
+      if (!s.cursorHint) {
+        s.cursorHint = el('div', 'cursor-hint');
+        s.media.append(s.cursorHint);
+      }
+      s.cursorHint.textContent = 'Clique na transmissão pra mostrar o seu mouse';
+      s.cursorHint.classList.add('show');
+      s.hintTimer = setTimeout(() => hideCursorHint(s), 2200);
+    }, 450);
+  }
+  function hideCursorHint(s) {
+    clearTimeout(s.hintTimer);
+    if (s.cursorHint) s.cursorHint.classList.remove('show');
+  }
+
+  // Passando o mouse por cima da transmissão ativa: a posição vai (no máximo ~20 vezes
+  // por segundo) pra quem transmite, que vê uma setinha na sua cor, na tela dela.
   function enableCursorShare(s) {
     let last = 0;
     let pending = null;
@@ -4147,45 +4242,51 @@
       if (wait <= 0) flush();
       else if (!timer) timer = setTimeout(flush, wait);
     };
-    s.media.addEventListener('pointermove', (e) => {
-      const active = shareCursor && e.pointerType !== 'touch' && controlling !== s.id && s.watching;
-      const point = active ? videoPoint(s.video, e.clientX, e.clientY) : null;
+    const hide = () => {
+      mirrorCursor(s, null);
+      if (!inside) return;
+      inside = false;
+      queue({ gone: true });
+    };
+    const update = (e) => {
+      const live = cursorLive(s) && e.pointerType !== 'touch';
+      const point = live ? videoPoint(s.video, e.clientX, e.clientY) : null;
       // Os outros veem o seu mouse como uma setinha com a sua foto: aqui ele fica igual.
       // Em cima dos botões do quadro, volta o mouse normal.
-      const mirror = point && !e.target.closest('.tile-tools, .tile-audio, .tile-stats, button, select, input');
+      const mirror = point && !e.target.closest(TILE_CONTROLS);
       mirrorCursor(s, mirror ? e : null);
-      if (!active) {
-        if (inside) {
-          inside = false;
-          queue({ gone: true }); // desligou "mostrar o meu mouse": some pros outros
-        }
-        return;
-      }
       if (point) {
         inside = true;
         queue({ x: round4(point.x), y: round4(point.y) });
       } else if (inside) {
         inside = false;
-        queue({ gone: true });
+        queue({ gone: true }); // saiu da imagem, ficou inativa ou desligou: some pros outros
       }
+    };
+    s.cursorShare = { update, hide };
+    s.media.addEventListener('pointermove', (e) => {
+      update(e);
+      if (e.pointerType !== 'touch' && !e.target.closest(TILE_CONTROLS)) showCursorHint(s);
     });
     s.media.addEventListener('pointerleave', () => {
-      mirrorCursor(s, null);
-      if (!inside) return;
-      inside = false;
-      queue({ gone: true });
+      s.hintShown = false;
+      hideCursorHint(s);
+      hide();
     });
     // Clique e rolagem viram a animaçãozinha no seu mouse, pros outros (e no seu, aqui).
     const sendClick = (e, click) => {
-      if (!shareCursor || e.pointerType === 'touch' || controlling === s.id || !s.watching || !me) return;
-      if (e.target.closest('.tile-tools, .tile-audio, .tile-stats, button, select, input')) return;
+      if (!cursorLive(s) || e.pointerType === 'touch' || !me) return;
+      if (e.target.closest(TILE_CONTROLS)) return;
       const point = videoPoint(s.video, e.clientX, e.clientY);
       if (!point) return;
       socket.emit('cursor', { stream: s.id, x: round4(point.x), y: round4(point.y), click });
       if (s.mirrorOn) showMyClick(s, e, click);
     };
     s.media.addEventListener('pointerdown', (e) => {
-      if (e.altKey || e.button > 2) return; // Alt + clique é o "olha aqui"
+      if (e.button > 2 || e.pointerType === 'touch' || e.target.closest(TILE_CONTROLS)) return;
+      // O clique que ativa a transmissão já conta (como numa janela do Windows).
+      if (cursorOnFor(s) && controlling !== s.id && s.watching) activateCursor(s, e);
+      if (e.altKey) return; // Alt + clique é o "olha aqui"
       sendClick(e, e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left');
     });
     let lastWheel = 0;
@@ -4194,6 +4295,15 @@
       lastWheel = performance.now();
       sendClick(e, e.deltaY < 0 ? 'up' : 'down');
     }, { passive: true });
+
+    // O botão em cima da transmissão: o seu mouse nela (ligado/desligado).
+    const btn = iconButton('pointer', '');
+    btn.classList.add('cursor-share-btn');
+    btn.addEventListener('click', () => setCursorFor(s, !cursorOnFor(s)));
+    s.btnCursorShare = btn;
+    const tools = s.btnStats.parentNode;
+    tools.insertBefore(btn, s.btnStats);
+    renderCursorToggle(s);
   }
 
   // O seu mouse em cima da transmissão vira a mesma setinha com foto que os outros veem.
@@ -4273,6 +4383,8 @@
   function renderMyCursors() {
     if (me) {
       buildMyCursor();
+      const active = activeStream && streams.get(activeStream);
+      if (active) active.tile.style.setProperty('--cursor-c', markFill(toneOf(me.name)));
       for (const s of streams.values()) {
         if (s.myBadge) paintCursor(s.myBadge, me.name);
       }
@@ -4474,9 +4586,8 @@
   }
 
   function renderControlPanel() {
-    $('share-cursor').checked = shareCursor;
     $('show-cursors').checked = showCursors;
-    if (!desktop) return; // no navegador, só a chave do seu mouse
+    if (!desktop) return; // no navegador, só a chave do mouse dos outros
     const note = $('control-note');
     const list = $('control-list');
     const stream = myControlStream();
@@ -4868,7 +4979,8 @@
         : !myControlStream() ? 'Transmita a tela inteira para permitir controle remoto.' : '';
       return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue, style: myStyle,
         autoFill: `hsl(${autoHue(me.name)} 45% 42%)`, markColor: markFill(toneOf(me.name)), recent: recentColors(),
-        shareCursor, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
+        // shareCursor: o padrão das transmissões (o seu mouse agora liga em cada uma).
+        shareCursor: cursorDefault, cursorPerStream: true, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
         gamepad: desktopCaps?.gamepad, controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
           .map((u) => ({ name: u.name, active: controlGrants.has(u.id), devices: controlGrants.get(u.id)?.devices || { keyboard: false, mouse: false, gamepad: false }, disabled: Boolean(problem) })),
         diagnostics: diagOutput.textContent, serverVersion: sidebarVersionEl.textContent,
@@ -4881,10 +4993,8 @@
         if (command.color) pickerFrom(command.color);
         setMyColor(command.color, command.commit ? 'now' : undefined);
       } else if (command.type === 'cursor') {
-        if (command.field === 'share') {
-          shareCursor = command.enabled;
-          localStorage.setItem('wss-cursor', shareCursor ? '1' : '0'); renderCursorButton();
-        } else {
+        if (command.field === 'share') setCursorDefault(command.enabled);
+        else {
           showCursors = command.enabled;
           localStorage.setItem('wss-show-cursors', showCursors ? '1' : '0');
           if (!showCursors) clearPeerCursors();

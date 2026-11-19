@@ -170,10 +170,9 @@ async function refreshRoom() {
   if (roomState.photo) $('profile-photo').src = roomState.photo;
   else $('profile-photo').removeAttribute('src');
   $('remove-photo').disabled = !roomState.photo;
-  $('share-cursor').checked = roomState.shareCursor;
   $('show-cursors').checked = roomState.showCursors;
   $('room-sounds').checked = roomState.sounds;
-  $('share-cursor').disabled = $('show-cursors').disabled = !roomState.controlsAvailable;
+  $('show-cursors').disabled = !roomState.controlsAvailable;
   renderColor();
   $('gamepad-native-status').textContent = roomState.gamepad?.available ? 'Gamepad virtual disponível. Até quatro participantes com gamepad.' : roomState.gamepad?.reason || 'Atualize o aplicativo e o servidor para receber gamepads.';
   $('control-note').textContent = roomState.controlNote || 'Escolha quem pode controlar seu mouse e teclado.';
@@ -212,7 +211,6 @@ async function roomAction(command) {
     status('Configuração da sala aplicada.');
   } catch (error) { status(error.message, true); }
 }
-$('share-cursor').addEventListener('change', () => roomAction({ type: 'cursor', field: 'share', enabled: $('share-cursor').checked }));
 $('show-cursors').addEventListener('change', () => roomAction({ type: 'cursor', field: 'show', enabled: $('show-cursors').checked }));
 $('room-sounds').addEventListener('change', () => roomAction({ type: 'sounds', enabled: $('room-sounds').checked }));
 $('choose-photo').addEventListener('click', () => $('profile-file').click());

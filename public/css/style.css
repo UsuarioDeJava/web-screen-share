@@ -1478,6 +1478,33 @@ kbd {
 }
 .tile-tools .control-btn.active { background: rgba(255, 176, 65, 0.25); color: #ffcf85; box-shadow: inset 0 0 0 1px rgba(255, 176, 65, 0.5); }
 
+/* A transmissão "ativa" (a que você clicou): o seu mouse aparece nela. A borda acende na
+   sua cor, como a janela ativa do Windows. */
+.tile.cursor-active { border-color: var(--cursor-c, var(--accent)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--cursor-c, #4d8dff) 45%, transparent), 0 12px 32px -14px rgba(0, 0, 0, 0.85); }
+.tile-tools .cursor-share-btn.active { background: color-mix(in srgb, var(--cursor-c, #4d8dff) 28%, transparent); color: #fff; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cursor-c, #4d8dff) 60%, transparent); }
+.tile-tools .cursor-share-btn.cursor-off { color: #8a8fa3; }
+.cursor-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 6;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(9, 11, 19, 0.82);
+  color: #e6e8f2;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.cursor-hint.show { opacity: 1; }
+.tile.is-controlling .cursor-hint { display: none; }
+.inline-icon { display: inline-flex; width: 15px; height: 15px; vertical-align: -3px; color: var(--text); }
+.inline-icon svg { width: 100%; height: 100%; }
+
 /* Controlando com os botões escondidos: nada por cima da transmissão, pra clicar em
    qualquer canto da tela de lá (em tela cheia, nem a barra nem o chat). */
 .tile.hud-hidden .tile-tools,

@@ -57,9 +57,10 @@ async function until(check, label, timeout = 12000) {
     await inPanel('window.desktopSettings.roomAction({type:"color",color:"#12ab34"})');
     assert.equal(await inRoom('localStorage.getItem("wss-color")'), '#12ab34');
     await inPanel('document.getElementById("tab-pointer").click()');
-    await until(() => inPanel('!document.getElementById("share-cursor").disabled'), 'ponteiro');
-    await inPanel('document.getElementById("share-cursor").click();');
-    await until(() => inRoom('localStorage.getItem("wss-cursor") === "0"'), 'preferência de ponteiro');
+    // O seu ponteiro liga/desliga em cada transmissão (botão em cima dela); aqui fica o dos outros.
+    await until(() => inPanel('!document.getElementById("show-cursors").disabled'), 'ponteiro');
+    await inPanel('document.getElementById("show-cursors").click();');
+    await until(() => inRoom('localStorage.getItem("wss-show-cursors") === "0"'), 'preferência de ponteiro');
     await inPanel('window.desktopSettings.roomAction({type:"sounds",enabled:false})');
     assert.equal(await inRoom('window.RoomSounds.enabled'), false);
     console.log('OK: cor, ponteiro e sons alteram as preferências reais da sala.');
