@@ -145,6 +145,7 @@ Na raiz:
 
 ```powershell
 node --test desktop/test/borderless-fullscreen.test.js desktop/test/settings.test.js desktop/test/reliability.test.js desktop/test/gamepad.test.js
+node --test desktop/test/gamepad-setup.test.js
 ```
 
 No Windows com sessão gráfica, a partir de `desktop/`:

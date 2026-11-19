@@ -26,8 +26,9 @@ selecionado por vez.
 
 O monitor visual acompanha o tema escuro do aplicativo. Mostra os 17 botões,
 intensidade dos gatilhos e posição dos dois analógicos no desenho e nos gráficos.
-Os valores são da **saída mapeada** enviada ao jogo. **Editar mapeamento, inversões
-e zona morta** expande os ajustes.
+Os valores são da **saída mapeada** enviada ao jogo. O mapeamento de cada botão fica
+ao lado do desenho; eixos e inversões ficam nos cartões dos analógicos. A zona morta
+fica no mesmo painel. As leituras técnicas permanecem abertas no final.
 
 ### Presets e botões extras
 
@@ -95,8 +96,41 @@ Atualize tanto o servidor quanto o aplicativo. Para receber gamepad virtual é p
 Windows, o **driver ViGEmBus** instalado e a biblioteca **ViGEmClient.dll** compatível
 com a arquitetura do aplicativo. A integração usa o [SDK ViGEmClient](https://github.com/nefarius/ViGEmClient)
 e o formato [XUSB_REPORT](https://github.com/nefarius/ViGEmClient/blob/master/include/ViGEm/Common.h).
-O projeto original foi arquivado; esta integração é opcional e não instala nem
-redistribui automaticamente o driver ou a DLL.
+O projeto original foi arquivado; esta integração é opcional. O portátil avulso
+não inclui esses componentes, e detectar um controle físico no monitor não confirma
+que o PC consiga receber um controle virtual.
+
+### Preparação pelo aplicativo (Windows x64)
+
+Em **Configurações → Ponteiro e controle → Meu gamepad**, clique em
+**Instalar driver e DLL do gamepad**. O aplicativo baixa o instalador oficial
+ViGEmBus 1.22.0 e a DLL x64 de uma revisão fixa do repositório ViGEm.NET do fabricante,
+confere SHA256 e valida a assinatura do instalador. Se o driver não estiver ativo,
+o Windows solicita administrador para instalá-lo. O app continua como usuário normal.
+A DLL é preparada no perfil nativo, e as licenças são guardadas com os downloads.
+Internet é necessária nesse fluxo; uma falha ou cancelamento permite tentar novamente.
+
+Depois, clique em **Reiniciar aplicativo**. Se o instalador pedir reinicialização
+do Windows, reinicie o PC. A seção **Controle remoto** deve mostrar **Gamepad virtual
+disponível** antes de marcar Gamepad e clicar em Permitir. Sem driver/DLL, a opção
+Gamepad fica cinza; teclado e mouse seguem suas próprias permissões e requisitos.
+
+Esses componentes precisam estar **no computador onde o jogo recebe os comandos**.
+Quem apenas envia um controle físico não precisa deles. O contêiner e o Tailscale
+transportam os comandos e não substituem o driver do Windows do receptor.
+
+### Pacote com componentes para testes
+
+`scripts/portable-gamepad/build-package.ps1` reúne o portátil de teste, o instalador
+assinado, a DLL, licenças e um iniciador em um ZIP em `desktop/dist/`.
+Extraia tudo, conecte o Tailscale e execute **INICIAR.cmd**. O iniciador instala o
+driver quando necessário, prepara a DLL em um perfil exclusivo do pacote e abre
+o app com o servidor de teste configurado. Não inclui perfis pessoais.
+Somente o instalador solicita administrador; o driver permanece instalado ao fechar
+o app. Um pedido de reinicialização deve ser atendido antes de repetir o iniciador.
+O script de empacotamento exige o portátil `1.5.0-gamepad-test` já compilado.
+
+### Preparação manual
 
 Use os componentes do projeto oficial [ViGEmBus](https://github.com/nefarius/ViGEmBus)
 e do SDK, respeitando as respectivas licenças. Copie a DLL para o caminho exibido em
@@ -151,15 +185,17 @@ O painel configura um controle físico por vez. Com somente um dispositivo, a es
 é automática. Cada linha de mapeamento aponta para o botão no desenho e mostra a
 pressão enviada, de 0 a 100%. É possível escolher a entrada ou usar Detectar e apertar
 o botão físico. Os presets Xbox e PlayStation mudam os símbolos e a posição dos
-analógicos. Botões extras, leituras técnicas e ajustes avançados ficam recolhidos.
+analógicos. Os detalhes dos analógicos e as leituras técnicas ficam sempre visíveis;
+botões extras podem ser expandidos dentro do painel do controle.
 
 LT/L2 e RT/R2 leem o valor analógico do botão padrão. Controles DirectInput também
-podem usar eixos; cada gatilho tem origem e calibração independentes. Em Calibrar
-gatilhos, registre a posição solta e a posição até o fim. A interpolação é linear e
+podem usar eixos; cada gatilho tem origem independente. A área de calibração foi
+removida da interface; limites salvos em perfis anteriores são preservados.
+A interpolação é linear e
 suporta curso invertido ou metades opostas de um eixo compartilhado. Eixos de gatilho
 não recebem a zona morta dos analógicos. Meio curso envia aproximadamente 128 de 255
 no XInput, enquanto solto e até o fim enviam 0 e 255. O cliente usa o curso completo,
-sem os limites fixos de 50% da prévia anterior. A calibração é salva por dispositivo.
+sem os limites fixos de 50% da prévia anterior.
 
 A indicação de pressão intermediária exige observar valores fracionários; somente
 extremos observados não prova defeito do sensor. Se o hardware informar apenas 0 ou 1,
@@ -170,8 +206,9 @@ intermediários nos dois gatilhos. A saída virtual com ViGEmBus real foi confer
 através de Socket.IO e IPC; o comportamento de aceleração em um jogo de corrida real
 ainda depende de teste no jogo e de sua configuração de entradas.
 
-O teste de vibração dura um segundo, com intensidade ajustável e botão Parar.
-Usa o atuador disponível na Gamepad API (dual-rumble ou pulse); controles e modos
-sem suporte mostram a indisponibilidade. Fechar o painel, trocar o controle ou perder
+O teste de vibração dura um segundo, com pequenos botões E e D nos cantos superiores.
+E aciona o motor forte e D o motor fraco via dual-rumble; clicar novamente no mesmo
+botão interrompe o teste. Controles e modos sem suporte ficam desabilitados.
+Fechar o painel, trocar o controle ou perder
 foco interrompe o efeito. Este é um teste local, sem retorno de vibração dos jogos
 remotos.

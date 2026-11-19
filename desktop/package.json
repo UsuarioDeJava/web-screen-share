@@ -43,7 +43,8 @@
       "picker-preload.js",
       "overlay-preload.js",
       "pages/**",
-      "gamepad.js"
+      "gamepad.js",
+      "gamepad-setup.js"
     ],
     "publish": [
       {

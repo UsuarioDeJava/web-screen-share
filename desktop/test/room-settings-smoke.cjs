@@ -33,6 +33,11 @@ async function until(check, label, timeout = 12000) {
     delete process.env.WSS_DISABLE_HARDWARE_ACCELERATION;
     delete process.env.WSS_WINDOWED_FULLSCREEN;
     await until(async () => { try { return (await fetch(process.env.WSS_SERVER + '/version')).ok; } catch { return false; } }, 'servidor local');
+    let setupCalls = 0;
+    require('../gamepad-setup');
+    require.cache[require.resolve('../gamepad-setup')].exports = { createGamepadSetup: () => ({
+      prepare: async () => { setupCalls++; await new Promise(r=>setTimeout(r,100)); return {restartRequired:true,rebootRequired:false,message:'Driver e DLL preparados. Reinicie o aplicativo.'}; },
+    }) };
     require('../main');
     await app.whenReady();
     let room;
@@ -53,6 +58,13 @@ async function until(check, label, timeout = 12000) {
     await until(() => inPanel('document.getElementById("profile-name").textContent === "Teste Perfil"'), 'perfil integrado');
     assert.equal(await inRoom('document.querySelectorAll("dialog[open]").length'), 0);
     console.log('OK: engrenagem ao lado do usuário, links antigos ocultos e perfil na página única.');
+    await inPanel('document.getElementById("tab-pointer").click();document.getElementById("gamepad-install").click()');
+    assert.equal(await inPanel('document.getElementById("gamepad-install").disabled'), true);
+    await until(()=>inPanel('document.getElementById("gamepad-setup-status").textContent.includes("Driver e DLL preparados")'), 'preparação pelo IPC');
+    assert.equal(setupCalls, 1);
+    assert.equal(await inPanel('document.getElementById("gamepad-setup-restart").hidden'), false);
+    console.log('OK: botão de preparar driver/DLL usa IPC nativo e oferece reiniciar, com instalação simulada.');
+
 
     await inPanel('window.desktopSettings.roomAction({type:"color",color:"#12ab34"})');
     assert.equal(await inRoom('localStorage.getItem("wss-color")'), '#12ab34');
