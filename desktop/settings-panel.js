@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-function createSettingsPanel({ getParent, getState, save, restart, checkUpdate, room, activity }) {
+function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity }) {
   let win = null;
   let timer = null;
   let following = false;
@@ -27,6 +27,9 @@ function createSettingsPanel({ getParent, getState, save, restart, checkUpdate, 
   activity.subscribe(queue);
   for (const [channel, handler] of Object.entries({
     'settings:read': getState,
+    'settings:gamepad-profiles': readGamepadProfiles,
+    'settings:gamepad-profile-save': saveGamepadProfile,
+    'settings:gamepad-setup': prepareGamepad,
     'settings:log-subscribe': (value) => {
       following = value?.live === true;
       clearTimeout(timer); timer = null;

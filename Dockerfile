@@ -14,7 +14,7 @@ COPY server ./server
 COPY public ./public
 COPY desktop/shared ./desktop/shared
 COPY docker/entrypoint.sh ./docker/entrypoint.sh
-RUN chmod +x ./docker/entrypoint.sh
+RUN sed -i 's/\r$//' ./docker/entrypoint.sh && chmod +x ./docker/entrypoint.sh
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION

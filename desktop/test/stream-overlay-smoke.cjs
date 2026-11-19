@@ -3,6 +3,7 @@ const { app, BrowserWindow, session, desktopCapturer, screen } = require('electr
 const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
+const fs = require('node:fs');
 const os = require('node:os');
 const assert = require('node:assert/strict');
 let server, captureHandler;
@@ -43,6 +44,14 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     // entregue ao Chromium. O único stream enviado será o canvas acima.
     session.defaultSession.setDisplayMediaRequestHandler = (handler) => { captureHandler = handler; };
     desktopCapturer.getSources = async () => [{ id: 'screen:fixture', display_id: String(screen.getPrimaryDisplay().id), name: 'Tela de teste', thumbnail: null, appIcon: null }];
+    // Driver simulado; toda a sala, o vídeo, as permissões e o IPC continuam reais.
+    const nativeGamepads = { packets: [], ids: new Set() };
+    require('../gamepad');
+    require.cache[require.resolve('../gamepad')].exports = { createGamepads: () => ({
+      status: () => ({ available: true, max: 4, reason: '' }),
+      update: (id, value) => { nativeGamepads.packets.push({ id, ...value }); return true; },
+      retain: (ids) => { nativeGamepads.ids = ids; }, close() {},
+    }) };
     require('../main');
     let room;
     await until(() => { room = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith(process.env.WSS_SERVER)); return room; }, 'janela principal');
@@ -98,6 +107,65 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     await join(peer, 'Receptor QA');
     await until(async () => await frames(peer) > 5, 'quadros WebRTC no receptor', 30000);
     console.log('OK: receptor decodifica vídeo WebRTC real do canvas animado.');
+    const gamepadPeer = new BrowserWindow({ width: 900, height: 680, show: false, webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } });
+    await gamepadPeer.loadURL(process.env.WSS_SERVER); await join(gamepadPeer, 'Gamepad QA');
+    await evaluate(peer, 'localStorage.setItem("wss-gamepad-profiles",JSON.stringify({"Controle remoto QA":{preset:"custom",extraButtons:[{name:"M1",source:19,target:0}]}}))');
+    await peer.loadURL(process.env.WSS_SERVER); await join(peer, 'Receptor QA');
+    await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:22},(_,i)=>({value:i===19?1:i===6?(window.qaTrigger||0):i===7?(window.qaRightTrigger||0):0})),axes:[0.75,-0.5,0,0]}]})');
+    await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"))'), 'reentrada do receptor');
+    const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
+    // Concede pelo painel que o usuário utiliza, passando pelo preload e pelo IPC.
+    await evaluate(room, 'document.getElementById("wss-settings-open").click()');
+    await until(() => { panel=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/settings.html'));return panel; }, 'painel de permissões');
+    await evaluate(panel, 'document.getElementById("tab-pointer").click()');
+    await until(() => evaluate(panel, '[...document.querySelectorAll("#control-people .control-person")].some(row=>row.textContent.includes("Receptor QA"))'), 'participantes no painel');
+    await evaluate(panel, 'const row=[...document.querySelectorAll("#control-people .control-person")].find(row=>row.textContent.includes("Receptor QA"));const gamepad=row.querySelectorAll("input")[2];if(gamepad.disabled)throw Error(document.getElementById("gamepad-native-status").textContent);gamepad.click();row.querySelector("button").click()');
+    await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"&&p.devices.gamepad))'), 'Gamepad permitido pelo painel');
+    assert.equal(await evaluate(panel, '[...document.querySelectorAll("#control-people .control-person")].find(row=>row.textContent.includes("Receptor QA")).querySelectorAll("input")[2].checked'), true);
+    panel.close();
+    await grantGamepad('Gamepad QA');
+    assert.equal(nativeGamepads.ids.size, 2);
+    await evaluate(room, 'document.getElementById("btn-sharing-details").click()');
+    await until(() => evaluate(room, 'document.getElementById("sharing-dialog").open && document.getElementById("sharing-allowed").textContent.startsWith("2")'), 'painel de detalhes com duas permissões');
+    assert.equal(await evaluate(room, 'document.getElementById("sharing-connected").textContent'), '0');
+    await evaluate(room, 'document.getElementById("sharing-close").click()');
+    await until(() => evaluate(peer, 'Boolean(document.querySelector(".tile:not(.tile-self) .control-btn:not([hidden])"))'), 'permissão remota');
+    await evaluate(peer, 'document.querySelector(".tile:not(.tile-self) .control-btn").click()'); peer.show(); peer.focus();
+    await until(() => nativeGamepads.packets.some((p) => p.buttons[0] === 1 && p.buttons[1] === 0 && p.axes[0] > 0), 'gamepad remapeado atravessa a sala e o IPC');
+    for(const pressure of [0.1,0.25,0.5,0.75,1,0]) {
+      const start=nativeGamepads.packets.length;
+      await evaluate(peer,'window.qaTrigger='+pressure+';window.qaRightTrigger='+(1-pressure));
+      await until(()=>nativeGamepads.packets.slice(start).some(p=>p.buttons[6]===pressure&&p.buttons[7]===1-pressure),'pressão analógica '+pressure+' preservada até o IPC');
+    }
+    console.log('OK: LT/RT preservam valores proporcionais de 0 a 100% através da sala e do IPC.');
+    await until(() => evaluate(room, 'document.getElementById("sharing-count").textContent==="1"'), 'conexão física e confirmação nativa');
+    await evaluate(room, 'document.getElementById("btn-sharing-details").click()');
+    await until(() => evaluate(room, 'document.getElementById("sharing-receiving").textContent==="1"'), 'recebimento real de comandos');
+    const screenshotDir = process.env.WSS_TEST_SCREENSHOT_DIR;
+    if (screenshotDir) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+      await evaluate(room, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(screenshotDir, 'sharing-details.png'), (await room.webContents.capturePage()).toPNG());
+      const originalSize = room.getSize(); room.setSize(480, 820);
+      await evaluate(room, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      assert.equal(await evaluate(room, 'document.getElementById("sharing-dialog").scrollWidth<=document.getElementById("sharing-dialog").clientWidth+2'), true);
+      fs.writeFileSync(path.join(screenshotDir, 'sharing-details-mobile.png'), (await room.webContents.capturePage()).toPNG());
+      room.setSize(...originalSize);
+    }
+    await evaluate(room, 'document.getElementById("sharing-tab-options").click();document.getElementById("sharing-paused").checked=true;document.getElementById("sharing-paused").dispatchEvent(new Event("change"));document.getElementById("sharing-save-options").click()');
+    await until(() => nativeGamepads.ids.size === 0, 'pausa desconecta os gamepads virtuais');
+    assert.equal((await evaluate(room, 'window.wssRoomSettings.read()')).controlPeople.filter((p) => p.active).length, 2);
+    await evaluate(room, 'document.getElementById("sharing-paused").checked=false;document.getElementById("sharing-paused").dispatchEvent(new Event("change"));document.getElementById("sharing-save-options").click();document.getElementById("sharing-close").click()');
+    peer.focus();
+    await until(() => nativeGamepads.ids.size === 2, 'retomar preserva permissões');
+    await until(() => evaluate(room, 'document.getElementById("sharing-count").textContent==="1"'), 'controle reconectado depois de retomar');
+    await evaluate(room, 'window.wssRoomSettings.action({type:"control",name:"Gamepad QA",grant:false})');
+    assert.equal(nativeGamepads.ids.size, 1);
+    assert.equal((await evaluate(room, 'window.wssRoomSettings.read()')).controlPeople.find((p) => p.name === 'Receptor QA').active, true);
+    await evaluate(room, 'window.wssRoomSettings.action({type:"control",name:"Receptor QA",grant:false})');
+    await until(() => evaluate(peer, 'document.querySelector(".tile:not(.tile-self) .control-btn").hidden'), 'revogação do receptor');
+    assert.equal(nativeGamepads.ids.size, 0); gamepadPeer.close();
+    console.log('OK: dois gamepads autorizados; mapeamento atravessa Socket.IO e IPC; revogação individual preserva o outro participante.');
     await evaluate(room, 'document.getElementById("btn-share").click()');
     await until(() => evaluate(room, '!document.querySelector(".tile-self")'), 'parar transmissão');
     await evaluate(peer, canvasCapture + 'document.getElementById("btn-share").click()');

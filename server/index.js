@@ -46,7 +46,11 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
-// Arquivos que a sala e o app usam iguais (desktop/shared): cores e estilos do mouse.
+app.get('/js/gamepad-view.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-view.js')));
+app.get('/js/gamepad.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.css')));
+app.get('/js/gamepad-client.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-client.js')));
+app.get('/js/gamepad.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.js')));
+// Arquivos que a sala e o app usam iguais (desktop/shared): gamepads, cores e estilos do mouse.
 app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'color.js')));
 app.get('/js/fx.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.js')));
 app.get('/css/fx.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.css')));
@@ -427,22 +431,14 @@ function clientAddress(socket) {
   return address.startsWith('::ffff:') ? address.slice(7) : address;
 }
 
-// Controle remoto: quem transmite deixou alguém (control.to) mexer no mouse e teclado.
-// Acaba quando qualquer um dos dois sai ou a transmissão termina.
-function revokeControl(owner) {
-  if (!owner || !owner.control) return;
-  const { to, stream } = owner.control;
-  owner.control = null;
-  io.to(to).emit('control:revoked', { stream });
-  io.to(owner.id).emit('control:revoked', { stream, mine: true });
-  logEvent(`${owner.name} tirou o controle`);
+// A transmissão é dessa pessoa (pela página ou pelo OBS, com o mesmo nick)?
+function ownsStream(user, id) {
+  if (id === user.id) return user.sharing;
+  return Boolean(obs && obs.list().some((stream) => stream.id === id && stream.name === user.name));
 }
 
-function revokeControlFor(id) {
-  for (const user of users.values()) {
-    if (user.control && (user.id === id || user.control.to === id || user.control.stream === id)) revokeControl(user);
-  }
-}
+const remoteControl = require('./control').createControl({ io, users, ownsStream, allow, logEvent });
+const revokeControlFor = remoteControl.revokeFor;
 
 function removeUser(socket) {
   revokeControlFor(socket.id);
@@ -512,7 +508,7 @@ io.on('connection', (socket) => {
     user.since = user.sharing
       ? (Number.isFinite(startedAt) && startedAt <= now && now - startedAt < 86400000 ? startedAt : now)
       : null;
-    if (!user.sharing && user.control && user.control.stream === user.id) revokeControl(user);
+    if (!user.sharing) remoteControl.revokeStream(user.id);
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
@@ -621,11 +617,7 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
-  // A transmissão é dessa pessoa (pela página ou pelo OBS, com o mesmo nick)?
-  const ownsStream = (user, id) => {
-    if (id === user.id) return user.sharing;
-    return Boolean(obs && obs.list().some((stream) => stream.id === id && stream.name === user.name));
-  };
+
 
   // Desenho ao vivo por cima da transmissão: o traço chega em pedaços (pontos de 0 a 1,
   // [x, y, x, y...]) enquanto a pessoa ainda está desenhando. Quem transmite, rabiscando
@@ -688,48 +680,7 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('cursor', out);
   });
 
-  // Controle remoto: quem transmite (pelo app) deixa UMA pessoa mexer no mouse e teclado.
-  socket.on('control:grant', (msg, ack) => {
-    const reply = typeof ack === 'function' ? ack : () => {};
-    const user = users.get(socket.id);
-    const target = msg && users.get(msg.to);
-    if (!user || !target || target.id === user.id || !ownsStream(user, msg.stream)) return reply({ error: 'Não deu pra dar o controle.' });
-    revokeControl(user);
-    user.control = { to: target.id, stream: msg.stream };
-    io.to(target.id).emit('control:granted', { stream: msg.stream, from: user.name });
-    logEvent(`${user.name} deixou ${target.name} controlar o mouse e teclado`);
-    reply({ ok: true });
-  });
-
-  socket.on('control:revoke', () => revokeControl(users.get(socket.id)));
-
-  // O que quem controla fez: só vale com permissão e só vai pra quem deu a permissão.
-  const KINDS = new Set(['move', 'button', 'wheel', 'key']);
-  socket.on('control:input', (msg) => {
-    if (!msg || !KINDS.has(msg.kind) || !allow(socket, 'control', 400, 1000)) return;
-    const owner = [...users.values()].find((u) => u.control && u.control.to === socket.id && u.control.stream === msg.stream);
-    if (!owner) return;
-    const out = { kind: msg.kind, from: socket.id };
-    if (unit(msg.x) && unit(msg.y)) {
-      out.x = msg.x;
-      out.y = msg.y;
-    }
-    if (msg.kind === 'button') {
-      if (![0, 1, 2].includes(msg.button)) return;
-      out.button = msg.button;
-      out.down = Boolean(msg.down);
-    } else if (msg.kind === 'wheel') {
-      if (!Number.isFinite(msg.dy)) return;
-      out.dy = Math.max(-10, Math.min(10, msg.dy));
-    } else if (msg.kind === 'key') {
-      if (typeof msg.code !== 'string' || !/^[A-Za-z0-9]{1,24}$/.test(msg.code)) return;
-      out.code = msg.code;
-      out.down = Boolean(msg.down);
-    } else if (out.x === undefined) {
-      return;
-    }
-    io.to(owner.id).emit('control:input', out);
-  });
+  remoteControl.attach(socket);
 
   // "Olha aqui": um ponto na imagem (x e y de 0 a 1), pra todo mundo que está vendo.
   socket.on('ping', (msg) => {
