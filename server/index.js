@@ -714,6 +714,7 @@ io.on('connection', (socket) => {
     // transmite, no modo desenho (fica até desfazer/limpar).
     if (msg.hold === 'alt') out.hold = 'alt';
     else if (owner && msg.hold) out.hold = true;
+    if (msg.arrow === true) out.arrow = true; // Alt + Shift: o traço termina numa flecha
     if (owner && Number.isInteger(msg.hue) && msg.hue >= -1 && msg.hue < 360) out.hue = msg.hue;
     if (owner && cleanColor(msg.color)) out.color = cleanColor(msg.color);
     socket.to(ROOM).emit('draw', out);

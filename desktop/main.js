@@ -636,6 +636,7 @@ ipcMain.on('overlay:draw', (event, data) => {
     type: 'draw', id: Number(data.id) || 0, points, end: Boolean(data.end),
     hue: Number.isInteger(data.hue) ? data.hue : identity.hue,
     color: HEX_COLOR.test(data.color || '') ? data.color : undefined,
+    arrow: data.arrow === true, // Shift + arrastar: termina numa flecha
   });
 });
 ipcMain.on('overlay:undo', (event, id) => {

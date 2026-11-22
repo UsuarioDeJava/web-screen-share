@@ -1792,28 +1792,58 @@
 
   // No computador a lista não ocupa espaço: aparece por cima das transmissões quando o
   // mouse encosta na borda esquerda e some quando ele sai; o botão do topo abre e
-  // deixa aberta até clicar fora, apertar Esc ou no botão de novo.
+  // deixa aberta até clicar fora, apertar Esc ou no botão de novo. Fixada (o "<<" no topo
+  // dela, que vira "x"), ela fica sempre aberta, do lado, e as transmissões se ajeitam no resto.
   const desktopLayout = window.matchMedia('(min-width: 761px)');
   const SIDEBAR_EDGE_PX = 8;
   const SIDEBAR_HIDE_MS = 400;
-  let sidebarPinned = false;
+  const btnSidebarPin = $('btn-sidebar-close');
+  let sidebarPinned = false; // aberta pelo botão do topo (fica até clicar fora)
+  let sidebarDocked = false; // fixada do lado
   let sidebarTimer = null;
+  try {
+    sidebarDocked = localStorage.getItem('wss-sidebar-docked') === '1';
+  } catch {}
 
   function setSidebar(open, pinned = false) {
     clearTimeout(sidebarTimer);
     sidebarTimer = null;
     sidebarPinned = open && pinned;
     appEl.classList.toggle('show-sidebar', open);
-    btnPeople.setAttribute('aria-expanded', String(open));
+    btnPeople.setAttribute('aria-expanded', String(open || sidebarDocked));
   }
 
+  // O botão do topo da lista (só no computador; no celular ela é a faixa de cima):
+  // "<<" fixa e vira "x"; o "x" solta e esconde.
+  function renderSidebarPin() {
+    appEl.classList.toggle('sidebar-docked', sidebarDocked);
+    btnSidebarPin.classList.toggle('docked', sidebarDocked);
+    const label = sidebarDocked ? 'Soltar a lista (volta a abrir só ao encostar na borda)' : 'Fixar a lista do lado';
+    btnSidebarPin.title = label;
+    btnSidebarPin.setAttribute('aria-label', label);
+    btnPeople.setAttribute('aria-expanded', String(sidebarDocked || appEl.classList.contains('show-sidebar')));
+  }
+
+  function setSidebarDocked(docked) {
+    sidebarDocked = docked;
+    try { localStorage.setItem('wss-sidebar-docked', docked ? '1' : '0'); } catch {}
+    setSidebar(false);
+    renderSidebarPin();
+    layoutGrid(); // as transmissões ganham (ou perdem) o espaço da lista
+  }
+  renderSidebarPin();
+  btnSidebarPin.addEventListener('click', () => setSidebarDocked(!sidebarDocked));
+
   btnPeople.addEventListener('click', () => {
+    if (sidebarDocked && desktopLayout.matches) {
+      setSidebarDocked(false); // fixada: o botão do topo solta e esconde
+      return;
+    }
     setSidebar(!(appEl.classList.contains('show-sidebar') && sidebarPinned), true);
   });
-  $('btn-sidebar-close').addEventListener('click', () => setSidebar(false));
 
   document.addEventListener('pointermove', (e) => {
-    if (!desktopLayout.matches || appEl.hidden || document.fullscreenElement || e.pointerType === 'touch') return;
+    if (!desktopLayout.matches || sidebarDocked || appEl.hidden || document.fullscreenElement || e.pointerType === 'touch') return;
     const open = appEl.classList.contains('show-sidebar');
     if (e.clientX <= SIDEBAR_EDGE_PX) {
       if (!open) setSidebar(true);
@@ -2204,7 +2234,8 @@
   }
 
   // style: o estilo de quem desenha (o pincel e a espessura, do js/fx.js).
-  function createStrokeView(target, color, style) {
+  // arrow: com ponta de flecha (Alt + Shift + arrastar).
+  function createStrokeView(target, color, style, arrow = false) {
     const { fx, video } = target;
     const width = fx.clientWidth || 1;
     const height = fx.clientHeight || 1;
@@ -2222,7 +2253,7 @@
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
     fx.append(svg);
-    return { svg, path, points: [], expire: null, brush: Fx.brush(svg, path, style, color, strokePath) };
+    return { svg, path, points: [], expire: null, arrow, brush: Fx.brush(svg, path, style, color, strokePath, { arrow }) };
   }
 
   function drawStroke(view) {
@@ -2236,19 +2267,29 @@
     view.svg.addEventListener('animationend', () => view.svg.remove());
   }
 
-  // alt: desenhando com o Alt apertado (mouse): o traço fica até soltar o Alt.
-  function startStroke(target, streamId, clientX, clientY, alt = false) {
+  // alt: desenhando com o Alt apertado (mouse): o traço fica até soltar o Alt. arrow: com
+  // o Shift também, o traço termina numa flecha.
+  function startStroke(target, streamId, clientX, clientY, alt = false, arrow = false) {
     const stroke = {
       id: (++strokeCounter).toString(36),
       stream: streamId,
       alt,
+      arrow,
       target,
       pending: [],
       timer: null,
-      view: createStrokeView(target, markFill(toneOf(me.name)), myFull),
+      view: createStrokeView(target, markFill(toneOf(me.name)), myFull, arrow),
     };
     addStrokePoint(stroke, clientX, clientY);
     return stroke;
+  }
+
+  function setStrokeArrow(stroke) {
+    if (stroke.arrow) return;
+    stroke.arrow = true;
+    stroke.view.arrow = true;
+    stroke.view.brush.setArrow(true);
+    if (!stroke.timer) stroke.timer = setTimeout(() => flushStroke(stroke), 40); // avisa os outros
   }
 
   function addStrokePoint(stroke, clientX, clientY) {
@@ -2269,7 +2310,7 @@
   function flushStroke(stroke, end = false) {
     clearTimeout(stroke.timer);
     stroke.timer = null;
-    const message = (points, last) => ({ stream: stroke.stream, id: stroke.id, points, end: last, ...(stroke.alt ? { hold: 'alt' } : {}) });
+    const message = (points, last) => ({ stream: stroke.stream, id: stroke.id, points, end: last, ...(stroke.alt ? { hold: 'alt' } : {}), ...(stroke.arrow ? { arrow: true } : {}) });
     flushStyle();
     while (stroke.pending.length > 128) socket.emit('draw', message(stroke.pending.splice(0, 128), false));
     if (stroke.pending.length || end) socket.emit('draw', message(stroke.pending.splice(0), end));
@@ -2303,19 +2344,22 @@
   const heldStrokes = new Map();
 
   // local: o seu próprio rabisco (do modo desenho do app), mostrado no seu quadro.
-  function handleDraw({ stream, id, points, end, name, hold, hue, color: sent }, local = false) {
+  function handleDraw({ stream, id, points, end, name, hold, hue, color: sent, arrow }, local = false) {
     const color = strokeColor(name, hue, sent);
     // hue: pro app de antes da cor livre (ele só entende o tom).
     const oldHue = Number.isInteger(hue) ? hue : HEX_COLOR.test(sent || '') ? hexHue(sent) : nameHue(name);
-    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined, style: overlayStyle(name) });
+    if (!local) toDesktopOverlay(stream, { type: 'draw', key: `${name}|${id}`, points, end: Boolean(end), hue: oldHue, color, name, hold: hold === 'alt' ? 'alt' : undefined, style: overlayStyle(name), arrow: arrow === true });
     const target = fxTarget(stream);
     if (!target || !Array.isArray(points)) return;
     const key = `${stream}|${name}|${id}`;
     let view = remoteStrokes.get(key);
     if (!view) {
       if (!points.length) return;
-      view = createStrokeView(target, color, styleOf(name));
+      view = createStrokeView(target, color, styleOf(name), arrow === true);
       remoteStrokes.set(key, view);
+    } else if (arrow === true && !view.arrow) {
+      view.arrow = true; // o Shift veio no meio do traço
+      view.brush.setArrow(true);
     }
     view.points.push(...points);
     drawStroke(view);
@@ -2421,7 +2465,7 @@
       if (!me || outside(e.target)) return;
       if (controlling && controlling === streamId()) return; // controlando: o clique vai pro PC de lá
       if (gesture) finish(gesture, true);
-      const g = { id: e.pointerId, touch: e.pointerType === 'touch', x: e.clientX, y: e.clientY, armed: false, stroke: null, timer: null };
+      const g = { id: e.pointerId, touch: e.pointerType === 'touch', x: e.clientX, y: e.clientY, armed: false, stroke: null, timer: null, arrow: e.shiftKey };
       if (g.touch) {
         g.timer = setTimeout(() => {
           g.armed = true;
@@ -2444,10 +2488,15 @@
         if (dist > 12) finish(g, true); // o dedo andou antes de segurar: é rolagem
         return;
       }
+      if (e.shiftKey && !g.arrow) {
+        // Apertou o Shift no meio: o traço vira flecha.
+        g.arrow = true;
+        if (g.stroke) setStrokeArrow(g.stroke);
+      }
       if (!g.stroke) {
         const id = streamId();
         if (dist < 6 || !id) return;
-        g.stroke = startStroke(target, id, g.x, g.y, !g.touch);
+        g.stroke = startStroke(target, id, g.x, g.y, !g.touch, g.arrow);
       }
       const coalesced = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
       for (const ev of coalesced.length ? coalesced : [e]) addStrokePoint(g.stroke, ev.clientX, ev.clientY);
@@ -3441,7 +3490,7 @@
       const color = HEX_COLOR.test(msg.color || '') ? msg.color : undefined; // app 1.4.6+
       // Em pedaços de até 64 pontos (o tamanho máximo de cada mensagem no servidor).
       for (let i = 0; i < points.length || i === 0; i += 128) {
-        const data = { stream, id, points: points.slice(i, i + 128), end: Boolean(msg.end) && i + 128 >= points.length, hold: true, hue, color };
+        const data = { stream, id, points: points.slice(i, i + 128), end: Boolean(msg.end) && i + 128 >= points.length, hold: true, hue, color, ...(msg.arrow === true ? { arrow: true } : {}) };
         socket.emit('draw', data);
         handleDraw({ ...data, name: me.name }, true);
       }

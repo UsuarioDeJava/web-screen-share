@@ -1640,6 +1640,16 @@ kbd {
   box-shadow: 0 0 10px rgba(255, 59, 92, 0.9);
 }
 .sidebar-close { margin-left: auto; }
+/* Fixar: o "<<" vira um "x". A seta da esquerda dá meia-volta (vira ">") e as duas se
+   encontram no meio; soltar faz o caminho de volta. */
+.sidebar-close .chev {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sidebar-close.docked .chev-a { transform: translateX(1px) rotate(180deg); }
+.sidebar-close.docked .chev-b { transform: translateX(-1px); }
+@media (prefers-reduced-motion: reduce) { .sidebar-close .chev { transition: none; } }
 .topbar-conn { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); font-size: 12px; font-weight: 600; white-space: nowrap; }
 
 @media (min-width: 761px) {
@@ -1663,6 +1673,15 @@ kbd {
   .sidebar:has(:focus-visible) {
     transform: none;
     box-shadow: 1px 0 0 rgba(79, 123, 255, 0.25), 18px 0 50px rgba(0, 0, 0, 0.55);
+  }
+  /* Fixada (o "x" no topo da lista): ocupa a coluna dela e as transmissões ficam no resto. */
+  .app.sidebar-docked { grid-template-columns: 248px minmax(0, 1fr); }
+  .app.sidebar-docked .sidebar {
+    position: relative;
+    z-index: auto;
+    transform: none;
+    box-shadow: none;
+    background: var(--sidebar);
   }
 }
 

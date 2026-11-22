@@ -59,9 +59,10 @@ function strokePath(pts) {
 }
 
 // O pincel de quem desenha (neon, tracejado, giz, marca-texto, arco-íris, rastro...).
-function brushFor(svg, path, style, hex) {
-  if (Fx) return Fx.brush(svg, path, style, hex, strokePath);
-  return { update: (points) => path.setAttribute('d', strokePath(points)) };
+// arrow: com ponta de flecha (quem assiste: Alt + Shift + arrastar; você: Shift + arrastar).
+function brushFor(svg, path, style, hex, arrow = false) {
+  if (Fx) return Fx.brush(svg, path, style, hex, strokePath, { arrow });
+  return { update: (points) => path.setAttribute('d', strokePath(points)), setArrow: () => {} };
 }
 
 function finishStroke(key, stroke) {
@@ -99,7 +100,7 @@ function releaseAlt(name) {
   }
 }
 
-function draw({ key, points, end, hue, hold, name, color: exact, style }) {
+function draw({ key, points, end, hue, hold, name, color: exact, style, arrow }) {
   if (typeof key !== 'string' || !Array.isArray(points)) return;
   let stroke = strokes.get(key);
   if (!stroke) {
@@ -113,8 +114,11 @@ function draw({ key, points, end, hue, hold, name, color: exact, style }) {
     path.setAttribute('vector-effect', 'non-scaling-stroke');
     svg.append(path);
     fx.append(svg);
-    stroke = { svg, path, points: [], expire: null, brush: brushFor(svg, path, style, color(hue, exact)) };
+    stroke = { svg, path, points: [], expire: null, arrow: arrow === true, brush: brushFor(svg, path, style, color(hue, exact), arrow === true) };
     strokes.set(key, stroke);
+  } else if (arrow === true && !stroke.arrow) {
+    stroke.arrow = true; // o Shift veio no meio do traço
+    stroke.brush.setArrow(true);
   }
   for (const v of points.slice(0, 256)) {
     if (stroke.points.length < 2400) stroke.points.push(unit(v));
@@ -192,7 +196,13 @@ function newStroke() {
   svg.append(path);
   fx.append(svg);
   ownCounter += 1;
-  return { id: ownCounter, hue, color: hex, svg, path, points: [], pending: [], timer: null, brush: brushFor(svg, path, myStyle, hex) };
+  return { id: ownCounter, hue, color: hex, svg, path, points: [], pending: [], timer: null, arrow: false, brush: brushFor(svg, path, myStyle, hex) };
+}
+
+function ownArrow(stroke) {
+  if (stroke.arrow) return;
+  stroke.arrow = true;
+  stroke.brush.setArrow(true);
 }
 
 // Sai em pedaços a cada 30 ms enquanto você desenha; sem limite de tamanho.
@@ -200,7 +210,7 @@ function flush(stroke, end = false) {
   clearTimeout(stroke.timer);
   stroke.timer = null;
   if (!stroke.pending.length && !end) return;
-  window.overlayBridge.draw({ id: stroke.id, points: stroke.pending.splice(0), end, hue: stroke.hue, color: stroke.color });
+  window.overlayBridge.draw({ id: stroke.id, points: stroke.pending.splice(0), end, hue: stroke.hue, color: stroke.color, arrow: stroke.arrow });
 }
 
 function addPoint(stroke, clientX, clientY) {
@@ -253,10 +263,12 @@ board.addEventListener('pointerdown', (event) => {
   board.setPointerCapture(event.pointerId);
   endStroke();
   current = newStroke();
+  if (event.shiftKey) ownArrow(current);
   addPoint(current, event.clientX, event.clientY);
 });
 board.addEventListener('pointermove', (event) => {
   if (!current) return;
+  if (event.shiftKey) ownArrow(current); // Shift (a qualquer momento): o traço vira flecha
   const coalesced = event.getCoalescedEvents ? event.getCoalescedEvents() : [];
   for (const e of coalesced.length ? coalesced : [event]) addPoint(current, e.clientX, e.clientY);
 });

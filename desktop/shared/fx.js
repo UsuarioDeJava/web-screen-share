@@ -151,7 +151,7 @@
     question: '❓', check: '✅', cross: '❌', warning: '⚠️', money: '💰', ghost: '👻', cool: '😎', think: '🤔', rocket: '🚀', clap: '👏', gift: '🎁', tree: '🎄',
   };
   const PING_SOUNDS = { classic: 'Clássico', pop: 'Pop', bell: 'Sininho', boing: 'Boing', whistle: 'Apito', coin: 'Moedinha', laser: 'Laser', none: 'Sem som' };
-  const BRUSHES = { normal: 'Normal', neon: 'Neon', outline: 'Contorno', dashed: 'Tracejado', chalk: 'Pontilhado', marker: 'Marca-texto', rainbow: 'Arco-íris', glitter: 'Purpurina', arrow: 'Flecha', fade: 'Rastro que some' };
+  const BRUSHES = { normal: 'Normal', neon: 'Neon', outline: 'Contorno', dashed: 'Tracejado', chalk: 'Pontilhado', marker: 'Marca-texto', rainbow: 'Arco-íris', glitter: 'Purpurina', fade: 'Rastro que some' };
   const WIDTHS = { s: { label: 'Fina', k: 0.6 }, m: { label: 'Média', k: 1 }, l: { label: 'Grossa', k: 1.8 } };
   // Contorno da setinha e da bolinha: branco, preto ou uma cor (rrggbb, sem #).
   const OUTLINES = { w: { label: 'Branco', hex: '#ffffff' }, k: { label: 'Preto', hex: '#15161d' } };
@@ -168,7 +168,7 @@
     ping: PINGS, emoji: EMOJIS, pingSound: PING_SOUNDS, brush: BRUSHES, width: WIDTHS,
   };
   // Opções que saíram (eram repetidas): quem tinha escolhido fica com a parecida.
-  const ALIASES = { skin: { round: 'classic' }, trail: { dots: 'pixels' }, ping: { pulse: 'classic' } };
+  const ALIASES = { skin: { round: 'classic' }, trail: { dots: 'pixels' }, ping: { pulse: 'classic' }, brush: { arrow: 'normal' } };
 
   // Pacotes prontos: tudo combinando, de uma vez.
   const PACKS = {
@@ -180,7 +180,7 @@
     party: { label: 'Festa', style: { skin: 'wand', deco: 'party', aura: 'rainbow', trail: 'rainbow', click: 'confetti', ping: 'emoji', emoji: 'party', pingSound: 'whistle', brush: 'rainbow' } },
     wizard: { label: 'Mago', style: { skin: 'wand', deco: 'wizard', aura: 'twinkle', trail: 'sparkles', click: 'rays', ping: 'emoji', emoji: 'star', pingSound: 'bell', brush: 'glitter', outline: 'b15cff' } },
     adventure: { label: 'Aventura', style: { skin: 'sword', deco: 'viking', trail: 'fire', click: 'boom', ping: 'flag', pingSound: 'boing', brush: 'chalk' } },
-    pirate: { label: 'Pirata', style: { skin: 'sword', deco: 'pirate', trail: 'smoke', click: 'boom', ping: 'flag', pingSound: 'coin', brush: 'arrow', outline: 'k' } },
+    pirate: { label: 'Pirata', style: { skin: 'sword', deco: 'pirate', trail: 'smoke', click: 'boom', ping: 'flag', pingSound: 'coin', brush: 'chalk', outline: 'k' } },
     space: { label: 'Espacial', style: { skin: 'rocket', size: 'l', aura: 'glow', trail: 'fire', click: 'rays', ping: 'pin', pingSound: 'laser', brush: 'neon' } },
     xmas: { label: 'Natal', style: { deco: 'santa', trail: 'snow', click: 'confetti', ping: 'emoji', emoji: 'gift', pingSound: 'bell', brush: 'rainbow', outline: 'ff4d5e' } },
     angel: { label: 'Anjinho', style: { deco: 'halo', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'pin', pingSound: 'bell', brush: 'fade' } },
@@ -697,7 +697,7 @@
   // desfoque a cada quadro e criava/destruía camadas sem parar (o app piscava em preto).
   const FADE_LIFE = 900;
   const FADE_LEVELS = 5;
-  function fadeTrail(svg, path, pathFor) {
+  function fadeTrail(svg, path, pathFor, onEmpty = null) {
     svg.style.filter = 'none';
     path.setAttribute('d', '');
     const make = () => {
@@ -765,7 +765,10 @@
       const t = now();
       if (t - painted >= 15) {
         painted = t;
-        if (!render(t)) return;
+        if (!render(t)) {
+          if (onEmpty) onEmpty(); // o rastro sumiu todo
+          return;
+        }
       }
       raf = requestAnimationFrame(tick);
     }
@@ -789,7 +792,8 @@
 
   // Prepara o traço (svg com viewBox 0..1 e o path dentro) no estilo do pincel de quem
   // desenha. Devolve { update(points) }: chame a cada pontos novos (pathFor monta o "d").
-  function brush(svg, path, rawStyle, color, pathFor) {
+  // opts.arrow: com ponta de flecha no fim (Alt + Shift + arrastar; vale pra qualquer pincel).
+  function brush(svg, path, rawStyle, color, pathFor, opts = {}) {
     const style = normalize(rawStyle);
     const kind = style.brush;
     svg.classList.add('wfx-brush', `wfx-brush-${kind}`);
@@ -825,7 +829,7 @@
       svg.prepend(defs);
       path.style.stroke = `url(#${id})`;
     }
-    const trail = kind === 'fade' ? fadeTrail(svg, path, pathFor) : null;
+    const trail = kind === 'fade' ? fadeTrail(svg, path, pathFor, () => { if (head) head.setAttribute('d', ''); }) : null;
     // Contorno: o traço na cor com um miolo branco por cima.
     let inner = null;
     if (kind === 'outline') {
@@ -836,16 +840,22 @@
       inner.style.stroke = '#ffffff';
       svg.append(inner);
     }
-    // Flecha: a ponta acompanha o fim do traço.
+    // Flecha (Alt + Shift + arrastar, em qualquer pincel): a ponta acompanha o fim do traço,
+    // na cor do pincel. Pode ligar no meio do traço (apertou o Shift depois de começar).
     let head = null;
-    if (kind === 'arrow') {
+    let last = null; // os pontos mais recentes
+    function setArrow(on) {
+      if (!on || head) return;
       head = document.createElementNS(SVG_NS, 'path');
       head.setAttribute('vector-effect', 'non-scaling-stroke');
       head.setAttribute('class', 'wfx-head');
-      head.style.fill = color;
-      head.style.stroke = color;
+      const fill = kind === 'neon' ? lighten(color) : kind === 'outline' ? '#ffffff' : color;
+      head.style.fill = fill;
+      head.style.stroke = kind === 'outline' ? color : fill;
       head.style.strokeLinejoin = 'round';
+      if (kind === 'marker') head.style.opacity = '0.45';
       svg.append(head);
+      if (last && measure()) drawHead(last);
     }
     const glitter = kind === 'glitter' ? {} : null;
     let box = null; // tamanho do traço e onde ele está na camada (lido uma vez)
@@ -859,10 +869,42 @@
       if (inner) inner.style.strokeWidth = `${Math.max(1.2, width * 0.42)}px`;
       return box;
     };
+    function drawHead(points) {
+      if (points.length < 4) return;
+      // Direção do fim do traço (em px de verdade: o desenho estica em x e y).
+      const n = points.length;
+      const ex = points[n - 2] * box.w;
+      const ey = points[n - 1] * box.h;
+      let dx = 0;
+      let dy = 0;
+      for (let i = n - 4; i >= 0; i -= 2) {
+        dx = ex - points[i] * box.w;
+        dy = ey - points[i + 1] * box.h;
+        if (Math.hypot(dx, dy) >= 10) break;
+      }
+      const len = Math.hypot(dx, dy);
+      if (len > 0.5) {
+        const ux = dx / len;
+        const uy = dy / len;
+        const size = Math.max(11, width * 3.2);
+        const wing = (sign) => {
+          const a = Math.PI - sign * 0.5; // ±~29° pra trás
+          const wx = ex + size * (ux * Math.cos(a) - uy * Math.sin(a));
+          const wy = ey + size * (ux * Math.sin(a) + uy * Math.cos(a));
+          return `${(wx / box.w).toFixed(4)} ${(wy / box.h).toFixed(4)}`;
+        };
+        const tip = `${((ex + ux * width * 0.6) / box.w).toFixed(4)} ${((ey + uy * width * 0.6) / box.h).toFixed(4)}`;
+        head.setAttribute('d', `M${tip}L${wing(1)}L${wing(-1)}Z`);
+      }
+    }
+    if (opts.arrow) setArrow(true);
     return {
+      setArrow,
       update(points) {
+        last = points;
         if (trail) {
           trail.update(points);
+          if (head && measure()) drawHead(points);
           return;
         }
         const d = pathFor(points);
@@ -871,33 +913,7 @@
           measure();
           inner.setAttribute('d', d);
         }
-        if (head && points.length >= 4 && measure()) {
-          // Direção do fim do traço (em px de verdade: o desenho estica em x e y).
-          const n = points.length;
-          const ex = points[n - 2] * box.w;
-          const ey = points[n - 1] * box.h;
-          let dx = 0;
-          let dy = 0;
-          for (let i = n - 4; i >= 0; i -= 2) {
-            dx = ex - points[i] * box.w;
-            dy = ey - points[i + 1] * box.h;
-            if (Math.hypot(dx, dy) >= 10) break;
-          }
-          const len = Math.hypot(dx, dy);
-          if (len > 0.5) {
-            const ux = dx / len;
-            const uy = dy / len;
-            const size = Math.max(11, width * 3.2);
-            const wing = (sign) => {
-              const a = Math.PI - sign * 0.5; // ±~29° pra trás
-              const wx = ex + size * (ux * Math.cos(a) - uy * Math.sin(a));
-              const wy = ey + size * (ux * Math.sin(a) + uy * Math.cos(a));
-              return `${(wx / box.w).toFixed(4)} ${(wy / box.h).toFixed(4)}`;
-            };
-            const tip = `${((ex + ux * width * 0.6) / box.w).toFixed(4)} ${((ey + uy * width * 0.6) / box.h).toFixed(4)}`;
-            head.setAttribute('d', `M${tip}L${wing(1)}L${wing(-1)}Z`);
-          }
-        }
+        if (head && measure()) drawHead(points);
         if (glitter && points.length >= 2 && measure()) {
           // Purpurina: brilhinhos coloridos caindo do traço.
           const n = points.length;
@@ -968,7 +984,7 @@
     // Prévia: um "pedaço de tela" pra testar tudo.
     const preview = el('div', 'wfx-ed-preview');
     preview.tabIndex = 0;
-    const hint = el('div', 'wfx-ed-hint', 'Mexa o mouse aqui · clique · Alt + clique: ping · arraste: pincel · rodinha');
+    const hint = el('div', 'wfx-ed-hint', 'Mexa o mouse aqui · clique · Alt + clique: ping · arraste: pincel (com Shift: flecha) · rodinha');
     const board = document.createElementNS(SVG_NS, 'svg');
     board.setAttribute('class', 'wfx-ed-board');
     board.setAttribute('viewBox', '0 0 1 1');
@@ -1209,7 +1225,7 @@
     pingRow.append(pingBody);
     if (images) sections.append(pingRow);
     group('Som do ping', 'pingSound', Object.entries(PING_SOUNDS), { onPick: (id) => playPing(id) });
-    group('Pincel (Alt + arrastar)', 'brush', Object.entries(BRUSHES), { onPick: () => demo('draw') });
+    group('Pincel (Alt + arrastar; + Shift: flecha)', 'brush', Object.entries(BRUSHES), { onPick: () => demo('draw') });
     group('Espessura', 'width', Object.entries(WIDTHS).map(([id, w]) => [id, w.label]), { onPick: () => demo('draw') });
 
     function render() {
@@ -1296,6 +1312,7 @@
         stroke.points.push(downAt[0] / r.width, downAt[1] / r.height);
       }
       if (stroke) {
+        if (e.shiftKey) stroke.brush.setArrow(true); // Shift: com flecha (na sala, Alt + Shift)
         stroke.points.push(x / r.width, y / r.height);
         stroke.brush.update(stroke.points);
       }
