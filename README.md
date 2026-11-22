@@ -428,8 +428,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     nick: na próxima vez elas já entram junto. As fotos ficam só na memória do servidor
     enquanto a pessoa está na sala.
 14. **Mouse e efeitos** (aba no **Perfil**; no app, em **Configurações**): deixe o seu
-    mouse e as suas marcações do seu jeito, com uma **prévia ao vivo** pra testar
-    (mexer, clicar, Alt + clique, arrastar, rodinha) e **pacotes prontos** (Neon,
+    mouse e as suas marcações do seu jeito, com uma **prévia ao vivo** pra testar do
+    mesmo jeito que numa transmissão (mexer, clicar, rodinha, Alt + clique, Alt +
+    arrastar, com Shift a flecha) e **pacotes prontos** (Neon,
     Fofura, Realeza, Retrô, Festa, Mago, Aventura, Pirata, Espacial, Natal, Anjinho,
     Diabinho, Assombrado, Gatinho, Alienígena):
     - **Setinha**: clássica, do PC, pixel, mãozinha, mira, lápis, espadinha, varinha,
