@@ -5,6 +5,22 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 1.8.2 — 2026-11-22
+
+- **Configurações como popup**: em vez de abrir uma janela a mais (que ficava no canto
+  da tela ao minimizar), as Configurações abrem por cima da sala, dentro da própria
+  janela do app, com o fundo escurecido. Muda o que precisa e fecha: no ×, no **Esc**,
+  clicando fora ou no **Ctrl+,** de novo. Minimiza e muda de tamanho junto com o app.
+- **Fixar a lista de pessoas** (pedido do Paolinho): o « no topo da lista agora fixa ela
+  do lado. O « vira um × (com uma transiçãozinha), a lista fica sempre aberta na coluna
+  dela e as transmissões se ajeitam no resto; fica salvo. O × solta e esconde de novo.
+- **Flecha em qualquer pincel**: o pincel "Flecha" saiu; agora **Alt + Shift + arrastar**
+  (ou apertar o Shift no meio do traço) termina o traço numa flecha, com o pincel que
+  você usa (neon, tracejado, arco-íris, rastro que some...). No modo de desenho na
+  tela (Ctrl+Shift+D), é Shift + arrastar. Quem tinha escolhido "Flecha" passa a usar o
+  normal. No Windows, se você tem mais de um idioma de teclado, Alt + Shift também pode
+  trocar o layout: dá pra desligar esse atalho nas configurações de idioma do Windows.
+
 ## 1.8.1 — 2026-11-19
 
 - **Rolagem pros lados nas animações**: Shift + rodinha (e a rolagem lateral do touchpad)

@@ -268,7 +268,29 @@ $('copy-diagnostics').addEventListener('click', async () => {
   catch (error) { status(error.message, true); }
 });
 document.addEventListener('visibilitychange', () => { if (activeTab === 'connection') pollDiagnostics(); updateLogSubscription(); });
-api.onSection((name) => selectTab(name));
+api.onSection((name) => { document.body.classList.remove('closing'); selectTab(name); });
+
+// Popup: fecha no X, no Esc ou clicando fora do painel (o clique tem que começar e
+// terminar fora, pra não fechar ao soltar um arrasto que saiu do painel).
+let closing = false;
+function closePanel() {
+  if (closing) return;
+  closing = true;
+  document.body.classList.add('closing');
+  const done = () => api.close().catch(() => {}).finally(() => { closing = false; document.body.classList.remove('closing'); });
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) done();
+  else setTimeout(done, 130);
+}
+$('close').addEventListener('click', closePanel);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !event.defaultPrevented && !event.repeat) { event.preventDefault(); closePanel(); }
+});
+let downOutside = false;
+document.addEventListener('pointerdown', (event) => { downOutside = event.target === document.body; });
+document.addEventListener('click', (event) => {
+  if (downOutside && event.target === document.body) closePanel();
+  downOutside = false;
+});
 
 async function refreshObs() {
   $('obs-monitor').disabled = true;

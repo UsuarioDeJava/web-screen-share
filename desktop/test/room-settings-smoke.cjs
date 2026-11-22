@@ -6,6 +6,11 @@ const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
+// As configurações abrem como popup dentro da janela (WebContentsView), não numa janela.
+const settingsPopup = () => {
+  const contents = require('electron').webContents.getAllWebContents().find((wc) => !wc.isDestroyed() && /\/settings\.html$/.test(wc.getURL()));
+  return contents && { webContents: contents, focus: () => contents.focus(), close: () => contents.close() };
+};
 let server;
 let serverLogs = '';
 const outputPath = process.env.WSS_TEST_SCREENSHOT_DIR;
@@ -53,7 +58,7 @@ async function until(check, label, timeout = 12000) {
     assert.equal(await inRoom('getComputedStyle(document.getElementById("btn-obs")).display'), 'none');
     await inRoom('document.getElementById("wss-settings-open").click()');
     let panel;
-    await until(() => { panel = BrowserWindow.getAllWindows().find((w) => /settings\.html$/.test(w.webContents.getURL())); return panel; }, 'configurações');
+    await until(() => { panel = settingsPopup(); return panel; }, 'configurações');
     const inPanel = (code) => panel.webContents.executeJavaScript(code, true);
     await until(() => inPanel('document.getElementById("profile-name").textContent === "Teste Perfil"'), 'perfil integrado');
     assert.equal(await inRoom('document.querySelectorAll("dialog[open]").length'), 0);

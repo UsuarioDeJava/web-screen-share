@@ -24,7 +24,13 @@ As opções usam variáveis de ambiente; o projeto não carrega `.env` automatic
 ## Configurações
 
 A engrenagem ao lado do usuário, o clique no avatar/nome e **Ctrl+,** abrem uma única
-página local. A sala continua conectada. As seções reúnem:
+página local. A sala continua conectada. Ela abre como popup dentro da janela principal
+(`settings-panel.js`): um `WebContentsView` transparente do tamanho da área da janela
+(menos a barra de título própria, no modo sem bordas), e a página desenha o fundo
+escurecido e o painel no meio. Fecha no ×, no Esc, clicando fora ou no Ctrl+, (IPC
+`settings:close`); minimiza e redimensiona com a janela. Nos testes, a página aparece
+em `webContents.getAllWebContents()`, não em `BrowserWindow.getAllWindows()`. As seções
+reúnem:
 
 - Perfil: foto, remoção de foto, cores prontas, personalizada e automática.
 - Ponteiro e controle: compartilhar cursor, mostrar outros cursores, sons de eventos

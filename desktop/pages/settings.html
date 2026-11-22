@@ -11,7 +11,8 @@
   <link rel="stylesheet" href="../shared/gamepad.css">
 </head>
 <body>
-  <header><div><p class="eyebrow">WEB SCREEN SHARE</p><h1>Configurações</h1><p class="hint">Seu perfil, a sala e o aplicativo em um só lugar.</p></div><span class="tag" id="version"></span></header>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <header><div><p class="eyebrow">WEB SCREEN SHARE</p><h1 id="settings-title">Configurações</h1><p class="hint">Seu perfil, a sala e o aplicativo em um só lugar.</p></div><div class="header-side"><span class="tag" id="version"></span><button id="close" class="close-btn" type="button" title="Fechar (Esc)" aria-label="Fechar as configurações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div></header>
   <nav role="tablist" aria-label="Painel do aplicativo">
     <button id="tab-profile" type="button" role="tab" aria-selected="true" aria-controls="panel-profile">Perfil</button>
     <button id="tab-fx" type="button" role="tab" aria-selected="false" aria-controls="panel-fx" tabindex="-1">Mouse e efeitos</button>
@@ -94,6 +95,7 @@
     <section id="panel-shortcuts" role="tabpanel" aria-labelledby="tab-shortcuts" hidden><section class="card"><h2>Atalhos do aplicativo</h2><dl class="shortcut-list"><dt>Ctrl+,</dt><dd>Abrir configurações</dd><dt>F11 / Esc</dt><dd>Alternar / sair da tela cheia</dd><dt>F12</dt><dd>Abrir ferramentas de desenvolvedor</dd><dt>Ctrl+Shift+D</dt><dd>Alternar desenho na tela</dd><dt>Ctrl+Shift+X</dt><dd>Revogar controle remoto</dd></dl></section><section class="card"><h2>Atalhos da sala</h2><dl id="room-shortcuts" class="shortcut-list"></dl></section></section>
     <button class="btn btn-primary" id="restart" type="button" hidden>Reiniciar e aplicar</button><p id="status" role="status" aria-live="polite"></p>
   </main>
+  </div>
   <script src="../shared/color.js"></script>
   <script src="../shared/gamepad.js"></script>
   <script src="../shared/gamepad-view.js"></script>

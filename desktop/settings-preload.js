@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('desktopSettings', {
   checkUpdate: () => ipcRenderer.invoke('settings:check-update'),
   readRoom: (section) => ipcRenderer.invoke('settings:room-read', section),
   roomAction: (value) => ipcRenderer.invoke('settings:room-action', value),
+  close: () => ipcRenderer.invoke('settings:close'),
   onSection: (callback) => { ipcRenderer.on('settings:section', (_event, value) => callback(value)); },
   onLog: (callback) => { ipcRenderer.on('settings:log', (_event, data) => callback(data)); },
 });

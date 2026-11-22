@@ -201,7 +201,7 @@ function createMainWindow() {
   const { webContents } = mainWindow;
   if (BORDERLESS_FULLSCREEN) {
     borderlessFullscreen = createBorderlessFullscreen(mainWindow, screen,
-      (state) => { toPage('desktop:window-state', state); log('system', state.fullscreen ? 'Tela cheia sem bordas ativada.' : 'Janela restaurada.'); });
+      (state) => { toPage('desktop:window-state', state); settingsPanel?.layout(); log('system', state.fullscreen ? 'Tela cheia sem bordas ativada.' : 'Janela restaurada.'); });
     mainWindow.on('enter-html-full-screen', () => borderlessFullscreen.set('html', true));
     mainWindow.on('leave-html-full-screen', () => borderlessFullscreen.set('html', false));
     mainWindow.on('focus', () => borderlessFullscreen.focus(true));
@@ -317,6 +317,7 @@ function handleShortcut(event, input) {
       else mainWindow.maximize();
     } else mainWindow.setFullScreen(!mainWindow.isFullScreen());
   }
+  else if (key === 'escape' && settingsPanel?.isOpen()) settingsPanel.close();
   else if (key === 'escape' && borderlessFullscreen && borderlessFullscreen.active) exitBorderlessFullscreen();
   else if (ctrl && (key === ',' || input.code === 'Comma')) openSettings();
   else if (key === 'f12' || (ctrl && input.shift && key === 'i')) webContents.toggleDevTools();
@@ -325,6 +326,7 @@ function handleShortcut(event, input) {
   else if (ctrl && key === '0') webContents.setZoomLevel(0);
   else handled = false;
   if (handled) event.preventDefault();
+  if (handled && settingsPanel?.isOpen()) settingsPanel.layout(); // o zoom muda a barra de título
 }
 
 function exitBorderlessFullscreen() {
@@ -1031,6 +1033,9 @@ if (!app.requestSingleInstanceLock()) {
       readGamepadProfiles, saveGamepadProfile,
       prepareGamepad: () => gamepadSetup.prepare(),
       getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity,
+      // A barra de título própria (janela sem bordas) fica de fora do popup.
+      getInset: () => (BORDERLESS_FULLSCREEN && mainWindow && !borderlessFullscreen?.active
+        ? 32 * mainWindow.webContents.getZoomFactor() : 0),
       room: roomSettings,
       restart: () => {
         for (const name of ['WSS_SERVER', 'WSS_DISABLE_HARDWARE_ACCELERATION', 'WSS_WINDOWED_FULLSCREEN', 'WSS_BORDERLESS_FULLSCREEN']) delete process.env[name];

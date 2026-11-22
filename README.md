@@ -367,8 +367,10 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 6. **Lista de pessoas**: no computador ela não ocupa espaço, pra sobrar mais tela
    pras transmissões. Ela aparece por cima ao encostar o mouse na borda esquerda da
    janela (e some quando o mouse sai), ou pelo botão com o número de pessoas no topo,
-   que deixa ela aberta até clicar fora, apertar Esc ou clicar em «. No celular ela
-   fica numa faixa no topo. Se a conexão com o servidor cair, o aviso "Reconectando…"
+   que deixa ela aberta até clicar fora ou apertar Esc. Pra deixar ela **fixa** do
+   lado, clique no « no topo dela: o « vira um ×, a lista fica sempre aberta na coluna
+   dela e as transmissões se ajeitam no resto (fica salvo); o × solta de novo. No
+   celular ela fica numa faixa no topo. Se a conexão com o servidor cair, o aviso "Reconectando…"
    aparece também no topo.
 7. **Sair** (ícone no rodapé da lista de pessoas) volta pra tela de nick. Do lado
    dele, o **sino** liga e desliga os sons da sala (alguém entrou ou saiu, começou a
@@ -394,7 +396,9 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
     seguidos); soltou o Alt, todos somem sozinhos uns segundos depois. No celular, cada
     traço some uns segundos depois de soltar o dedo. Vale pra todo mundo que
     está vendo a transmissão, inclusive quem transmite (que também pode marcar a
-    própria tela, pra mostrar algo pra quem assiste).
+    própria tela, pra mostrar algo pra quem assiste). Com **Alt + Shift + arrastar**
+    (ou apertando o Shift no meio do traço) o traço termina numa **flecha**, em
+    qualquer pincel.
 11. **Chat de voz** (botão **Voz** no topo, ou tecla **V**): o navegador pede o
     microfone e você passa a ouvir e falar com quem está na voz. No topo ficam as
     carinhas de quem está na voz (acende verde em quem está falando) e, com você na
@@ -449,8 +453,8 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
       **imagem sua** (PNG, JPG, WebP ou GIF), com o **som** que você escolher (ou sem
       som).
     - **Pincel** (Alt + arrastar): normal, neon, contorno, tracejado, pontilhado,
-      marca-texto, arco-íris, purpurina, flecha ou rastro que some, em três
-      **espessuras**.
+      marca-texto, arco-íris, purpurina ou rastro que some, em três **espessuras**.
+      Com Shift junto, qualquer um deles vira flecha.
 
     Todo mundo vê do seu jeito: quem assiste junto, nos quadros, e quem transmite, na
     tela de verdade (pelo app 1.8 ou mais novo pras novidades). Fica salvo como a cor e
@@ -469,7 +473,8 @@ servidor (então tudo que muda no servidor chega nele sem reinstalar) e acrescen
 que o navegador não faz:
 
 - **Configurações** (a engrenagem ao lado do seu nome, clique no seu avatar/nome ou
-  **Ctrl+,**): uma janela só com **Perfil** (foto e cor, com o mesmo seletor da sala),
+  **Ctrl+,**): abre como um popup por cima da sala (não é uma janela a mais: fecha no
+  ×, no **Esc** ou clicando fora), com **Perfil** (foto e cor, com o mesmo seletor da sala),
   **Mouse e efeitos** (o mesmo editor do perfil, com imagem própria), **Ponteiro e
   controle** (ver o mouse de quem assiste, sons, quem pode controlar), **Aplicativo** (modo de tela cheia, aceleração de hardware, marcações na
   tela, registro de atividade, versões e **Verificar atualização**), **Conexão e

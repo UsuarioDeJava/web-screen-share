@@ -6,6 +6,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const assert = require('node:assert/strict');
+// As configurações abrem como popup dentro da janela (WebContentsView), não numa janela.
+const settingsPopup = () => {
+  const contents = require('electron').webContents.getAllWebContents().find((wc) => !wc.isDestroyed() && /\/settings\.html$/.test(wc.getURL()));
+  return contents && { webContents: contents, focus: () => contents.focus(), close: () => contents.close() };
+};
 let server, captureHandler;
 let serverLogs = '';
 async function until(check, label, ms = 20000) {
@@ -80,7 +85,7 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     const track = await evaluate(room, 'document.querySelector(".tile-self video").srcObject.getVideoTracks()[0].id');
     await evaluate(room, 'document.getElementById("wss-settings-open").click()');
     let panel;
-    await until(() => { panel = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith('/settings.html')); return panel; }, 'configurações');
+    await until(() => { panel = settingsPopup(); return panel; }, 'configurações');
     await until(() => evaluate(panel, 'Boolean(window.desktopSettings && document.getElementById("environment").textContent)'), 'configurações carregadas');
     const preferences = await evaluate(panel, 'desktopSettings.read()');
     const setOverlay = async (enabled) => {
@@ -116,7 +121,7 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
     // Concede pelo painel que o usuário utiliza, passando pelo preload e pelo IPC.
     await evaluate(room, 'document.getElementById("wss-settings-open").click()');
-    await until(() => { panel=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/settings.html'));return panel; }, 'painel de permissões');
+    await until(() => { panel=settingsPopup();return panel; }, 'painel de permissões');
     await evaluate(panel, 'document.getElementById("tab-pointer").click()');
     await until(() => evaluate(panel, '[...document.querySelectorAll("#control-people .control-person")].some(row=>row.textContent.includes("Receptor QA"))'), 'participantes no painel');
     await evaluate(panel, 'const row=[...document.querySelectorAll("#control-people .control-person")].find(row=>row.textContent.includes("Receptor QA"));const gamepad=row.querySelectorAll("input")[2];if(gamepad.disabled)throw Error(document.getElementById("gamepad-native-status").textContent);gamepad.click();row.querySelector("button").click()');

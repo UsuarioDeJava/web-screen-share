@@ -1,30 +1,73 @@
-const { BrowserWindow, ipcMain, dialog } = require('electron');
+const { WebContentsView, ipcMain, dialog } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity }) {
-  let win = null;
+// As configurações abrem como um popup dentro da janela principal, não numa janela a
+// mais: uma camada transparente do tamanho da janela, com o painel no meio (a página
+// desenha o fundo escurecido e o cartão). Fecha no X, no Esc, clicando fora ou no Ctrl+,;
+// minimiza, muda de tamanho e fecha junto com a janela. `getInset` é a altura da barra de
+// título própria (janela sem bordas), que continua de fora pra minimizar e fechar.
+function createSettingsPanel({ getParent, getInset = () => 0, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity }) {
+  let view = null;
+  let parent = null;
   let timer = null;
   let following = false;
   let cursor = null;
   const url = pathToFileURL(path.join(__dirname, 'pages', 'settings.html')).href;
+  const contents = () => (view && !view.webContents.isDestroyed() ? view.webContents : null);
+  const parentAlive = () => Boolean(parent) && !parent.isDestroyed();
   function allowed(event) {
-    return win && !win.isDestroyed() && event.sender === win.webContents
-      && event.senderFrame === win.webContents.mainFrame && event.senderFrame.url === url;
+    const wc = contents();
+    return Boolean(wc) && event.sender === wc && event.senderFrame === wc.mainFrame && event.senderFrame.url === url;
   }
+  const showing = () => Boolean(contents()) && parentAlive() && parent.isVisible() && !parent.isMinimized();
   function queue() {
-    if (!following || timer || !win || win.isDestroyed() || !win.isVisible() || win.isMinimized()) return;
+    if (!following || timer || !showing()) return;
     timer = setTimeout(() => {
       timer = null;
-      if (following && win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()) {
+      if (following && showing()) {
         const packet = activity.changes(cursor);
         cursor = { epoch: packet.epoch, lastId: packet.lastId };
-        win.webContents.send('settings:log', packet);
+        contents().send('settings:log', packet);
       }
     }, 250);
   }
   activity.subscribe(queue);
+  function layout() {
+    if (!view || !parentAlive()) return;
+    const [width, height] = parent.getContentSize();
+    const top = Math.max(0, Math.min(Math.round(getInset() || 0), height));
+    view.setBounds({ x: 0, y: top, width, height: height - top });
+  }
+  const parentEvents = { resize: layout, 'enter-full-screen': layout, 'leave-full-screen': layout, restore: queue, show: queue };
+
+  function close() {
+    if (!view) return;
+    const closing = view;
+    view = null;
+    room.cancel(); clearTimeout(timer); timer = null; following = false; cursor = null;
+    if (parentAlive()) {
+      for (const [name, handler] of Object.entries(parentEvents)) parent.off(name, handler);
+      parent.contentView.removeChildView(closing);
+      if (parent.isFocused()) parent.webContents.focus();
+    }
+    parent = null;
+    if (!closing.webContents.isDestroyed()) closing.webContents.close();
+  }
+
+  // Com o foco no popup, os atalhos da janela principal não chegam: os que fazem sentido
+  // aqui são tratados aqui (o Esc fica com a página, pra fechar com a animação).
+  function shortcut(event, input) {
+    if (input.type !== 'keyDown') return;
+    const key = input.key.toLowerCase();
+    const ctrl = input.control || input.meta;
+    if (ctrl && (key === ',' || input.code === 'Comma')) close();
+    else if (key === 'f12' || (ctrl && input.shift && key === 'i')) contents()?.toggleDevTools();
+    else return;
+    event.preventDefault();
+  }
+
   for (const [channel, handler] of Object.entries({
     'settings:read': getState,
     'settings:gamepad-profiles': readGamepadProfiles,
@@ -45,7 +88,7 @@ function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGam
     'settings:room-read': (section) => room.read(section),
     'settings:room-action': (value) => room.action(value),
     'settings:export-log': async () => {
-      const result = await dialog.showSaveDialog(win, {
+      const result = await dialog.showSaveDialog(parentAlive() ? parent : undefined, {
         title: 'Exportar log de atividade',
         defaultPath: `web-screen-share-log-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -54,37 +97,54 @@ function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGam
       await fs.writeFile(result.filePath, JSON.stringify({ exportedAt: new Date().toISOString(), ...activity.snapshot() }, null, 2), 'utf8');
       return { saved: true };
     },
+    'settings:close': () => { setImmediate(close); return { ok: true }; },
   })) {
     ipcMain.handle(channel, (event, value) => {
-      // Uma notificação de aba oculta pode já estar em trânsito ao fechar a janela.
-      if (channel === 'settings:log-subscribe' && value?.live === false && (!win || win.isDestroyed())) return null;
+      // Uma notificação de aba oculta pode já estar em trânsito ao fechar o popup.
+      if (channel === 'settings:log-subscribe' && value?.live === false && !contents()) return null;
       if (!allowed(event)) throw new Error('Não permitido.');
       return handler(value);
     });
   }
+
   return {
     open(section = 'profile') {
-      if (win && !win.isDestroyed()) {
-        if (win.isMinimized()) win.restore();
-        win.show(); win.focus(); win.webContents.send('settings:section', section); return;
+      const current = contents();
+      if (current && parentAlive()) {
+        if (parent.isMinimized()) parent.restore();
+        parent.show(); parent.focus(); current.focus();
+        current.send('settings:section', section);
+        return;
       }
-      win = new BrowserWindow({
-        parent: getParent(), width: 1050, height: 820, minWidth: 640, minHeight: 560,
-        title: 'Configurações — Web Screen Share', backgroundColor: '#090b12', show: false,
-        autoHideMenuBar: true,
-        webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, sandbox: true },
+      close();
+      parent = getParent();
+      if (!parentAlive()) { parent = null; return; }
+      view = new WebContentsView({
+        webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, sandbox: true, spellcheck: false },
       });
-      win.setMenu(null);
-      win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-      win.webContents.on('will-navigate', (event) => event.preventDefault());
-      win.webContents.once('did-finish-load', () => win && win.webContents.send('settings:section', section));
-      win.once('ready-to-show', () => win && win.show());
-      win.on('restore', queue);
-      win.on('show', queue);
-      win.on('closed', () => { room.cancel(); clearTimeout(timer); timer = null; following = false; cursor = null; win = null; });
-      win.loadURL(url);
+      view.setBackgroundColor('#00000000');
+      const wc = view.webContents;
+      wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+      wc.on('will-navigate', (event) => event.preventDefault());
+      wc.on('before-input-event', shortcut);
+      wc.on('render-process-gone', () => { if (contents() === wc) close(); });
+      wc.once('destroyed', () => { if (view && view.webContents === wc) close(); });
+      wc.once('did-finish-load', () => {
+        if (contents() !== wc) return;
+        wc.send('settings:section', section);
+        wc.focus();
+        queue();
+      });
+      for (const [name, handler] of Object.entries(parentEvents)) parent.on(name, handler);
+      layout();
+      parent.contentView.addChildView(view);
+      if (parent.isMinimized()) parent.restore();
+      parent.focus();
+      wc.loadURL(url);
     },
-    close() { if (win && !win.isDestroyed()) win.close(); },
+    close,
+    layout,
+    isOpen: () => Boolean(contents()),
   };
 }
 

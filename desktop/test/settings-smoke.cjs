@@ -6,6 +6,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const assert = require('node:assert/strict');
+// As configurações abrem como popup dentro da janela (WebContentsView), não numa janela.
+const settingsPopup = () => {
+  const contents = require('electron').webContents.getAllWebContents().find((wc) => !wc.isDestroyed() && /\/settings\.html$/.test(wc.getURL()));
+  return contents && { webContents: contents, focus: () => contents.focus(), close: () => contents.close() };
+};
 const outputPath = process.env.WSS_TEST_SCREENSHOT_DIR;
 const server = http.createServer((_req, res) => {
   res.setHeader('Content-Type', 'text/html');
@@ -42,7 +47,7 @@ async function until(check, label) {
     await until(() => inRoom('Boolean(window.joined && document.getElementById("wss-settings-open"))'), 'entrada na sala');
     await inRoom('document.getElementById("wss-settings-open").click()');
     let panel;
-    await until(() => { panel = BrowserWindow.getAllWindows().find((w) => /settings\.html$/.test(w.webContents.getURL())); return panel; }, 'painel');
+    await until(() => { panel = settingsPopup(); return panel; }, 'painel');
     const inPanel = (code) => panel.webContents.executeJavaScript(code, true);
     await until(() => inPanel('Boolean(window.desktopSettings && document.getElementById("environment").textContent)'), 'painel inicializado');
     const state = () => inPanel('window.desktopSettings.read()');
