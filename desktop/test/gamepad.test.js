@@ -41,6 +41,45 @@ test('proprietário autoriza por dispositivo, limita slots e revoga só o partic
   r.service.revokeStream('host');
   assert.equal(r.users.get('host').controls.size, 0);
 });
+test('transmissão pelo OBS: teclado e mouse não, só o gamepad (direto pelo app, tudo)', () => {
+  // A transmissão "obs-host" é do OBS da mesma pessoa (mesmo nick).
+  const r = room({ ownsStream: (u, id) => id === u.id || (u.id === 'host' && id === 'obs-host') });
+  const host = r.add('host'); r.add('a'); r.add('b');
+  for (const devices of [{ keyboard: true }, { mouse: true }, { keyboard: true, mouse: true, gamepad: true }, undefined]) {
+    const res = host.emit('control:grant', { to: 'a', stream: 'obs-host', devices });
+    assert.match(res.error || '', /direto pelo app/);
+  }
+  assert.equal(host.emit('control:grant', { to: 'a', stream: 'obs-host', devices: { gamepad: true } }).ok, true);
+  assert.equal(host.emit('control:grant', { to: 'b', stream: 'host', devices: { keyboard: true, mouse: true } }).ok, true);
+});
+test('um mouse só: modo controle e formato do mouse só entre quem tem o mouse liberado', () => {
+  const r = room(), host = r.add('host'), a = r.add('a'), b = r.add('b');
+  host.emit('control:grant', { to: 'a', stream: 'host', devices: { mouse: true } });
+  host.emit('control:grant', { to: 'b', stream: 'host', devices: { gamepad: true } });
+  const before = r.sent.length;
+  a.emit('control:mode', { stream: 'host', on: true });
+  b.emit('control:mode', { stream: 'host', on: true }); // sem o mouse: não conta
+  a.emit('control:mode', { stream: 'outra', on: true });
+  const modes = r.sent.slice(before).filter((m) => m.event === 'control:mode');
+  assert.deepEqual(modes, [{ id: 'host', event: 'control:mode', value: { from: 'a', stream: 'host', on: true } }]);
+  const mark = r.sent.length;
+  host.emit('control:cursor', { shape: 'text' });
+  host.emit('control:cursor', { shape: 'url(javascript:alert(1))' });
+  a.emit('control:cursor', { shape: 'pointer' }); // quem não transmite não manda formato
+  const shapes = r.sent.slice(mark).filter((m) => m.event === 'control:cursor');
+  assert.deepEqual(shapes, [{ id: 'a', event: 'control:cursor', value: { stream: 'host', shape: 'text' } }]);
+});
+test('um mouse só: todo formato que o app manda o servidor aceita; fora do Windows nada se esconde', () => {
+  const { CURSOR_SHAPES } = require('../../server/control');
+  const { CSS_SHAPES, createSystemCursor } = require('../system-cursor');
+  for (const shape of CSS_SHAPES) assert.ok(CURSOR_SHAPES.has(shape), shape);
+  if (process.platform !== 'win32') assert.equal(createSystemCursor(), null);
+  process.env.WSS_FAKE_SYSTEM_CURSOR = '1';
+  const fake = createSystemCursor();
+  fake.hide(); assert.equal(fake.hidden, true);
+  fake.restore(); assert.equal(fake.hidden, false);
+  delete process.env.WSS_FAKE_SYSTEM_CURSOR;
+});
 test('estados inválidos e dispositivos não autorizados não chegam ao proprietário', () => {
   const r = room(), host = r.add('host'), player = r.add('player');
   assert.ok(host.emit('control:grant', { stream: 'host', to: 'player', devices: {} }).error);

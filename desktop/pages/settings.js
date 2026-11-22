@@ -199,8 +199,12 @@ async function refreshRoom() {
     const devices = {};
     row.append(label);
     for (const [key, title] of [['keyboard', 'Teclado'], ['mouse', 'Mouse'], ['gamepad', 'Gamepad']]) {
-      const field = document.createElement('label'); field.textContent = title + ' '; const input = document.createElement('input'); input.type = 'checkbox'; input.checked = person.devices?.[key] === true;
-      input.disabled = person.disabled || (key === 'gamepad' && !roomState.gamepad?.available); devices[key] = input; field.append(input); row.append(field);
+      const field = document.createElement('label'); field.textContent = title + ' '; const input = document.createElement('input'); input.type = 'checkbox';
+      // Transmitindo pelo OBS, teclado e mouse não (só direto pelo app).
+      const blocked = person.blocked?.[key] === true;
+      input.checked = person.devices?.[key] === true && !blocked;
+      input.disabled = person.disabled || blocked || (key === 'gamepad' && !roomState.gamepad?.available); devices[key] = input; field.append(input); row.append(field);
+      if (blocked) field.title = roomState.controlNote || '';
     }
     const button = document.createElement('button'); button.type = 'button'; button.className = 'btn';
     button.textContent = person.active ? 'Aplicar permissões' : 'Permitir'; button.disabled = person.disabled;

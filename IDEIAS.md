@@ -14,14 +14,13 @@ Coisas pedidas que ainda não foram feitas.
 - **Animações de clique paradas onde clicou** (não vão junto do mouse).
 - **Transmissão ativa/inativa**: o seu mouse só aparece na transmissão que você clicou,
   com um botão em cada uma pra desligar só nela.
+- **Controlando: um mouse só** (app 1.8.2, Windows): o mouse de quem é controlado some
+  da captura e o seu fica com o formato dele (seta, texto, mãozinha...).
+- **Controle de teclado e mouse só na transmissão pelo app** (pelo OBS, só gamepad).
 
 ## Próximo
 
-- **Controlando: um mouse só.** Em vez de aparecer o seu mouse e o mouse do PC de lá
-  (que vem atrasado pelo ping e deixa o atraso bem visível), o seu mouse vira igual ao
-  de quem está sendo controlado e o mouse dele some da captura. Pra pensar: o cursor
-  de lá precisa sair da captura da tela (no app, a captura pode esconder o cursor) e o
-  formato dele (seta, mãozinha, texto...) viria pelo app de quem transmite.
+- (nada na fila)
 
 ## Talvez depois
 

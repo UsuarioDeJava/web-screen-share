@@ -14,6 +14,7 @@ const { app, BrowserWindow, Menu, Notification, desktopCapturer, dialog, globalS
 const fs = require('fs');
 const path = require('path');
 const { createInput } = require('./input');
+const { createSystemCursor } = require('./system-cursor');
 const { createGamepads } = require('./gamepad');
 const { createGamepadSetup } = require('./gamepad-setup');
 const gamepadModel = require('./shared/gamepad');
@@ -69,6 +70,16 @@ const gamepadSetup = createGamepadSetup({ directory: path.join(app.getPath('user
 let controlPeople = new Map();
 const gamepadReceivers = new Map();
 let controller = null; // quem está controlando agora: { name }
+// Um mouse só: enquanto alguém com o mouse liberado está no modo controle (o 🎮 ligado em
+// cima da sua transmissão), o seu mouse some da captura (fica transparente no Windows) e
+// a camada, que fica fora da captura, desenha um no lugar só pra você. Quem controla vê o
+// mouse dele com o formato do seu (seta, texto, mãozinha...).
+let systemCursor; // undefined até a primeira vez; null fora do Windows
+const controlModes = new Set(); // quem está no modo controle agora (ids da sala)
+let remoteCursorTimer = null;
+let localCursorDrawn = ''; // o que a camada está desenhando agora ('' = nada)
+let lastCursorShape = null;
+const REMOTE_CURSOR_MS = 16;
 let picker = null; // seletor de tela aberto: { win, finish }
 let keyHook; // gancho de teclado (Windows): undefined até a primeira vez, null se não tem
 let keysWanted = false; // você está controlando alguém, com o mouse em cima da transmissão
@@ -771,8 +782,68 @@ function setController(next) {
     if (revokeShortcutOk && globalShortcut.isRegistered(REVOKE_SHORTCUT)) globalShortcut.unregister(REVOKE_SHORTCUT);
     revokeShortcutOk = false;
   }
+  for (const id of [...controlModes]) if (!controller || !controlPeople.get(id)?.mouse) controlModes.delete(id);
+  updateRemoteCursorTimer();
   renderControlBanner();
 }
+
+// ---- um mouse só (veja controlModes)
+function getSystemCursor() {
+  if (systemCursor === undefined) {
+    try { systemCursor = createSystemCursor({ markerFile: path.join(app.getPath('userData'), 'cursor-hidden') }); } catch { systemCursor = null; }
+  }
+  return systemCursor;
+}
+const mouseControllers = () => [...controlModes].filter((id) => controlPeople.get(id)?.mouse);
+function sharedDisplay() {
+  if (overlayOwner !== 'share' || !overlay || overlay.isDestroyed()) return null;
+  return screen.getAllDisplays().find((d) => d.id === overlay.displayId) || null;
+}
+function syncRemoteCursor() {
+  const cursor = getSystemCursor();
+  const p = screen.getCursorScreenPoint();
+  const display = sharedDisplay();
+  const b = display && display.bounds;
+  const inside = Boolean(b) && p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height;
+  // Você mexendo no mouse (prioridade) ou ele fora da tela transmitida: o seu volta na hora.
+  const hide = Boolean(cursor) && Boolean(controller) && !localPaused && inside && mouseControllers().length > 0;
+  try {
+    if (hide) cursor.hide();
+    else if (cursor) cursor.restore();
+  } catch (err) {
+    console.error('Cursor do sistema:', err.message);
+  }
+  // O formato agora, pra quem controla (só manda quando muda).
+  if (cursor && controller && mouseControllers().length) {
+    let shape = null;
+    try { shape = cursor.shape(); } catch {}
+    if (shape && shape !== lastCursorShape) {
+      lastCursorShape = shape;
+      toPage('desktop:cursor-shape', shape);
+    }
+  }
+  // Na camada (fora da captura): o mouse, pra você ver onde ele está.
+  const drawn = hide ? `${Math.round(p.x)}|${Math.round(p.y)}|${lastCursorShape}` : '';
+  if (drawn === localCursorDrawn) return;
+  localCursorDrawn = drawn;
+  if (hide) toOverlay({ type: 'local-cursor', x: (p.x - b.x) / b.width, y: (p.y - b.y) / b.height, shape: lastCursorShape || 'default' });
+  else toOverlay({ type: 'local-cursor', gone: true });
+}
+function updateRemoteCursorTimer() {
+  const on = Boolean(controller) && mouseControllers().length > 0;
+  if (on && !remoteCursorTimer) {
+    remoteCursorTimer = setInterval(syncRemoteCursor, REMOTE_CURSOR_MS);
+    syncRemoteCursor();
+  } else if (!on && remoteCursorTimer) {
+    clearInterval(remoteCursorTimer);
+    remoteCursorTimer = null;
+    syncRemoteCursor(); // devolve o mouse e apaga o da camada
+  }
+}
+function restoreSystemCursor() {
+  try { if (systemCursor) systemCursor.restore(); } catch {}
+}
+process.on('exit', restoreSystemCursor); // nunca fica escondido depois que o app fecha
 
 function toPage(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data);
@@ -799,6 +870,15 @@ ipcMain.handle('desktop:overlay-state', (event) => fromServer(event) ? overlaySt
 ipcMain.on('desktop:control-state', (event, data) => {
   if (fromServer(event)) setController(data && data.on && pendingPreferences.overlay && overlay ? data : null);
 });
+// Quem controla ligou/desligou o modo controle em cima da sua transmissão.
+ipcMain.on('desktop:control-mode', (event, data) => {
+  if (!fromServer(event) || !data || typeof data.from !== 'string') return;
+  if (data.on === true && controller && controlPeople.get(data.from)?.mouse) {
+    controlModes.add(data.from);
+    lastCursorShape = null; // manda o formato de novo pra quem entrou
+  } else controlModes.delete(data.from);
+  updateRemoteCursorTimer();
+});
 
 // O que quem controla fez em cima da sua transmissão, já validado pelo servidor.
 let lastGamepadError = 0;
@@ -818,6 +898,8 @@ ipcMain.on('desktop:control', (event, msg) => {
     }
     return;
   }
+  // Teclado e mouse só com a tela transmitida direto pelo app (pelo OBS, só o gamepad).
+  if (overlayOwner !== 'share') return;
   const device = getInput();
   const display = screen.getAllDisplays().find((d) => d.id === overlay.displayId);
   if (!device || !display) return;
@@ -1026,6 +1108,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    // Fechou (ou caiu) da última vez com o mouse escondido por um controle: devolve já.
+    if (fs.existsSync(path.join(app.getPath('userData'), 'cursor-hidden'))) getSystemCursor();
     if (process.platform === 'win32') app.setAppUserModelId('com.webscreenshare.desktop');
     Menu.setApplicationMenu(null);
     roomSettings = createRoomSettings({ getContents: () => mainWindow?.webContents, isServer: isServerUrl });
@@ -1095,6 +1179,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    restoreSystemCursor();
     globalShortcut.unregisterAll();
     gamepads.close();
     if (input) input.close();

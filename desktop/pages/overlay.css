@@ -193,3 +193,8 @@ body.drawing::after {
 .control-banner.paused .control-dot { background: #34d987; box-shadow: 0 0 10px #34d987; animation: none; }
 .control-banner kbd { color: #fff; font: 700 12px ui-monospace, Consolas, monospace; }
 .control-dot { width: 10px; height: 10px; border-radius: 50%; background: #ffb041; box-shadow: 0 0 10px #ffb041; animation: blink 1.2s ease-in-out infinite; }
+/* O seu mouse, desenhado aqui enquanto alguém controla (o do Windows fica transparente
+   pra não aparecer na transmissão). Acima de tudo, como o de verdade. */
+.local-cursor { position: absolute; z-index: 50; width: 0; height: 0; pointer-events: none; }
+.local-cursor[hidden] { display: none; }
+.local-cursor svg { position: absolute; width: 24px; height: 24px; overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.45)); }

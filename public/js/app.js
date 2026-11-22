@@ -4789,6 +4789,12 @@
     if (obsOverlay) return myObsStreamId();
     return null;
   }
+  // Pelo OBS só o gamepad: teclado e mouse só com a tela transmitida direto pelo app.
+  const OBS_ONLY_GAMEPAD = 'Transmitindo pelo OBS, dá pra liberar só o gamepad: teclado e mouse só transmitindo a tela inteira direto pelo app.';
+  function controlViaObs() {
+    const stream = myControlStream();
+    return Boolean(stream && me && stream !== me.id);
+  }
 
   async function openControlPanel() {
     if (desktop && !desktopCaps && typeof desktop.caps === 'function') desktopCaps = await desktop.caps().catch(() => null);
@@ -4805,9 +4811,10 @@
     let problem = '';
     if (typeof desktop.caps !== 'function') problem = 'Atualize o app de desktop pra usar o mouse de quem assiste e o controle.';
     else if (!desktopCaps || !desktopCaps.control) problem = 'O controle remoto não funciona neste sistema (precisa do app no Windows).';
-    else if (!stream) problem = 'Comece a transmitir a tela inteira pelo app (ou pelo OBS, com as marcações na sua tela ligadas) pra poder dar o controle.';
+    else if (!stream) problem = 'Comece a transmitir a tela inteira pelo app pra poder dar o controle (pelo OBS, com as marcações na sua tela ligadas, só o gamepad).';
+    const viaObs = !problem && controlViaObs();
     note.hidden = !problem;
-    note.textContent = problem || (desktopCaps?.gamepad?.available ? 'Até quatro gamepads. Teclado e mouse: uma pessoa por dispositivo.' : desktopCaps?.gamepad?.reason || 'Atualize o app para receber gamepads.');
+    note.textContent = problem || (viaObs ? OBS_ONLY_GAMEPAD : desktopCaps?.gamepad?.available ? 'Até quatro gamepads. Teclado e mouse: uma pessoa por dispositivo.' : desktopCaps?.gamepad?.reason || 'Atualize o app para receber gamepads.');
     note.hidden = false;
     note.className = problem ? 'obs-check is-bad' : 'obs-check';
     const people = [...users.values()].filter((u) => u.kind !== 'obs' && me && u.id !== me.id)
@@ -4821,8 +4828,11 @@
       const choices = el('div', 'control-devices');
       const fields = {};
       for (const [key, label] of [['keyboard', 'Teclado'], ['mouse', 'Mouse'], ['gamepad', 'Gamepad']]) {
-        const wrap = el('label'); const input = el('input'); input.type = 'checkbox'; input.checked = selected[key];
-        input.disabled = Boolean(problem) || (key === 'gamepad' && !desktopCaps?.gamepad?.available);
+        const wrap = el('label'); const input = el('input'); input.type = 'checkbox';
+        const blocked = viaObs && key !== 'gamepad'; // pelo OBS, teclado e mouse não
+        input.checked = selected[key] && !blocked;
+        input.disabled = Boolean(problem) || blocked || (key === 'gamepad' && !desktopCaps?.gamepad?.available);
+        if (blocked) wrap.title = OBS_ONLY_GAMEPAD;
         fields[key] = input; wrap.append(input, document.createTextNode(label)); choices.append(wrap);
       }
       li.append(choices);
@@ -4839,7 +4849,8 @@
   }
 
   // Na lista da sala, em cada pessoa: deixar ela controlar o seu PC. Só aparece no app,
-  // com a sua tela inteira no ar (pelo app ou pelo OBS com as marcações na sua tela).
+  // com a sua tela inteira no ar pelo app (pelo OBS com as marcações na sua tela, só o
+  // gamepad).
   // O botão abre a seleção explícita de dispositivos antes de conceder acesso.
   let controlTargetsShown = null; // a transmissão controlável quando a lista foi desenhada
 
@@ -4912,6 +4923,14 @@
       desktop.control(msg);
     }
   });
+  // Um mouse só (app no Windows): quem controla entrou/saiu do modo controle; o formato do
+  // seu mouse vai pra quem pode mexer nele.
+  socket.on('control:mode', (msg) => {
+    if (desktop && msg && controlGrants.has(msg.from) && typeof desktop.controlMode === 'function') desktop.controlMode({ from: msg.from, on: msg.on === true });
+  });
+  if (desktop && typeof desktop.onCursorShape === 'function') {
+    desktop.onCursorShape((shape) => { if (me) socket.emit('control:cursor', { shape }); });
+  }
 
   // ---- quem assiste: controlar o PC de quem deixou
 
@@ -4972,9 +4991,29 @@
     controlButtons.clear();
   }
 
+  // Um mouse só: avisa quem transmite (o app dela esconde o mouse de lá da captura) e o
+  // seu mouse em cima da transmissão fica com o formato do de lá.
+  function sendControlMode(stream, on) {
+    if (controlAllowed.get(stream)?.devices.mouse) socket.emit('control:mode', { stream, on });
+  }
+  const remoteCursors = new Map(); // transmissão -> formato do mouse de lá (cursor do CSS)
+  const CSS_CURSORS = new Set(['default', 'text', 'wait', 'crosshair', 'nwse-resize', 'nesw-resize', 'ew-resize', 'ns-resize', 'move', 'not-allowed', 'pointer', 'progress', 'help', 'none']);
+  function applyRemoteCursor(s) {
+    const shape = remoteCursors.get(s.id);
+    if (shape) s.media.style.setProperty('--remote-cursor', shape);
+    else s.media.style.removeProperty('--remote-cursor');
+  }
+  socket.on('control:cursor', (msg) => {
+    if (!msg || !controlAllowed.has(msg.stream) || !CSS_CURSORS.has(msg.shape)) return;
+    remoteCursors.set(msg.stream, msg.shape);
+    const s = streams.get(msg.stream);
+    if (s) applyRemoteCursor(s);
+  });
+
   function stopControlling() {
     if (!controlling) return;
     releaseControl();
+    sendControlMode(controlling, false);
     const s = streams.get(controlling);
     controlling = null;
     controlHover = false;
@@ -4992,6 +5031,8 @@
     if (!controlAllowed.has(s.id)) return;
     controlling = s.id;
     hudHidden = false;
+    sendControlMode(s.id, true);
+    applyRemoteCursor(s);
     renderControlButton(s);
   }
 
@@ -5157,8 +5198,9 @@
       return;
     }
     const from = controlAllowed.get(stream)?.from;
-    controlAllowed.delete(stream);
     if (controlling === stream) stopControlling();
+    controlAllowed.delete(stream);
+    remoteCursors.delete(stream);
     const s = streams.get(stream);
     if (s) renderControlButton(s);
     if (from) chatNote(`${from} tirou o seu controle`);
@@ -5189,13 +5231,15 @@
       const photo = profileAvatars.get(me.name) || null;
       const photoColors = await window.WssColor.loadPalette(photo);
       const problem = !desktopCaps?.control ? 'O controle remoto está indisponível ou as marcações estão desligadas.'
-        : !myControlStream() ? 'Transmita a tela inteira para permitir controle remoto.' : '';
+        : !myControlStream() ? 'Transmita a tela inteira pelo app para permitir controle remoto.' : '';
+      const viaObs = !problem && controlViaObs();
       return { available: true, name: me.name, photo: photo ? new URL(photo, location.href).href : null, photoColors, color: myColor, legacyHue: myHue, style: absoluteStyle(myFull), styleImages: true,
         autoFill: `hsl(${autoHue(me.name)} 45% 42%)`, markColor: markFill(toneOf(me.name)), recent: recentColors(),
         // shareCursor: o padrão das transmissões (o seu mouse agora liga em cada uma).
         shareCursor: cursorDefault, cursorPerStream: true, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
-        gamepad: desktopCaps?.gamepad, controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
-          .map((u) => ({ name: u.name, active: controlGrants.has(u.id), devices: controlGrants.get(u.id)?.devices || { keyboard: false, mouse: false, gamepad: false }, disabled: Boolean(problem) })),
+        gamepad: desktopCaps?.gamepad, controlNote: problem || (viaObs ? OBS_ONLY_GAMEPAD : ''), controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
+          .map((u) => ({ name: u.name, active: controlGrants.has(u.id), devices: controlGrants.get(u.id)?.devices || { keyboard: false, mouse: false, gamepad: false }, disabled: Boolean(problem),
+            blocked: viaObs ? { keyboard: true, mouse: true } : {} })),
         diagnostics: diagOutput.textContent, serverVersion: sidebarVersionEl.textContent,
         shortcuts: [...keysDialog.querySelectorAll('dt')].filter((node) => !node.hidden && !node.nextElementSibling?.hidden)
           .map((node) => ({ keys: node.textContent.trim(), action: node.nextElementSibling?.textContent.trim() || '' })) };

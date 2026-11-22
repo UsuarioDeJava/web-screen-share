@@ -1,5 +1,8 @@
 const { permissions, kindDevice, validState } = require('../desktop/shared/gamepad');
 
+// Formatos do mouse de quem transmite (nomes de cursor do CSS) que quem controla pode usar.
+const CURSOR_SHAPES = new Set(['default', 'text', 'wait', 'crosshair', 'nwse-resize', 'nesw-resize', 'ew-resize', 'ns-resize', 'move', 'not-allowed', 'pointer', 'progress', 'help', 'none']);
+
 function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now, schedule = true }) {
   const grants = (owner) => owner.controls || (owner.controls = new Map());
   const options = (owner) => owner.controlOptions || (owner.controlOptions = { gamepadPaused: false, maxGamepads: 4 });
@@ -52,6 +55,9 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       // Clientes antigos continuam recebendo somente teclado e mouse.
       const devices = msg.devices === undefined ? { keyboard: true, mouse: true, gamepad: false } : permissions(msg.devices);
       if (!Object.values(devices).some(Boolean)) return reply({ error: 'Selecione pelo menos um dispositivo.' });
+      // Teclado e mouse só na transmissão feita direto pelo app (a tela da própria pessoa);
+      // pelo OBS, só o gamepad.
+      if ((devices.keyboard || devices.mouse) && msg.stream !== owner.id) return reply({ error: 'Teclado e mouse só dá pra liberar transmitindo direto pelo app (pelo OBS, só o gamepad).' });
       const others = [...grants(owner).values()].filter((g) => g.to !== target.id);
       if (devices.gamepad && others.filter((g) => g.devices.gamepad).length >= options(owner).maxGamepads) return reply({ error: `Limite de ${options(owner).maxGamepads} gamepads por computador.` });
       // Teclado e mouse são dispositivos únicos do PC; evitam teclas de pessoas diferentes se misturarem.
@@ -99,6 +105,25 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       publish(owner);
     });
     socket.on('control:revoke', (msg) => revoke(users.get(socket.id), typeof msg?.to === 'string' ? msg.to : undefined));
+    // Um mouse só: quem controla (com o mouse liberado) ligou/desligou o modo controle; o
+    // app de quem transmite esconde o mouse dele da captura enquanto isso.
+    socket.on('control:mode', (msg) => {
+      if (!msg || typeof msg.stream !== 'string' || !allow(socket, 'control-mode', 20, 1000)) return;
+      for (const owner of users.values()) {
+        const grant = grants(owner).get(socket.id);
+        if (!grant || grant.stream !== msg.stream || !grant.devices.mouse) continue;
+        io.to(owner.id).emit('control:mode', { from: socket.id, stream: msg.stream, on: msg.on === true });
+      }
+    });
+    // O formato do mouse de quem transmite (seta, texto, mãozinha...): vai pra quem pode
+    // mexer nele, que vê o próprio mouse igual.
+    socket.on('control:cursor', (msg) => {
+      const owner = users.get(socket.id);
+      if (!owner || !msg || !CURSOR_SHAPES.has(msg.shape) || !allow(socket, 'control-cursor', 60, 1000)) return;
+      for (const grant of grants(owner).values()) {
+        if (grant.devices.mouse) io.to(grant.to).emit('control:cursor', { stream: grant.stream, shape: msg.shape });
+      }
+    });
     socket.on('control:input', (msg) => {
       const device = kindDevice(msg?.kind);
       if (!device || !allow(socket, 'control', 400, 1000)) return;
@@ -136,4 +161,4 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
   timer?.unref();
   return { attach, revoke, revokeFor, revokeStream, details, close() { clearInterval(timer); } };
 }
-module.exports = { createControl };
+module.exports = { createControl, CURSOR_SHAPES };

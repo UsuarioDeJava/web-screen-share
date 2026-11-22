@@ -1448,7 +1448,9 @@ kbd {
   border-color: rgba(255, 176, 65, 0.8);
   box-shadow: 0 0 0 1px rgba(255, 176, 65, 0.4), 0 0 28px -6px rgba(255, 176, 65, 0.75);
 }
-.tile.is-controlling .tile-media { cursor: crosshair; }
+/* O seu mouse com o formato do de lá (seta, texto, mãozinha...), quando o app de quem
+   transmite manda; senão, a mira. */
+.tile.is-controlling .tile-media { cursor: var(--remote-cursor, crosshair); }
 .tile.is-controlling .tile-media::after {
   content: "Controlando · com o mouse aqui em cima, todas as teclas vão pra lá (no app, até Win e Alt+Tab)";
   position: absolute;

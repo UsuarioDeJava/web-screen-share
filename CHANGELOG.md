@@ -5,8 +5,38 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
-## 1.8.2 — 2026-11-22
+## 1.9.0 — 2026-11-22
 
+### Controle remoto
+- **Um mouse só**: controlando alguém, antes você via dois mouses na transmissão (o seu e
+  o de lá, chegando atrasado no vídeo). Agora, enquanto você está no modo controle (o 🎮
+  ligado em cima da transmissão), o mouse de quem transmite some da transmissão e o seu,
+  em cima dela, fica com o formato do de lá: seta, texto, mãozinha, setas de
+  redimensionar, ampulheta... Fica só um mouse, e o atraso some da vista. Quem é
+  controlado continua vendo o mouse dele (o app desenha ele na camada das marcações, que
+  não entra na transmissão) e, mexendo no mouse, o de verdade volta na hora. Precisa que
+  quem transmite esteja com o app 1.9 no Windows.
+- **Teclado e mouse só na transmissão pelo app**: transmitindo pelo OBS, dá pra liberar
+  só o gamepad (o painel deixa teclado e mouse desligados e explica).
+
+### Mouse e efeitos
+- **Saíram o "Enfeite" e o "Nome junto"**, e o **ping não mostra mais o nome** (em
+  nenhum estilo): a cor e a foto no mouse já dizem quem é, e o nome atrapalhava.
+- **A sua foto não aparece mais no seu próprio mouse** (vinha atrasada atrás da setinha);
+  os outros continuam vendo.
+- **A prévia funciona igual a uma transmissão**: clique e rodinha mostram a animação,
+  **Alt + clique** dá o ping e **Alt + arrastar** desenha (com Shift, flecha); o traço
+  fica enquanto o Alt estiver apertado. Antes ela desenhava só de arrastar, sem o Alt.
+  Os títulos ficaram só "Ping" e "Pincel".
+- **Flecha em qualquer pincel**: o pincel "Flecha" saiu; agora **Alt + Shift + arrastar**
+  (ou apertar o Shift no meio do traço) termina o traço numa flecha, com o pincel que
+  você usa (neon, tracejado, arco-íris, rastro que some...). No modo de desenho na
+  tela (Ctrl+Shift+D), é Shift + arrastar. Quem tinha escolhido "Flecha" passa a usar o
+  normal. No Windows, se você tem mais de um idioma de teclado, Alt + Shift também pode
+  trocar o layout: dá pra desligar esse atalho nas configurações de idioma do Windows.
+- Correção: escolher opções rápido na prévia deixava um traço de demonstração parado.
+
+### App e sala
 - **Configurações como popup**: em vez de abrir uma janela a mais (que ficava no canto
   da tela ao minimizar), as Configurações abrem por cima da sala, dentro da própria
   janela do app, com o fundo escurecido. Muda o que precisa e fecha: no ×, no **Esc**,
@@ -14,12 +44,6 @@ nova do app. As notas de cada release no GitHub vêm daqui.
 - **Fixar a lista de pessoas** (pedido do Paolinho): o « no topo da lista agora fixa ela
   do lado. O « vira um × (com uma transiçãozinha), a lista fica sempre aberta na coluna
   dela e as transmissões se ajeitam no resto; fica salvo. O × solta e esconde de novo.
-- **Flecha em qualquer pincel**: o pincel "Flecha" saiu; agora **Alt + Shift + arrastar**
-  (ou apertar o Shift no meio do traço) termina o traço numa flecha, com o pincel que
-  você usa (neon, tracejado, arco-íris, rastro que some...). No modo de desenho na
-  tela (Ctrl+Shift+D), é Shift + arrastar. Quem tinha escolhido "Flecha" passa a usar o
-  normal. No Windows, se você tem mais de um idioma de teclado, Alt + Shift também pode
-  trocar o layout: dá pra desligar esse atalho nas configurações de idioma do Windows.
 
 ## 1.8.1 — 2026-11-19
 

@@ -108,6 +108,9 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     onGamepadError: (callback) => { ipcRenderer.on('desktop:gamepad-error', (_event, reason) => callback(reason)); },
     onGamepadState: (callback) => { ipcRenderer.on('desktop:gamepad-state', (_event, state) => callback(state)); },
     control: (msg) => ipcRenderer.send('desktop:control', msg),
+    // Um mouse só: quem controla entrou/saiu do modo controle; o formato do seu mouse.
+    controlMode: (data) => ipcRenderer.send('desktop:control-mode', { from: String((data && data.from) || ''), on: Boolean(data && data.on === true) }),
+    onCursorShape: (callback) => { ipcRenderer.on('desktop:cursor-shape', (_event, shape) => callback(String(shape))); },
     onControlRevoke: (callback) => { ipcRenderer.on('desktop:control-revoke', () => callback()); },
     // Controlando alguém: o app pega todas as teclas (Win, Alt+Tab...) e manda pra cá.
     captureKeys: (on) => ipcRenderer.invoke('desktop:capture-keys', Boolean(on)),

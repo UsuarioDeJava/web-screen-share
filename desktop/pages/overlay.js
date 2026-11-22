@@ -418,8 +418,40 @@ function control({ on, name, paused, shortcut }) {
   document.getElementById('control-list').hidden = shortcut !== false;
 }
 
+// Um mouse só: enquanto alguém controla o seu mouse, o do Windows fica transparente (pra
+// não aparecer na transmissão junto com o de quem controla) e ele é desenhado aqui, só pra
+// você (esta camada fica fora da captura). hot: a ponta, no quadrado 24×24.
+const LOCAL_SHAPES = {
+  default: { hot: [3, 2], svg: '<path d="M3 2v17.4l4.2-4.1 2.9 6.7 3.2-1.4-2.9-6.6h6z" fill="#fff" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/>' },
+  text: { hot: [12, 12], svg: '<path d="M8.5 3.5H11M15.5 3.5H13M12 3.5v17M8.5 20.5H11M15.5 20.5H13" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/><path d="M8.5 3.5H11M15.5 3.5H13M12 3.5v17M8.5 20.5H11M15.5 20.5H13" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round"/>' },
+  pointer: { hot: [9.5, 2], svg: '<path d="M8 3.6a1.6 1.6 0 0 1 3.2 0v6.6l.4-.2a1.6 1.6 0 0 1 2.9.9l.3-.1a1.6 1.6 0 0 1 2.9 1l.3-.1a1.6 1.6 0 0 1 2.5 1.4V17c0 3.1-2.4 5.4-5.4 5.4h-1.7c-1.9 0-3.6-1-4.6-2.6l-3.5-5.6a1.6 1.6 0 0 1 2.6-1.9L8 14z" fill="#fff" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/>' },
+};
+let localCursorEl = null;
+function localCursor({ x, y, shape, gone }) {
+  if (gone || shape === 'none') {
+    if (localCursorEl) localCursorEl.hidden = true;
+    return;
+  }
+  const look = LOCAL_SHAPES[shape] || LOCAL_SHAPES.default;
+  if (!localCursorEl) {
+    localCursorEl = el('div', 'local-cursor');
+    document.body.append(localCursorEl);
+  }
+  if (localCursorEl.dataset.shape !== (LOCAL_SHAPES[shape] ? shape : 'default')) {
+    localCursorEl.dataset.shape = LOCAL_SHAPES[shape] ? shape : 'default';
+    localCursorEl.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${look.svg}</svg>`;
+    const svg = localCursorEl.firstElementChild;
+    svg.style.left = `${-look.hot[0]}px`;
+    svg.style.top = `${-look.hot[1]}px`;
+  }
+  localCursorEl.style.left = `${unit(x) * 100}%`;
+  localCursorEl.style.top = `${unit(y) * 100}%`;
+  localCursorEl.hidden = false;
+}
+
 window.overlayBridge.onEvent((event) => {
   if (!event || typeof event !== 'object') return;
+  if (event.type === 'local-cursor') { localCursor(event); return; }
   if (event.type === 'cursor') cursor(event);
   else if (event.type === 'control') control(event);
   if (event.type === 'ping') ping(event);

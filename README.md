@@ -551,9 +551,16 @@ que o navegador não faz:
   todas as teclas pra cá (Win, Alt+Tab, Alt+F4, Ctrl+Esc, Print Screen...), sem que elas
   ajam no PC dela; tirando o mouse de cima ou indo pra outra janela, o teclado volta a ser
   dela. No navegador, isso só funciona com a transmissão em tela cheia. Ctrl+Alt+Del e
-  Win+L o Windows não deixa nenhum programa pegar. Só funciona transmitindo a tela
-  inteira (ou o OBS capturando um monitor) e não mexe em janelas abertas como
-  administrador (o Windows não deixa). Quem controla pode esconder tudo que fica por
+  Win+L o Windows não deixa nenhum programa pegar. Teclado e mouse só funcionam
+  transmitindo a tela inteira **direto pelo app** (transmitindo pelo OBS, dá pra liberar
+  só o gamepad) e não mexem em janelas abertas como administrador (o Windows não deixa).
+  **Um mouse só** (quem transmite no app do Windows): enquanto a pessoa está
+  controlando (o 🎮 ligado em cima da transmissão), o mouse de quem transmite some da
+  transmissão, e o mouse de quem controla, em cima dela, fica com o formato do de lá
+  (seta, texto, mãozinha, setas de redimensionar...). Assim só aparece um mouse, sem o
+  atraso do mouse de lá vindo no vídeo. Quem transmite continua vendo o mouse dele: o
+  app desenha ele na camada das marcações (que não entra na transmissão); mexeu no
+  mouse, o de verdade volta na hora. Quem controla pode esconder tudo que fica por
   cima da transmissão (os botões, o aviso e, em tela cheia, a barra e o chat), pra
   clicar em qualquer canto da tela de lá: o botão do olho riscado, em cima do quadro, ou
   **Ctrl+Shift+H** (esse atalho fica com quem controla, não vai pra lá). Pra mostrar de

@@ -66,6 +66,15 @@ foto não muda. A imagem Docker inclui esse módulo compartilhado e o instalador
 `shared/**`. Para usar o novo contrato e o diagnóstico de vídeo na sala remota, atualize
 também os arquivos do servidor/interface; as mudanças não são publicadas automaticamente.
 
+Um mouse só no controle remoto: `desktop/system-cursor.js` (Windows, user32 pela koffi)
+deixa os cursores do sistema transparentes enquanto alguém com o mouse liberado está no
+modo controle (`control:mode`, repassado pelo servidor) e lê o formato atual
+(`GetCursorInfo`), que vai pra quem controla (`control:cursor`, nomes de cursor do CSS).
+A camada desenha o mouse de quem transmite (ela fica fora da captura). Um arquivo
+`cursor-hidden` na pasta de dados marca o mouse escondido: a próxima abertura do app
+devolve. Nos testes fora do Windows, `WSS_FAKE_SYSTEM_CURSOR=1` finge esse cursor
+(`WSS_FAKE_CURSOR_SHAPE` escolhe o formato).
+
 O estilo do mouse e das marcações (setinhas, efeitos, rastros, cliques, pings, pincéis,
 o editor com prévia e os pacotes) fica em `desktop/shared/fx.js` e `fx.css`, servidos à
 sala em `/js/fx.js` e `/css/fx.css` e usados direto pela camada (`overlay.html`) e pelas
