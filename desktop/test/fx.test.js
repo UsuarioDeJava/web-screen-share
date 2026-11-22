@@ -8,15 +8,25 @@ test('estilo: qualquer entrada vira um estilo válido (o que não existe volta p
   assert.deepEqual(fx.normalize('qualquer coisa'), fx.DEFAULTS);
   const style = fx.normalize({ skin: 'sword', deco: '<script>', size: 'xxl', name: 'true', ping: 'emoji', emoji: 'fire', width: 'l', extra: 1 });
   assert.equal(style.skin, 'sword');
-  assert.equal(style.deco, 'none');
+  assert.equal('deco' in style, false); // o enfeite saiu
   assert.equal(style.size, 'm');
-  assert.equal(style.name, false);
+  assert.equal('name' in style, false); // o "nome junto" também
   assert.equal(style.ping, 'emoji');
   assert.equal(style.emoji, 'fire');
   assert.equal(style.width, 'l');
   assert.equal('extra' in style, false);
   assert.equal(fx.isDefault(fx.normalize({})), true);
   assert.equal(fx.isDefault(style), false);
+});
+
+test('estilo: enfeite e nome junto saíram (quem tinha escolhido fica sem)', () => {
+  const style = fx.normalize({ deco: 'crown', name: true, skin: 'hand' });
+  assert.equal('deco' in style, false);
+  assert.equal('name' in style, false);
+  assert.equal(style.skin, 'hand');
+  assert.equal(fx.isDefault(fx.normalize({ deco: 'crown', name: true })), true);
+  assert.equal('DECOS' in fx, false);
+  for (const pack of Object.values(fx.PACKS)) assert.equal('deco' in pack.style || 'name' in pack.style, false);
 });
 
 test('estilo: opções que saíram viram as parecidas; contorno, ponta e imagens', () => {

@@ -1,6 +1,5 @@
-// Estilos do mouse e das marcações: modelo da setinha, tamanho, enfeite, efeito, rastro,
-// nome junto, animação do clique, estilo e som do ping (Alt + clique) e pincel (Alt +
-// arrastar). Cada pessoa escolhe o seu no perfil e todo mundo vê igual: na sala (os
+// Estilos do mouse e das marcações: modelo da setinha, tamanho, efeito, rastro, animação
+// do clique, estilo e som do ping (Alt + clique) e pincel (Alt + arrastar). Cada pessoa escolhe o seu no perfil e todo mundo vê igual: na sala (os
 // quadros), na tela de verdade de quem transmite (a camada do app) e na prévia.
 //
 // Um arquivo só (desktop/shared/fx.js): o servidor entrega pra sala em /js/fx.js e o app
@@ -14,28 +13,27 @@
   // ---------- catálogo ----------
 
   // Setinhas num quadrado 24×24. hot: a ponta (onde o clique cai). badge: onde fica a
-  // bolinha com a foto e deco: onde o enfeite se apoia (os dois em relação à ponta, na
-  // mesma escala de 24).
+  // bolinha com a foto (em relação à ponta, na mesma escala de 24).
   // Camadas: fill/stroke 'c' = a cor da pessoa, 'w' = branco, ou uma cor fixa.
   const SKINS = {
     classic: {
-      label: 'Clássica', hot: [4, 2.5], badge: [14.5, 16], deco: [2.5, 1],
+      label: 'Clássica', hot: [4, 2.5], badge: [14.5, 16],
       layers: [{ d: 'M4 2.5 19.5 13l-7 1.2-3.6 6.3z', fill: 'c', stroke: 'w', width: 1.6 }],
     },
     os: {
-      label: 'Do PC', hot: [4, 2], badge: [11, 18], deco: [2, 1],
+      label: 'Do PC', hot: [4, 2], badge: [11, 18],
       layers: [{ d: 'M4 2v16.5l4.3-4.1 3 6.6 2.8-1.3-3-6.4H17z', fill: 'c', stroke: 'w', width: 1.5 }],
     },
     pixel: {
-      label: 'Pixel', hot: [4, 2], badge: [12, 18], deco: [2, 1],
+      label: 'Pixel', hot: [4, 2], badge: [12, 18],
       layers: [{ d: 'M4 2h2v2h2v2h2v2h2v2h2v2h2v2h2v2h-4v2h2v4h-2v2h-2v-4h-2v-2h-2v2H4z', fill: 'c', stroke: 'w', width: 1.4, crisp: true }],
     },
     hand: {
-      label: 'Mãozinha', hot: [9, 2], badge: [7, 18], deco: [0, 0.5],
+      label: 'Mãozinha', hot: [9, 2], badge: [7, 18],
       layers: [{ d: 'M9 2a1.5 1.5 0 0 1 1.5 1.5V10a1.4 1.4 0 0 1 2.8.2v.3a1.4 1.4 0 0 1 2.8.3v.6a1.4 1.4 0 0 1 2.8.4V16c0 3-2 5.5-5 5.5h-2.4c-1.6 0-3-.8-3.9-2.1L4 14.6a1.4 1.4 0 0 1 2.1-1.8l1.4 1.4V3.5A1.5 1.5 0 0 1 9 2z', fill: 'c', stroke: 'w', width: 1.4 }],
     },
     cross: {
-      label: 'Mira', hot: [12, 12], badge: [7, 7], deco: [0, -7],
+      label: 'Mira', hot: [12, 12], badge: [7, 7],
       layers: [
         { d: 'M12 2.5v6M12 15.5v6M2.5 12h6M15.5 12h6M12 6a6 6 0 1 0 0 12 6 6 0 1 0 0-12z', fill: 'none', stroke: 'w', width: 4.4 },
         { d: 'M12 2.5v6M12 15.5v6M2.5 12h6M15.5 12h6M12 6a6 6 0 1 0 0 12 6 6 0 1 0 0-12z', fill: 'none', stroke: 'c', width: 2.2 },
@@ -43,7 +41,7 @@
       ],
     },
     pen: {
-      label: 'Lápis', hot: [3, 3], badge: [13, 13], deco: [3, 2],
+      label: 'Lápis', hot: [3, 3], badge: [13, 13],
       layers: [
         { d: 'M3 3l5.2 1.6 12.3 12.3-3.6 3.6L4.6 8.2z', fill: 'c', stroke: 'w', width: 1.4 },
         { d: 'M3 3l5.2 1.6-3.6 3.6z', fill: '#f3d3a1', stroke: 'w', width: 1 },
@@ -52,7 +50,7 @@
       ],
     },
     sword: {
-      label: 'Espadinha', hot: [3, 3], badge: [13, 13], deco: [3, 2],
+      label: 'Espadinha', hot: [3, 3], badge: [13, 13],
       layers: [
         { d: 'M3 3l6.4 1.3 7 7-5.1 5.1-7-7z', fill: '#e3e9f5', stroke: 'w', width: 1.2 },
         { d: 'M3 3l6.4 1.3 4.6 4.6-5.1 5.1-4.6-4.6z', fill: '#c3ccdd' },
@@ -64,7 +62,7 @@
       ],
     },
     wand: {
-      label: 'Varinha', hot: [6.5, 6.5], badge: [10, 10], deco: [0, -5],
+      label: 'Varinha', hot: [6.5, 6.5], badge: [10, 10],
       layers: [
         { d: 'M9.2 9.2 21 21', fill: 'none', stroke: 'w', width: 4 },
         { d: 'M9.2 9.2 21 21', fill: 'none', stroke: 'c', width: 2.2 },
@@ -76,7 +74,7 @@
   // Mais setinhas. rot: girar o desenho (graus, em volta do centro); hot já é a ponta girada.
   Object.assign(SKINS, {
     rocket: {
-      label: 'Foguete', hot: [4.6, 4.6], badge: [13, 13], deco: [1, 1], rot: -45,
+      label: 'Foguete', hot: [4.6, 4.6], badge: [13, 13], rot: -45,
       layers: [
         { d: 'M9.4 17.4 12 22.6l2.6-5.2z', fill: '#ffb02e', stroke: '#ff5b24', width: 1 },
         { d: 'M8 12.6 4.6 16.4V19L8 17.2zM16 12.6l3.4 3.8V19L16 17.2z', fill: 'c', stroke: 'w', width: 1.2 },
@@ -85,7 +83,7 @@
       ],
     },
     plane: {
-      label: 'Aviãozinho', hot: [3, 3], badge: [14, 14], deco: [2, 1],
+      label: 'Aviãozinho', hot: [3, 3], badge: [14, 14],
       layers: [
         { d: 'M3 3 21 10l-8.5 2.5L10 21z', fill: 'c', stroke: 'w', width: 1.5 },
         { d: 'M3 3l9.5 9.5L10 21z', fill: 'rgba(255,255,255,0.38)' },
@@ -93,54 +91,30 @@
       ],
     },
     paw: {
-      label: 'Patinha', hot: [12, 4.4], badge: [6, 13], deco: [0, 0],
+      label: 'Patinha', hot: [12, 4.4], badge: [6, 13],
       layers: [{
         d: 'M12 11.2c3 0 5.4 2.2 5.4 4.8 0 2.2-1.9 3.4-3.6 3.4-.8 0-1.2-.4-1.8-.4s-1 .4-1.8.4c-1.7 0-3.6-1.2-3.6-3.4 0-2.6 2.4-4.8 5.4-4.8zM4.6 9.6a2 2.4 0 1 0 4 0 2 2.4 0 1 0-4 0zM8 6.4a2.1 2.5 0 1 0 4.2 0 2.1 2.5 0 1 0-4.2 0zM11.8 6.4a2.1 2.5 0 1 0 4.2 0 2.1 2.5 0 1 0-4.2 0zM15.4 9.6a2 2.4 0 1 0 4 0 2 2.4 0 1 0-4 0z',
         fill: 'c', stroke: 'w', width: 1.3,
       }],
     },
     ghost: {
-      label: 'Fantasminha', hot: [12, 3], badge: [7, 15], deco: [0, 0.5],
+      label: 'Fantasminha', hot: [12, 3], badge: [7, 15],
       layers: [
         { d: 'M12 3c-4.6 0-7 3.6-7 8v9l2.4-2 2.4 2 2.2-2 2.2 2 2.4-2 2.4 2v-9c0-4.4-2.4-8-7-8z', fill: 'w', stroke: 'c', width: 1.6 },
         { d: 'M9.6 9.2a1.3 1.7 0 1 0 0 3.4 1.3 1.7 0 1 0 0-3.4zM14.4 9.2a1.3 1.7 0 1 0 0 3.4 1.3 1.7 0 1 0 0-3.4z', fill: '#1d1f2b' },
       ],
     },
     heart: {
-      label: 'Coração', hot: [6.7, 6.7], badge: [12, 12], deco: [1, 0.5], rot: 135,
+      label: 'Coração', hot: [6.7, 6.7], badge: [12, 12], rot: 135,
       layers: [{ d: 'M12 19.5s-7.5-5-7.5-9.9c0-2.4 1.9-4.1 4-4.1 1.6 0 2.8.9 3.5 2.1.7-1.2 1.9-2.1 3.5-2.1 2.1 0 4 1.7 4 4.1 0 4.9-7.5 9.9-7.5 9.9z', fill: 'c', stroke: 'w', width: 1.6 }],
     },
     star: {
-      label: 'Estrela', hot: [12, 2], badge: [8, 15], deco: [0, 0.5],
+      label: 'Estrela', hot: [12, 2], badge: [8, 15],
       layers: [{ d: 'M12 2l2.47 6.6 7.04.31-5.52 4.39 1.89 6.79L12 16.2l-5.88 3.89 1.89-6.79-5.52-4.39 7.04-.31z', fill: 'c', stroke: 'w', width: 1.5 }],
     },
   });
 
   const SIZES = { s: { label: 'Pequena', px: 20 }, m: { label: 'Média', px: 26 }, l: { label: 'Grande', px: 34 }, xl: { label: 'Enorme', px: 44 } };
-
-  // Enfeites: desenhos num quadrado 24×24 apoiados em cima da ponta (currentColor: a cor da pessoa).
-  const DECOS = {
-    none: { label: 'Nenhum', svg: '' },
-    crown: { label: 'Coroa', svg: '<path d="M3 17 5 7l4.5 4L12 4l2.5 7L19 7l2 10z" fill="#ffd23f" stroke="#a87b0c" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="13.6" r="1.5" fill="#ff4d5e"/><rect x="3" y="16.8" width="18" height="3.2" rx="1" fill="#ffc53d" stroke="#a87b0c" stroke-width="1"/>' },
-    tophat: { label: 'Cartola', svg: '<rect x="6.5" y="3.5" width="11" height="13" rx="1.5" fill="#1d1f2b" stroke="#fff" stroke-width="1"/><rect x="6.5" y="12.2" width="11" height="2.6" fill="currentColor"/><ellipse cx="12" cy="17.6" rx="9" ry="2.6" fill="#1d1f2b" stroke="#fff" stroke-width="1"/>' },
-    party: { label: 'Chapéu de festa', svg: '<path d="M12 3 19 20H5z" fill="currentColor" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M9.6 10.2l5 1.8M7.9 14.6l8.2 2.9" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".85"/><circle cx="12" cy="3.2" r="2.3" fill="#ffd23f" stroke="#fff" stroke-width="1"/>' },
-    halo: { label: 'Auréola', svg: '<ellipse cx="12" cy="13" rx="9" ry="3.6" fill="none" stroke="#ffe27a" stroke-width="2.8"/><ellipse cx="12" cy="13" rx="9" ry="3.6" fill="none" stroke="#fffbe0" stroke-width="1"/>' },
-    horns: { label: 'Chifrinhos', svg: '<path d="M4.5 20c-1.6-5.2 0-10.5 4.2-13.6-1 4.2 0 8.4 3.1 10.5z" fill="#e8394d" stroke="#fff" stroke-width="1"/><path d="M19.5 20c1.6-5.2 0-10.5-4.2-13.6 1 4.2 0 8.4-3.1 10.5z" fill="#e8394d" stroke="#fff" stroke-width="1"/>' },
-    catears: { label: 'Orelhas de gato', svg: '<path d="M3 20 5 4l7 8.4z" fill="currentColor" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M21 20 19 4l-7 8.4z" fill="currentColor" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.7 16.3 6.6 8.4l3.4 4.1zM18.3 16.3l-.9-7.9-3.4 4.1z" fill="#ff9fc6"/>' },
-    bow: { label: 'Lacinho', svg: '<path d="M12 13 4 8v10zM12 13l8-5v10z" fill="#ff5fa2" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="13" r="2.4" fill="#ff8cc0" stroke="#fff" stroke-width="1"/>' },
-    flower: { label: 'Florzinha', svg: '<g fill="#ffb3d1" stroke="#fff" stroke-width="1"><circle cx="12" cy="7.4" r="3.6"/><circle cx="17.1" cy="11.1" r="3.6"/><circle cx="15.2" cy="17.1" r="3.6"/><circle cx="8.8" cy="17.1" r="3.6"/><circle cx="6.9" cy="11.1" r="3.6"/></g><circle cx="12" cy="12.8" r="3" fill="#ffd23f" stroke="#fff" stroke-width="1"/>' },
-    antenna: { label: 'Anteninhas', svg: '<path d="M8.5 21 6 8.5M15.5 21 18 8.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M8.5 21 6 8.5M15.5 21 18 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="6" cy="6.6" r="2.8" fill="#7dff8a" stroke="#fff" stroke-width="1"/><circle cx="18" cy="6.6" r="2.8" fill="#7dff8a" stroke="#fff" stroke-width="1"/>' },
-  };
-
-  Object.assign(DECOS, {
-    wizard: { label: 'Chapéu de mago', svg: '<path d="M7 18.6 12.6 2.4c.2-.5.9-.5 1 0L17 18.6z" fill="#4b3bd6" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><path d="M8.3 15.4h8" stroke="currentColor" stroke-width="2"/><path d="m12.3 8.4.5 1.1 1.2.1-.9.8.3 1.2-1.1-.7-1 .7.3-1.2-.9-.8 1.2-.1z" fill="#ffd23f"/><circle cx="14.6" cy="12.6" r=".8" fill="#ffd23f"/><ellipse cx="12" cy="19" rx="9.5" ry="2.4" fill="#4b3bd6" stroke="#fff" stroke-width="1"/>' },
-    santa: { label: 'Gorro de Natal', svg: '<path d="M5 18 9.4 7c1-2.4 4.4-3.4 6.9-1.6L20.4 11l-2.6 1-2.6-3.1L18.6 18z" fill="#e3263b" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><circle cx="19.6" cy="12" r="2.4" fill="#fff" stroke="#d9dbe6" stroke-width=".8"/><rect x="3.4" y="16.6" width="16.8" height="3.8" rx="1.9" fill="#fff" stroke="#d9dbe6" stroke-width=".8"/>' },
-    cap: { label: 'Boné', svg: '<path d="M5 16c0-5 3-8.4 7-8.4s7 3.4 7 8.4z" fill="currentColor" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 16h10c-.2 1.6-1.7 2.4-4 2.4h-6z" fill="currentColor" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 7.6V16M8.4 9 9.6 16M15.6 9l-1.2 7" stroke="#fff" stroke-width=".7" opacity=".6"/><circle cx="12" cy="7.4" r="1.2" fill="#fff"/>' },
-    pirate: { label: 'Chapéu pirata', svg: '<path d="M2.4 14.2C5 7.6 8.6 7.4 12 9.4c3.4-2 7-1.8 9.6 4.8-6.2 3.8-13 3.8-19.2 0z" fill="#1d1f2b" stroke="#fff" stroke-width="1.1" stroke-linejoin="round"/><circle cx="12" cy="12.4" r="2" fill="#fff"/><path d="M10 15.6l4-1.6M10 14l4 1.6" stroke="#fff" stroke-width="1" stroke-linecap="round"/><path d="M4 13.8c5.2 2.6 10.8 2.6 16 0" fill="none" stroke="currentColor" stroke-width="1.2"/>' },
-    viking: { label: 'Capacete viking', svg: '<path d="M6.4 12.6C4 11.6 2.6 9 3 5.2c1.2 2.8 3 4.4 5.2 5.2zM17.6 12.6c2.4-1 3.8-3.6 3.4-7.4-1.2 2.8-3 4.4-5.2 5.2z" fill="#f5e6c8" stroke="#fff" stroke-width=".9"/><path d="M6 18c0-5 2.6-8.4 6-8.4s6 3.4 6 8.4z" fill="#9aa3b5" stroke="#fff" stroke-width="1"/><path d="M5.6 17.6h12.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M12 9.8v7" stroke="#6b7385" stroke-width="1.4"/>' },
-    bunny: { label: 'Orelhas de coelho', svg: '<path d="M8.6 20c-2.6-3-3.6-9.2-2.6-14.6.4-2.2 3-2.2 3.6 0 1.2 4.6 1.4 10.4 1 14.6zM15.4 20c2.6-3 3.6-9.2 2.6-14.6-.4-2.2-3-2.2-3.6 0-1.2 4.6-1.4 10.4-1 14.6z" fill="#fff" stroke="#d9dbe6" stroke-width="1"/><path d="M8.4 17.6C7 14.8 6.8 9.6 7.6 6.6c.5 3 1.2 7.4.8 11zM15.6 17.6c1.4-2.8 1.6-8 .8-11-.5 3-1.2 7.4-.8 11z" fill="#ff9fc6"/>' },
-    propeller: { label: 'Boné de hélice', svg: '<path d="M6 18c0-4.6 2.6-7.4 6-7.4s6 2.8 6 7.4z" fill="currentColor" stroke="#fff" stroke-width="1" stroke-linejoin="round"/><path d="M9.6 11.2 9 18M14.4 11.2 15 18" stroke="#ffd23f" stroke-width="1.4"/><path d="M12 10.6V6.8" stroke="#fff" stroke-width="1.4"/><g class="wfx-blades"><ellipse cx="8.4" cy="6.2" rx="3.6" ry="1.3" fill="#ff4d5e" stroke="#fff" stroke-width=".8"/><ellipse cx="15.6" cy="6.2" rx="3.6" ry="1.3" fill="#3fa9ff" stroke="#fff" stroke-width=".8"/></g><circle cx="12" cy="6.2" r="1.3" fill="#ffd23f" stroke="#fff" stroke-width=".8"/>' },
-  });
 
   const AURAS = { none: 'Nenhum', glow: 'Brilho', rainbow: 'Arco-íris', pulse: 'Pulsando', bounce: 'Pulinho', wiggle: 'Balançando', twinkle: 'Estrelinhas' };
   const TRAILS = { none: 'Nenhum', sparkles: 'Brilhinhos', rainbow: 'Arco-íris', hearts: 'Corações', bubbles: 'Bolhas', fire: 'Fogo', snow: 'Neve', notes: 'Notas musicais', smoke: 'Fumaça', pixels: 'Pixels' };
@@ -159,12 +133,12 @@
   const outlineHex = (value) => (OUTLINES[value] ? OUTLINES[value].hex : /^[0-9a-f]{6}$/i.test(value || '') ? `#${value.toLowerCase()}` : '#ffffff');
 
   const DEFAULTS = Object.freeze({
-    skin: 'classic', size: 'm', deco: 'none', aura: 'none', trail: 'none', name: false,
+    skin: 'classic', size: 'm', aura: 'none', trail: 'none',
     click: 'mouse', ping: 'classic', emoji: 'eyes', pingSound: 'classic', brush: 'normal', width: 'm',
     outline: 'w', hx: 0, hy: 0,
   });
   const CHOICES = {
-    size: SIZES, deco: DECOS, aura: AURAS, trail: TRAILS, click: CLICKS,
+    size: SIZES, aura: AURAS, trail: TRAILS, click: CLICKS,
     ping: PINGS, emoji: EMOJIS, pingSound: PING_SOUNDS, brush: BRUSHES, width: WIDTHS,
   };
   // Opções que saíram (eram repetidas): quem tinha escolhido fica com a parecida.
@@ -174,20 +148,20 @@
   const PACKS = {
     classic: { label: 'Clássico', style: {} },
     neon: { label: 'Neon', style: { skin: 'os', aura: 'glow', trail: 'bubbles', click: 'rays', ping: 'target', pingSound: 'laser', brush: 'neon', outline: 'k' } },
-    cute: { label: 'Fofura', style: { skin: 'heart', deco: 'catears', trail: 'hearts', click: 'hearts', ping: 'emoji', emoji: 'heart', pingSound: 'bell', brush: 'marker' } },
-    royal: { label: 'Realeza', style: { deco: 'crown', aura: 'glow', trail: 'sparkles', click: 'confetti', ping: 'alert', pingSound: 'bell', brush: 'rainbow', outline: 'ffd23f' } },
+    cute: { label: 'Fofura', style: { skin: 'heart', trail: 'hearts', click: 'hearts', ping: 'emoji', emoji: 'heart', pingSound: 'bell', brush: 'marker' } },
+    royal: { label: 'Realeza', style: { aura: 'glow', trail: 'sparkles', click: 'confetti', ping: 'alert', pingSound: 'bell', brush: 'rainbow', outline: 'ffd23f' } },
     retro: { label: 'Retrô', style: { skin: 'pixel', size: 'l', trail: 'pixels', click: 'pop', ping: 'arrow', pingSound: 'coin', brush: 'dashed', width: 'l' } },
-    party: { label: 'Festa', style: { skin: 'wand', deco: 'party', aura: 'rainbow', trail: 'rainbow', click: 'confetti', ping: 'emoji', emoji: 'party', pingSound: 'whistle', brush: 'rainbow' } },
-    wizard: { label: 'Mago', style: { skin: 'wand', deco: 'wizard', aura: 'twinkle', trail: 'sparkles', click: 'rays', ping: 'emoji', emoji: 'star', pingSound: 'bell', brush: 'glitter', outline: 'b15cff' } },
-    adventure: { label: 'Aventura', style: { skin: 'sword', deco: 'viking', trail: 'fire', click: 'boom', ping: 'flag', pingSound: 'boing', brush: 'chalk' } },
-    pirate: { label: 'Pirata', style: { skin: 'sword', deco: 'pirate', trail: 'smoke', click: 'boom', ping: 'flag', pingSound: 'coin', brush: 'chalk', outline: 'k' } },
+    party: { label: 'Festa', style: { skin: 'wand', aura: 'rainbow', trail: 'rainbow', click: 'confetti', ping: 'emoji', emoji: 'party', pingSound: 'whistle', brush: 'rainbow' } },
+    wizard: { label: 'Mago', style: { skin: 'wand', aura: 'twinkle', trail: 'sparkles', click: 'rays', ping: 'emoji', emoji: 'star', pingSound: 'bell', brush: 'glitter', outline: 'b15cff' } },
+    adventure: { label: 'Aventura', style: { skin: 'sword', trail: 'fire', click: 'boom', ping: 'flag', pingSound: 'boing', brush: 'chalk' } },
+    pirate: { label: 'Pirata', style: { skin: 'sword', trail: 'smoke', click: 'boom', ping: 'flag', pingSound: 'coin', brush: 'chalk', outline: 'k' } },
     space: { label: 'Espacial', style: { skin: 'rocket', size: 'l', aura: 'glow', trail: 'fire', click: 'rays', ping: 'pin', pingSound: 'laser', brush: 'neon' } },
-    xmas: { label: 'Natal', style: { deco: 'santa', trail: 'snow', click: 'confetti', ping: 'emoji', emoji: 'gift', pingSound: 'bell', brush: 'rainbow', outline: 'ff4d5e' } },
-    angel: { label: 'Anjinho', style: { deco: 'halo', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'pin', pingSound: 'bell', brush: 'fade' } },
-    devil: { label: 'Diabinho', style: { deco: 'horns', aura: 'pulse', trail: 'fire', click: 'stars', ping: 'emoji', emoji: 'skull', pingSound: 'pop', brush: 'neon', outline: 'k' } },
+    xmas: { label: 'Natal', style: { trail: 'snow', click: 'confetti', ping: 'emoji', emoji: 'gift', pingSound: 'bell', brush: 'rainbow', outline: 'ff4d5e' } },
+    angel: { label: 'Anjinho', style: { aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'pin', pingSound: 'bell', brush: 'fade' } },
+    devil: { label: 'Diabinho', style: { aura: 'pulse', trail: 'fire', click: 'stars', ping: 'emoji', emoji: 'skull', pingSound: 'pop', brush: 'neon', outline: 'k' } },
     spooky: { label: 'Assombrado', style: { skin: 'ghost', aura: 'wiggle', trail: 'smoke', click: 'pop', ping: 'emoji', emoji: 'ghost', pingSound: 'whistle', brush: 'fade' } },
-    kitty: { label: 'Gatinho', style: { skin: 'paw', deco: 'bow', aura: 'bounce', trail: 'hearts', click: 'hearts', ping: 'emoji', emoji: 'heart', pingSound: 'pop', brush: 'marker', outline: 'ff5fa2' } },
-    alien: { label: 'Alienígena', style: { skin: 'hand', deco: 'antenna', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'target', pingSound: 'whistle', brush: 'fade', name: true } },
+    kitty: { label: 'Gatinho', style: { skin: 'paw', aura: 'bounce', trail: 'hearts', click: 'hearts', ping: 'emoji', emoji: 'heart', pingSound: 'pop', brush: 'marker', outline: 'ff5fa2' } },
+    alien: { label: 'Alienígena', style: { skin: 'hand', aura: 'glow', trail: 'bubbles', click: 'ripple', ping: 'target', pingSound: 'whistle', brush: 'fade' } },
   };
 
   // Imagens próprias (setinha e ping): só o endereço das fotos do servidor (/avatar/hash),
@@ -209,7 +183,6 @@
     };
     pick('skin', { ...SKINS, custom: true });
     for (const [key, options] of Object.entries(CHOICES)) pick(key, options);
-    if (typeof raw.name === 'boolean') style.name = raw.name;
     if (typeof raw.outline === 'string' && (OUTLINES[raw.outline] || /^[0-9a-f]{6}$/i.test(raw.outline))) style.outline = raw.outline.toLowerCase();
     for (const key of ['hx', 'hy']) {
       const n = percent(raw[key]);
@@ -240,11 +213,6 @@
     return `<svg class="wfx-arrow${extraClass ? ` ${extraClass}` : ''}" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
   }
 
-  function decoMarkup(id) {
-    const deco = DECOS[id];
-    return deco && deco.svg ? `<svg viewBox="0 0 24 24" aria-hidden="true">${deco.svg}</svg>` : '';
-  }
-
   function fromMarkup(markup) {
     const holder = document.createElement('div');
     holder.innerHTML = markup;
@@ -252,7 +220,7 @@
   }
 
   // Imagem própria: o tamanho (o lado maior) em cada tamanho escolhido. A ponta (hx, hy) é
-  // em % da imagem; o resto (bolinha, enfeite) se apoia no quadrado da imagem.
+  // em % da imagem; a bolinha se apoia no quadrado da imagem.
   const CUSTOM_PX = { s: 24, m: 32, l: 44, xl: 56 };
   const imageSizes = new Map(); // endereço -> [largura, altura] (quando já carregou)
   function customBox(style, scale = 1, size = null) {
@@ -266,9 +234,9 @@
 
   // Aplica o estilo num mouse já montado (um elemento sem tamanho, na ponta do mouse,
   // com a bolinha .cursor-badge dentro). arrow: false quando a setinha é o cursor do
-  // sistema (o seu próprio mouse) e aqui só vão a bolinha, o enfeite e o nome. scale:
-  // a camada do app, na tela de verdade, desenha um pouco menor.
-  function applyCursor(node, rawStyle, { arrow = true, name = '', scale = 1 } = {}) {
+  // sistema (o seu próprio mouse) e aqui só vão a bolinha e o efeito. scale: a camada do
+  // app, na tela de verdade, desenha um pouco menor.
+  function applyCursor(node, rawStyle, { arrow = true, scale = 1 } = {}) {
     const style = normalize(rawStyle);
     const custom = style.skin === 'custom';
     const skin = skinOf(style);
@@ -281,29 +249,25 @@
     }
     node.classList.add(`wfx-aura-${style.aura}`, `wfx-skin-${style.skin}`, `wfx-size-${style.size}`);
     node.style.setProperty('--o', outline);
-    // Onde ficam a bolinha e o enfeite, em relação à ponta.
+    // Onde fica a bolinha, em relação à ponta.
     let badgeAt;
-    let decoAt;
     let shape; // { left, top, width, height, origin } do desenho (setinha ou imagem)
     if (custom) {
       const box = customBox(style, scale);
       shape = { left: -box.hotX, top: -box.hotY, width: box.w, height: box.h };
       badgeAt = [box.w - box.hotX - 6 * scale, box.h - box.hotY - 6 * scale];
-      decoAt = [box.w / 2 - box.hotX, -box.hotY];
       // Ainda sem o tamanho da imagem: ajeita quando ela carregar.
       if (!imageSizes.has(style.img)) {
         const probe = new Image();
         probe.onload = () => {
           imageSizes.set(style.img, [probe.naturalWidth || 1, probe.naturalHeight || 1]);
-          if (node.isConnected) applyCursor(node, style, { arrow, name, scale });
+          if (node.isConnected) applyCursor(node, style, { arrow, scale });
         };
         probe.src = style.img;
       }
     } else {
-      // (bolinha e enfeite: em relação à ponta)
       shape = { left: -skin.hot[0] * k, top: -skin.hot[1] * k, width: size, height: size };
       badgeAt = [skin.badge[0] * k, skin.badge[1] * k];
-      decoAt = [skin.deco[0] * k, skin.deco[1] * k];
     }
     // A setinha (troca a original, se tiver), ou a imagem própria.
     for (const old of node.querySelectorAll(':scope > svg:not(.wfx-arrow)')) old.remove();
@@ -339,25 +303,6 @@
       badge.style.top = `${by}px`;
       badge.style.borderColor = outline;
     }
-    // Enfeite.
-    let deco = node.querySelector(':scope > .wfx-deco');
-    if (style.deco === 'none') {
-      if (deco) deco.remove();
-    } else {
-      if (!deco || deco.dataset.deco !== style.deco) {
-        if (deco) deco.remove();
-        deco = document.createElement('span');
-        deco.className = `wfx-deco wfx-deco-${style.deco}`;
-        deco.dataset.deco = style.deco;
-        deco.innerHTML = decoMarkup(style.deco);
-        node.append(deco);
-      }
-      const dsize = (custom ? Math.max(shape.width, shape.height) * 0.62 : size * 0.8);
-      deco.style.width = `${dsize}px`;
-      deco.style.height = `${dsize}px`;
-      deco.style.left = `${decoAt[0] - dsize / 2}px`;
-      deco.style.top = `${decoAt[1] - dsize}px`;
-    }
     // Estrelinhas piscando em volta (efeito "Estrelinhas").
     let twinkle = node.querySelector(':scope > .wfx-twinkle');
     if (style.aura !== 'twinkle') {
@@ -373,20 +318,6 @@
       twinkle.style.top = `${shape.top}px`;
       twinkle.style.width = `${shape.width}px`;
       twinkle.style.height = `${shape.height}px`;
-    }
-    // Nome junto.
-    let label = node.querySelector(':scope > .wfx-name');
-    if (!style.name || !name) {
-      if (label) label.remove();
-    } else {
-      if (!label) {
-        label = document.createElement('span');
-        label.className = 'wfx-name';
-        node.append(label);
-      }
-      label.textContent = name;
-      label.style.left = `${bx + (badge ? badge.offsetWidth || 22 : 0) + 4}px`;
-      label.style.top = `${by + 3}px`;
     }
     return style;
   }
@@ -636,7 +567,6 @@
       img.src = style.pingImg;
       mark.append(part('wfx-ring-static'), img);
     }
-    if (name) mark.append(part('wfx-ping-name', name));
     mark.addEventListener('animationend', (e) => { if (e.target === mark) mark.remove(); });
     layer.append(mark);
     return mark;
@@ -984,7 +914,8 @@
     // Prévia: um "pedaço de tela" pra testar tudo.
     const preview = el('div', 'wfx-ed-preview');
     preview.tabIndex = 0;
-    const hint = el('div', 'wfx-ed-hint', 'Mexa o mouse aqui · clique · Alt + clique: ping · arraste: pincel (com Shift: flecha) · rodinha');
+    // Igual a uma transmissão: clique e rodinha, e com o Alt o ping e o pincel.
+    const hint = el('div', 'wfx-ed-hint', 'Teste como numa transmissão: clique · rodinha · Alt + clique: ping · Alt + arrastar: pincel (+ Shift: flecha)');
     const board = document.createElementNS(SVG_NS, 'svg');
     board.setAttribute('class', 'wfx-ed-board');
     board.setAttribute('viewBox', '0 0 1 1');
@@ -1170,23 +1101,12 @@
       onPick: () => demo('move'),
     });
     outlineRow.classList.add('wfx-ed-outlines');
-    group('Enfeite', 'deco', Object.entries(DECOS).map(([id, d]) => [id, d.label]), { icon: (id) => (id === 'none' ? null : swatch(decoMarkup(id))), onPick: () => demo('move') });
     group('Efeito na setinha', 'aura', Object.entries(AURAS), { onPick: () => demo('move') });
     const trailGlyph = { hearts: '♥', sparkles: '✦', snow: '❄', notes: '♪' };
     group('Rastro', 'trail', Object.entries(TRAILS), { icon: (id) => (id === 'none' ? null : el('span', `wfx-ed-icon wfx-ed-trail wfx-ed-trail-${id}`, trailGlyph[id] || '')), onPick: () => demo('trail') });
-    // Nome junto do mouse.
-    const nameRow = el('div', 'wfx-ed-row');
-    nameRow.append(el('div', 'wfx-ed-label', 'Nome junto'));
-    const nameLabel = el('label', 'wfx-ed-switch');
-    const nameBox = el('input');
-    nameBox.type = 'checkbox';
-    nameBox.addEventListener('change', () => { set({ name: nameBox.checked }); demo('move'); });
-    nameLabel.append(nameBox, el('span', null, 'Mostrar o seu nick do lado do mouse'));
-    nameRow.append(nameLabel);
-    sections.append(nameRow);
     group('Clique e rodinha', 'click', Object.entries(CLICKS), { onPick: () => demo('click') });
     const pingEntries = Object.entries(PINGS).filter(([id]) => id !== 'image' || images);
-    group('Ping (Alt + clique)', 'ping', pingEntries, {
+    group('Ping', 'ping', pingEntries, {
       icon: (id) => (id === 'image' ? thumb(null) : null),
       beforePick: (id) => {
         if (id === 'image' && !current().pingImg) {
@@ -1225,7 +1145,7 @@
     pingRow.append(pingBody);
     if (images) sections.append(pingRow);
     group('Som do ping', 'pingSound', Object.entries(PING_SOUNDS), { onPick: (id) => playPing(id) });
-    group('Pincel (Alt + arrastar; + Shift: flecha)', 'brush', Object.entries(BRUSHES), { onPick: () => demo('draw') });
+    group('Pincel', 'brush', Object.entries(BRUSHES), { onPick: () => demo('draw') });
     group('Espessura', 'width', Object.entries(WIDTHS).map(([id, w]) => [id, w.label]), { onPick: () => demo('draw') });
 
     function render() {
@@ -1240,7 +1160,6 @@
         }
       }
       emojiRow.hidden = style.ping !== 'emoji';
-      nameBox.checked = style.name;
       // Setinha própria: a miniatura no botão e o quadro pra marcar a ponta.
       const skinThumb = skinRow.querySelector('[data-value="custom"] .wfx-ed-thumb');
       if (skinThumb) skinThumb.replaceWith(thumb(style.img || null));
@@ -1262,13 +1181,17 @@
       fakeBadge.textContent = photo ? '' : letter;
       fakeBadge.style.backgroundImage = photo ? `url("${photo}")` : '';
       fakeBadge.classList.toggle('has-photo', Boolean(photo));
-      applyCursor(fake, style, { name });
+      applyCursor(fake, style);
     }
 
-    // ---- a prévia funcionando de verdade
+    // ---- a prévia funcionando de verdade, do mesmo jeito que numa transmissão: clique e
+    // rodinha mostram a animação; Alt + clique dá o ping (ao soltar, sem arrastar); Alt +
+    // arrastar desenha (com Shift junto, ou apertado no meio, termina em flecha), e o
+    // traço fica enquanto o Alt continuar apertado; soltou o Alt, ele some.
     const state = {};
-    let stroke = null;
-    let downAt = null;
+    let gesture = null; // { id, x, y, stroke, arrow }
+    const held = []; // traços feitos com o Alt ainda apertado
+    let altUsed = false;
     const local = (e) => {
       const r = preview.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top, r];
@@ -1287,7 +1210,7 @@
       for (let i = 2; i + 3 < pts.length; i += 2) d += `Q${f(pts[i])} ${f(pts[i + 1])} ${f((pts[i] + pts[i + 2]) / 2)} ${f((pts[i + 1] + pts[i + 3]) / 2)}`;
       return `${d}L${f(pts[pts.length - 2])} ${f(pts[pts.length - 1])}`;
     };
-    function startStroke() {
+    function startStroke(arrow = false) {
       const svg = document.createElementNS(SVG_NS, 'svg');
       svg.setAttribute('class', 'wfx-ed-stroke');
       svg.setAttribute('viewBox', '0 0 1 1');
@@ -1296,7 +1219,7 @@
       path.setAttribute('vector-effect', 'non-scaling-stroke');
       svg.append(path);
       preview.insertBefore(svg, fake);
-      const view = { svg, points: [], brush: brush(svg, path, current(), look().color || '#4d8dff', pathFor) };
+      const view = { svg, points: [], brush: brush(svg, path, current(), look().color || '#4d8dff', pathFor, { arrow }) };
       return view;
     }
     function endStroke(view) {
@@ -1304,18 +1227,23 @@
       view.svg.classList.add('wfx-ed-fading');
       view.svg.addEventListener('animationend', () => view.svg.remove(), { once: true });
     }
+    const releaseHeld = () => { for (const view of held.splice(0)) endStroke(view); };
     preview.addEventListener('pointermove', (e) => {
       const [x, y, r] = local(e);
       place(x, y);
-      if (downAt && !stroke && Math.hypot(x - downAt[0], y - downAt[1]) > 6) {
-        stroke = startStroke();
-        stroke.points.push(downAt[0] / r.width, downAt[1] / r.height);
+      const g = gesture;
+      if (!g || e.pointerId !== g.id) return;
+      if (e.shiftKey && !g.arrow) {
+        g.arrow = true; // Shift no meio do traço: vira flecha
+        if (g.stroke) g.stroke.brush.setArrow(true);
       }
-      if (stroke) {
-        if (e.shiftKey) stroke.brush.setArrow(true); // Shift: com flecha (na sala, Alt + Shift)
-        stroke.points.push(x / r.width, y / r.height);
-        stroke.brush.update(stroke.points);
+      if (!g.stroke) {
+        if (Math.hypot(x - g.x, y - g.y) < 6) return;
+        g.stroke = startStroke(g.arrow);
+        g.stroke.points.push(g.x / r.width, g.y / r.height);
       }
+      g.stroke.points.push(x / r.width, y / r.height);
+      g.stroke.brush.update(g.stroke.points);
     });
     preview.addEventListener('pointerleave', () => { fake.hidden = true; state.trailPos = null; });
     preview.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1324,23 +1252,36 @@
       preview.focus();
       const [x, y] = local(e);
       place(x, y);
+      if (gesture) finish(gesture, true);
       if (e.altKey) {
-        showPing(x, y);
+        if (e.button !== 0) return;
+        altUsed = true;
+        gesture = { id: e.pointerId, x, y, stroke: null, arrow: e.shiftKey };
+        try { preview.setPointerCapture(e.pointerId); } catch {}
         return;
-      }
-      if (e.button === 0) {
-        preview.setPointerCapture(e.pointerId);
-        downAt = [x, y];
       }
       showClick(e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left');
     });
-    const release = () => {
-      downAt = null;
-      endStroke(stroke);
-      stroke = null;
+    // keep: o Alt ainda está apertado (o traço fica até soltar).
+    function finish(g, cancelled, keep = false) {
+      if (gesture === g) gesture = null;
+      if (g.stroke) {
+        if (keep && !cancelled) held.push(g.stroke);
+        else endStroke(g.stroke);
+      } else if (!cancelled) showPing(g.x, g.y);
+    }
+    preview.addEventListener('pointerup', (e) => { if (gesture && e.pointerId === gesture.id) finish(gesture, false, e.altKey); });
+    preview.addEventListener('pointercancel', (e) => { if (gesture && e.pointerId === gesture.id) finish(gesture, true); });
+    const win = preview.ownerDocument.defaultView;
+    const onKeyUp = (e) => {
+      if (!preview.isConnected) { win.removeEventListener('keyup', onKeyUp); win.removeEventListener('blur', releaseHeld); return; }
+      if (e.key !== 'Alt') return;
+      releaseHeld();
+      if (altUsed) e.preventDefault(); // soltar o Alt depois de desenhar não abre o menu do navegador
+      altUsed = false;
     };
-    preview.addEventListener('pointerup', release);
-    preview.addEventListener('pointercancel', release);
+    win.addEventListener('keyup', onKeyUp);
+    win.addEventListener('blur', releaseHeld);
     preview.addEventListener('wheel', (e) => {
       e.preventDefault();
       const kind = scrollKind(e);
@@ -1361,8 +1302,10 @@
 
     // Demonstração automática ao escolher (pra ver na hora como fica).
     let demoTimer = null;
+    let demoStroke = null; // o traço da demonstração (escolher outra opção no meio: ele some)
     function demo(what) {
       clearTimeout(demoTimer);
+      if (demoStroke) { endStroke(demoStroke); demoStroke = null; }
       const r = preview.getBoundingClientRect();
       if (!r.width) return;
       const cx = r.width * 0.42;
@@ -1370,6 +1313,7 @@
       if (what === 'ping' || what === 'all') showPing(r.width * 0.62, cy);
       if (what === 'draw' || what === 'all') {
         const view = startStroke();
+        demoStroke = view;
         let i = 0;
         const step = () => {
           const t = i / 24;
@@ -1377,7 +1321,7 @@
           view.brush.update(view.points);
           i += 1;
           if (i <= 24) demoTimer = setTimeout(step, 22);
-          else endStroke(view);
+          else { endStroke(view); demoStroke = null; }
         };
         step();
       }
@@ -1405,14 +1349,14 @@
     mark.style.left = `${x}px`;
     mark.style.top = `${y}px`;
     mark.style.setProperty('--c', color);
-    mark.append(part('wfx-wave'), part('wfx-wave wfx-wave-2'), part('wfx-tg-dot'), part('wfx-ping-name', name));
+    mark.append(part('wfx-wave'), part('wfx-wave wfx-wave-2'), part('wfx-tg-dot'));
     mark.addEventListener('animationend', (e) => { if (e.target === mark) mark.remove(); });
     layer.append(mark);
   }
 
   const api = {
-    DEFAULTS, SKINS, SIZES, DECOS, AURAS, TRAILS, CLICKS, PINGS, EMOJIS, PING_SOUNDS, BRUSHES, WIDTHS, PACKS, OUTLINES, OUTLINE_COLORS,
-    normalize, isDefault, outlineHex, scrollKind, skinMarkup, decoMarkup, applyCursor, cursorImage, customBox, trail, click, ping, playPing, brush, editor,
+    DEFAULTS, SKINS, SIZES, AURAS, TRAILS, CLICKS, PINGS, EMOJIS, PING_SOUNDS, BRUSHES, WIDTHS, PACKS, OUTLINES, OUTLINE_COLORS,
+    normalize, isDefault, outlineHex, scrollKind, skinMarkup, applyCursor, cursorImage, customBox, trail, click, ping, playPing, brush, editor,
   };
   if (typeof window !== 'undefined') window.WssFx = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

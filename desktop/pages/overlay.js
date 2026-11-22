@@ -20,7 +20,7 @@ function hslHex(h, s, l) {
 const color = (hue, exact) => (HEX_COLOR.test(exact || '') ? exact
   : Number(hue) === -1 ? '#ffffff' : hslHex(((Number(hue) || 0) % 360 + 360) % 360, 95, 64));
 const text = (v) => String(v == null ? '' : v).slice(0, 40);
-// Estilos do mouse e das marcações de cada pessoa (setinha, enfeite, rastro, clique,
+// Estilos do mouse e das marcações de cada pessoa (setinha, efeito, rastro, clique,
 // ping, pincel): ../shared/fx.js, o mesmo da sala. Sem ele (ou sem estilo), o clássico.
 const Fx = window.WssFx;
 const OVERLAY_SCALE = 0.85; // na tela de verdade, um pouco menor que na sala
@@ -38,8 +38,8 @@ function ping({ x, y, name, hue, color: exact, style }) {
   mark.style.left = `${unit(x) * 100}%`;
   mark.style.top = `${unit(y) * 100}%`;
   mark.style.setProperty('--c', color(hue, exact));
-  mark.classList.toggle('flip', unit(x) > 0.8);
-  mark.append(el('span', 'ping-ring'), el('span', 'ping-ring'), el('span', 'ping-dot'), el('span', 'ping-name', text(name)));
+  // Sem o nome (atrapalhava): a cor diz quem foi.
+  mark.append(el('span', 'ping-ring'), el('span', 'ping-ring'), el('span', 'ping-dot'));
   mark.addEventListener('animationend', (e) => {
     if (e.target === mark) mark.remove();
   });
@@ -396,7 +396,7 @@ function cursor({ id, x, y, gone, letter, hue, avatar, click, color: exact, styl
   }
   paintBadge(c, letter, avatar);
   const hex = c.custom || color(c.hue);
-  if (Fx) Fx.applyCursor(c.node, style, { name: text(name), scale: OVERLAY_SCALE });
+  if (Fx) Fx.applyCursor(c.node, style, { scale: OVERLAY_SCALE });
   c.node.style.left = `${unit(x) * 100}%`;
   c.node.style.top = `${unit(y) * 100}%`;
   if (click) showClick(c.node.style.left, c.node.style.top, click, style, hex);

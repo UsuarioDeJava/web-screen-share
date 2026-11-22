@@ -349,17 +349,16 @@ const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, 
 const cleanHue = (raw) => (Number.isInteger(raw) && raw >= 0 && raw < 360 ? raw : null);
 const cleanColor = (raw) => (typeof raw === 'string' && /^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : null);
 
-// Estilo do mouse e das marcações (setinha, enfeite, rastro, clique, ping, pincel...). O
+// Estilo do mouse e das marcações (setinha, efeito, rastro, clique, ping, pincel...). O
 // que cada valor quer dizer fica com a página (public/js/fx.js, que ignora o que não
 // conhece); aqui só confere o formato: chaves conhecidas, textos curtos.
-const STYLE_KEYS = ['skin', 'size', 'deco', 'aura', 'trail', 'click', 'ping', 'emoji', 'pingSound', 'brush', 'width', 'outline'];
+const STYLE_KEYS = ['skin', 'size', 'aura', 'trail', 'click', 'ping', 'emoji', 'pingSound', 'brush', 'width', 'outline'];
 function cleanStyle(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
   for (const key of STYLE_KEYS) {
     if (typeof raw[key] === 'string' && /^[a-z0-9-]{1,16}$/i.test(raw[key])) out[key] = raw[key];
   }
-  if (typeof raw.name === 'boolean') out.name = raw.name;
   // A ponta da setinha com imagem própria, em % da imagem.
   for (const key of ['hx', 'hy']) {
     if (Number.isInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 100) out[key] = raw[key];

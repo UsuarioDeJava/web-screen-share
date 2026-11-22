@@ -440,12 +440,11 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
       (animado também), **WebP** ou um cursor do Windows (**.cur** e **.ani**, com a
       ponta que vem no arquivo). Imagens grandes são reduzidas (até 128 px) e as
       animadas continuam animadas. Clique na imagem pra marcar onde fica a ponta.
-    - **Enfeite** (coroa, cartola, chapéu de festa, auréola, chifrinhos, orelhas de
-      gato, lacinho, florzinha, anteninhas, chapéu de mago, gorro de Natal, boné,
-      chapéu pirata, capacete viking, orelhas de coelho, boné de hélice), **efeito** na
-      setinha (brilho, arco-íris, pulsando, pulinho, balançando, estrelinhas),
-      **rastro** (brilhinhos, arco-íris, corações, bolhas, fogo, neve, notas musicais,
-      fumaça, pixels) e o seu **nome junto** do mouse.
+    - **Efeito** na setinha (brilho, arco-íris, pulsando, pulinho, balançando,
+      estrelinhas) e **rastro** (brilhinhos, arco-íris, corações, bolhas, fogo, neve,
+      notas musicais, fumaça, pixels). A sua foto vai na bolinha do mouse pros outros;
+      no seu próprio mouse ela não aparece, e o ping não leva nome (a cor e a foto já
+      dizem quem é).
     - **Clique e rodinha**: mini mouse, ondinha, estrelinhas, corações, confete, raios,
       explosão, quadrinhos ("CLICK!") ou nenhuma.
     - **Ping** (Alt + clique): clássico, alvo, alerta, seta caindo, alfinete, bandeira,

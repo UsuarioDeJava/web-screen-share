@@ -548,7 +548,7 @@ $('cp-eyedropper').addEventListener('click', async () => {
 
 window.WssGamepadClient.start({ panel: $('gamepad-config'), canSend: () => false, send: () => {} });
 // ---------- mouse e efeitos: o mesmo editor da sala (../shared/fx.js) ----------
-// Setinha, tamanho, enfeite, efeito, rastro, nome, clique, ping, som do ping, pincel e
+// Setinha, tamanho, efeito, rastro, clique, ping, som do ping, pincel e
 // espessura, com a prévia ao vivo. Cada escolha vai pra sala na hora.
 let fxEditor = null;
 function fxLook() {

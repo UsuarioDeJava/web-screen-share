@@ -177,7 +177,7 @@
   const profileColors = new Map(); // nick -> cor escolhida (#rrggbb)
   const profileHues = new Map(); // nick -> tom escolhido (de antes da cor livre)
   const profileAvatars = new Map(); // nick -> endereço da foto no servidor
-  // Estilo do mouse e das marcações (setinha, enfeite, rastro, clique, ping, pincel): o
+  // Estilo do mouse e das marcações (setinha, efeito, rastro, clique, ping, pincel): o
   // catálogo e os desenhos ficam em js/fx.js. nick -> estilo.
   const Fx = window.WssFx;
   const profileStyles = new Map();
@@ -2556,8 +2556,8 @@
     mark.style.left = left;
     mark.style.top = top;
     mark.style.setProperty('--ping', markFill(tone));
-    mark.classList.toggle('flip', x > 0.75); // nome do lado esquerdo perto da borda direita
-    mark.append(el('span', 'fx-ping-ring'), el('span', 'fx-ping-ring'), el('span', 'fx-ping-dot'), el('span', 'fx-ping-name', name));
+    // Sem o nome (atrapalhava): a cor (e a foto no mouse) já dizem quem foi.
+    mark.append(el('span', 'fx-ping-ring'), el('span', 'fx-ping-ring'), el('span', 'fx-ping-dot'));
     mark.addEventListener('animationend', (e) => {
       if (e.target === mark) mark.remove();
     });
@@ -3663,9 +3663,9 @@
     badge.textContent = photo ? '' : [...name][0] || '?';
     badge.style.backgroundImage = photo ? `url("${photo}")` : '';
     badge.classList.toggle('has-photo', Boolean(photo));
-    // Modelo da setinha, tamanho, enfeite, efeito e nome. No seu próprio mouse a setinha
-    // é o cursor do sistema: aqui vão só a bolinha, o enfeite e o nome.
-    Fx.applyCursor(node, styleOf(name), { name, arrow: !node.classList.contains('my-badge') });
+    // Modelo da setinha, tamanho e efeito. No seu próprio mouse a setinha é o cursor do
+    // sistema: aqui vai só o efeito (a sua foto você não vê; os outros veem).
+    Fx.applyCursor(node, styleOf(name), { arrow: !node.classList.contains('my-badge') });
   }
 
   // A foto fica no IndexedDB (cabe um GIF de 5 MB, o localStorage não aguenta bem).
@@ -4450,12 +4450,12 @@
     renderCursorToggle(s);
   }
 
-  // O seu mouse em cima da transmissão vira a mesma setinha com foto que os outros veem.
-  // A setinha é o cursor de verdade do sistema (uma imagem no seu modelo e na sua cor, do
+  // O seu mouse em cima da transmissão vira a mesma setinha que os outros veem. A setinha
+  // é o cursor de verdade do sistema (uma imagem no seu modelo e na sua cor, do
   // js/fx.js), sem atraso nenhum; antes ela era desenhada pela página, chegava um ou dois
-  // quadros depois do mouse (ficava "pesado") e pulava quando a página engasgava. A
-  // bolinha com a foto, o enfeite, o nome e o rastro continuam desenhados pela página (o
-  // GIF anima), seguindo o mouse com uma folguinha. O Chromium só mostra cursor
+  // quadros depois do mouse (ficava "pesado") e pulava quando a página engasgava. O
+  // efeito e o rastro continuam desenhados pela página, seguindo o mouse com uma
+  // folguinha; a sua foto, só os outros veem (aqui ela vinha atrasada). O Chromium só mostra cursor
   // personalizado que cabe inteiro na janela: colado na borda, volta o mouse normal.
   // frames: com imagem própria animada (GIF, .ani...), um cursor por quadro; troca de
   // quadro só enquanto o seu mouse está numa transmissão ativa.

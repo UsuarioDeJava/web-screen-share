@@ -4,12 +4,12 @@ Coisas pedidas que ainda não foram feitas.
 
 ## Feito
 
-- **Personalização do mouse e das marcações** (setinhas, tamanhos, enfeites, efeitos,
-  rastros, nome junto, animações de clique e rodinha, estilos e sons do ping, pincéis
+- **Personalização do mouse e das marcações** (setinhas, tamanhos, efeitos,
+  rastros, animações de clique e rodinha, estilos e sons do ping, pincéis
   e espessuras, prévia ao vivo e pacotes prontos): no **Perfil**, aba **Mouse e
   efeitos** (no app, em **Configurações**). Veja o item 14 do README.
 - **Mais opções e imagem própria**: setinha e ping com imagem sua (PNG, GIF, WebP,
-  .cur e .ani do Windows), cor do contorno, mais setinhas, enfeites, efeitos, rastros,
+  .cur e .ani do Windows), cor do contorno, mais setinhas, efeitos, rastros,
   cliques, pings, sons e pincéis; as repetidas saíram.
 - **Animações de clique paradas onde clicou** (não vão junto do mouse).
 - **Transmissão ativa/inativa**: o seu mouse só aparece na transmissão que você clicou,
