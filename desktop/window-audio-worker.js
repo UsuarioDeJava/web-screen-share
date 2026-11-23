@@ -224,7 +224,10 @@ port.on('message', async (event) => {
   }
   if (msg.start && !running) {
     try {
-      if (process.env.WSS_FAKE_WINDOW_AUDIO === '1') running = fakeCapture();
+      if (process.env.WSS_FAKE_WINDOW_AUDIO === '1') {
+        require('koffi'); // nos testes também: a koffi tem que carregar aqui (inclusive no app empacotado)
+        running = fakeCapture();
+      }
       else if (process.env.WSS_FAKE_WINDOW_AUDIO === 'error') throw new Error('teste: o Windows recusou');
       else if (process.platform === 'win32' && /^\d+$/.test(String(msg.start.hwnd))) running = await windowsCapture(String(msg.start.hwnd));
       else throw new Error('só no Windows');
