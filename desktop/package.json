@@ -37,6 +37,7 @@
       "settings-preload.js",
       "room-settings.js",
       "input.js",
+      "system-cursor.js",
       "keyhook.js",
       "updates.js",
       "preload.js",
