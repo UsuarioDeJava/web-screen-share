@@ -176,6 +176,12 @@ async function refreshRoom() {
   renderFx();
   if (!roomState.available) return;
   $('profile-name').textContent = roomState.name;
+  // Conta (servidor com contas): nick e senha; com administração, o botão do painel.
+  $('account-card').hidden = !roomState.account;
+  if (roomState.account) {
+    if (document.activeElement !== $('account-nick')) $('account-nick').value = roomState.account.nick;
+    $('account-admin').hidden = !roomState.account.admin;
+  }
   $('profile-initial').textContent = [...roomState.name][0] || '?';
   const fill = roomState.color || (roomState.legacyHue !== null && roomState.legacyHue !== undefined ? `hsl(${roomState.legacyHue} 45% 42%)` : roomState.autoFill) || '#5363ae';
   $('profile-initial').style.backgroundColor = fill;
@@ -218,6 +224,43 @@ async function refreshRoom() {
   }
   $('room-shortcuts').replaceChildren(keys);
 }
+
+function accountMessage(id, text, ok = false) {
+  $(id).textContent = text;
+  $(id).classList.toggle('is-bad', Boolean(text) && !ok);
+  $(id).classList.toggle('is-ok', Boolean(text) && ok);
+}
+// Nick repetido: o aviso vermelho vem do servidor, na hora de salvar.
+$('account-nick-save').addEventListener('click', async () => {
+  const nick = $('account-nick').value.replace(/\s+/g, ' ').trim();
+  if (!nick) return accountMessage('account-nick-msg', 'Digite um nick.');
+  $('account-nick-save').disabled = true;
+  try {
+    const res = await api.roomAction({ type: 'account-nick', nick });
+    accountMessage('account-nick-msg', `Pronto: agora você é ${res && res.nick ? res.nick : nick}.`, true);
+    setTimeout(refreshRoom, 1500); // a sala entra de novo com o nick novo
+  } catch (error) { accountMessage('account-nick-msg', error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
+  $('account-nick-save').disabled = false;
+});
+$('account-pass-save').addEventListener('click', async () => {
+  const next = $('account-pass-new').value;
+  if (next.length < 6) return accountMessage('account-pass-msg', 'A senha nova precisa de pelo menos 6 caracteres.');
+  if (next !== $('account-pass-new2').value) return accountMessage('account-pass-msg', 'As duas senhas novas não estão iguais.');
+  $('account-pass-save').disabled = true;
+  try {
+    await api.roomAction({ type: 'account-password', current: $('account-pass-current').value, next });
+    for (const id of ['account-pass-current', 'account-pass-new', 'account-pass-new2']) $(id).value = '';
+    accountMessage('account-pass-msg', 'Senha trocada. As outras sessões da sua conta foram desconectadas.', true);
+  } catch (error) { accountMessage('account-pass-msg', error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
+  $('account-pass-save').disabled = false;
+});
+// O painel de administração abre na sala (no lugar dela): as Configurações fecham.
+$('account-admin').addEventListener('click', async () => {
+  try {
+    await api.roomAction({ type: 'admin-open' });
+    if (typeof api.close === 'function') api.close();
+  } catch (error) { status(error.message, true); }
+});
 
 async function roomAction(command) {
   try {
@@ -299,6 +342,10 @@ async function refreshObs() {
     const data = await api.readRoom('obs');
     $('obs-status').textContent = !data.available ? data.reason : data.supported ? `Transmissão OBS para ${data.name}.` : 'O servidor atual não está com a integração OBS habilitada. Você ainda pode configurar o monitor das marcações.';
     $('obs-url').value = data.url || '';
+    // Com contas: a chave da conta vai no Bearer Token do OBS.
+    $('obs-token-box').hidden = !data.token;
+    $('obs-token-free').hidden = Boolean(data.token);
+    $('obs-token').value = data.token || '';
     $('copy-obs-url').disabled = !data.available || !data.supported;
     $('obs-certificate').hidden = !data.certificateWarning;
     const options = (data.displays || []).map((display) => {
@@ -317,6 +364,10 @@ $('obs-monitor').addEventListener('change', async () => {
   try { await api.roomAction({ type: 'obs-display', value }); status('Monitor das marcações salvo e aplicado.'); }
   catch (error) { status(error.message, true); }
   await refreshObs();
+});
+$('copy-obs-token').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('obs-token').value); status('Chave do OBS copiada.'); }
+  catch (error) { status(error.message, true); }
 });
 $('copy-obs-url').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('obs-url').value); status('Endereço do OBS copiado.'); }

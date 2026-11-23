@@ -8,3 +8,6 @@ desktop/dist/
 # Runtime local (perfis, certificados e logs ficam fora do Git)
 local-server/desktop-profile/
 local-server/*.log
+
+# Contas e configurações do servidor rodando local (fora do container)
+data/

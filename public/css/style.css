@@ -240,6 +240,29 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .login-card .btn { height: 44px; font-size: 15px; }
 
 .login-error { min-height: 1.4em; margin: 0; color: var(--live); font-size: 13px; }
+.login-notice { margin: -4px 0 4px; padding: 8px 10px; border-radius: 10px; background: rgba(47, 194, 255, 0.08); color: var(--text); font-size: 13px; }
+.login-notice[hidden] { display: none; }
+.login-card input[hidden] { display: none; }
+
+/* Aba Conta do perfil: nick e senha. */
+.account-row { display: flex; gap: 8px; }
+.account-fields { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.account-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font: inherit;
+}
+.account-input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(47, 194, 255, 0.18); }
+.account-msg { min-height: 1.3em; margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.account-msg.is-bad { color: var(--live); }
+.account-msg.is-ok { color: var(--ok); }
 .login-hint { margin: 0; color: var(--faint); font-size: 12px; }
 
 .app-version { margin: 0; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }

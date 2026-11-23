@@ -266,8 +266,9 @@ No OBS, em **Configurações > Transmissão**:
 - **Serviço:** `WHIP`
 - **Servidor:** `https://<endereço-do-servidor>:3000/obs/SEU-NICK` (o final do endereço
   é o nome com que você aparece na sala)
-- **Bearer Token:** em branco, ou qualquer coisa (não é conferido: como a própria sala,
-  entra quem alcança o servidor)
+- **Bearer Token:** a chave da sua conta, que aparece no botão **OBS** da sala (no app,
+  em **Configurações > OBS e overlays**). Ela diz que é você: não passe pra ninguém. Sem
+  contas (`ACCOUNTS=off`), pode ficar em branco.
 
 Depois é só **Iniciar transmissão**. Se você estiver na sala com o mesmo nick, a
 transmissão aparece na sua própria linha da lista (com a etiqueta OBS), sem criar outra
@@ -301,11 +302,53 @@ embutido no container, e quem assiste puxa o vídeo dele (WHEP), pelo mesmo TURN
 seja, diferente do compartilhamento pelo navegador, o OBS envia uma cópia só, pro
 servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 
+## Contas e painel de administração
+
+Só entra na sala quem tem conta, e quem cria as contas é o dono do servidor:
+
+1. **A conta Admin.** Na primeira vez que o servidor sobe (instalando ou atualizando
+   pra esta versão), ele cria a conta **Admin** com uma senha aleatória e mostra no
+   log: no CasaOS, nos **Logs** do app; no Docker, `docker logs web-screen-share`.
+   Procure a linha `Conta de administração criada: nick "Admin", senha: ...`. Ela só
+   aparece essa vez. Esqueceu? Suba o container com a variável
+   `ADMIN_RESET_PASSWORD=1`: uma senha nova aparece no log (depois tire a variável).
+2. **Entre com o Admin** na página da sala (nick `Admin` e a senha do log). No primeiro
+   acesso ela pede uma senha sua. A conta Admin não entra na sala (não aparece na lista,
+   não transmite nem assiste): ela abre direto o **painel de administração**.
+3. **No painel**, em **Contas**, crie a conta de cada pessoa: o nick e uma senha
+   provisória (o botão **Gerar** sugere uma fácil de digitar). Passe a senha pra
+   pessoa: no primeiro acesso ela troca por uma dela. Marque **Conta com
+   administração** pra quem também pode abrir o painel (pelo botão do escudo, no
+   rodapé da lista de pessoas). Não dá pra repetir nick (nem com maiúsculas diferentes).
+
+O painel tem ainda:
+
+- **Contas**: renomear, dar uma senha provisória nova (quem estava conectado com ela
+  sai), dar ou tirar a administração e apagar a conta (a pessoa sai na hora).
+- **Na sala agora**: quem está na sala, transmitindo ou na voz, e o **Desconectar**.
+- **Sala**: o nome da sala (aparece na entrada e no topo da lista), um recado na tela
+  de entrada, quem pode transmitir (todo mundo ou só contas com administração), o
+  controle remoto e a transmissão pelo OBS (ligados ou desligados), um limite de
+  pessoas e quantas mensagens o chat guarda, e o botão **Apagar o histórico do chat**.
+  Tudo vale na hora e fica salvo.
+- **Minha conta** (trocar a sua senha) e **Servidor** (versão, desde quando está
+  ligado, contas e pessoas na sala).
+
+Cada pessoa troca o próprio **nick** e a **senha** no perfil, na aba **Conta** (no app,
+em **Configurações > Perfil**). Nick que já existe não salva: aparece o aviso em
+vermelho. A sessão fica lembrada no navegador/app: da próxima vez entra direto, até
+clicar em **Sair**.
+
+As contas e as configurações ficam na pasta de dados (`accounts.json` e
+`settings.json`; as senhas só como hash). Pra rodar sem contas, do jeito antigo (só o
+nick, sem senha nem painel), defina a variável `ACCOUNTS=off`.
+
 ## Uso
 
-1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`),
-   digita um nick e clica em **Entrar**. Se o nick já estiver em uso, o servidor
-   acrescenta um número (ex.: `Ana (2)`).
+1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`) e
+   entra com a sua conta (veja [Contas e painel de administração](#contas-e-painel-de-administração)).
+   Sem contas (`ACCOUNTS=off`), é só digitar um nick; se ele já estiver em uso, o
+   servidor acrescenta um número (ex.: `Ana (2)`).
 2. Pra transmitir, clique em **Compartilhar tela** no topo e escolha a tela/janela no
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO**, o tempo no ar e
    um contador de quantas pessoas estão assistindo (passe o mouse nele pra ver quem).

@@ -8,6 +8,9 @@ const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const { setupObs } = require('./obs');
+const { createAccounts } = require('./accounts');
+const { createRoomConfig } = require('./room-config');
+const { createAdmin } = require('./admin');
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
@@ -19,6 +22,13 @@ const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
 // numa porta diferente: o TURN não passa pelo proxy e precisa ir direto nesta porta.
 const PUBLIC_PORT = /^\d+$/.test(process.env.PUBLIC_PORT || '') ? process.env.PUBLIC_PORT : null;
 const DISPLAY_PORT = PUBLIC_PORT || PORT;
+// Pasta de dados (no container, /data): contas e configurações da sala.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+// Contas (padrão: ligadas; só entra quem tem conta). ACCOUNTS=off volta pro jeito antigo:
+// entra quem escolher um nick, sem senha nem painel.
+const ACCOUNTS_ON = process.env.ACCOUNTS !== 'off';
+const accounts = ACCOUNTS_ON ? createAccounts({ file: process.env.ACCOUNTS_FILE || path.join(DATA_DIR, 'accounts.json') }) : null;
+const roomConfig = createRoomConfig({ file: process.env.SETTINGS_FILE || path.join(DATA_DIR, 'settings.json') });
 const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;
 const MEDIAMTX_API_URL = process.env.MEDIAMTX_API_URL;
 
@@ -252,8 +262,10 @@ app.get('/status', (req, res) => {
     certificate: certificate && !certificate.selfSigned
       ? { names: certificate.names, expiresAt: certificate.expiresAt }
       : null,
-    obs: Boolean(obs),
+    obs: obsOn(),
     proxy: proxyWithoutPublicPort(req),
+    accounts: ACCOUNTS_ON,
+    ...publicSettings(),
   });
 });
 
@@ -370,7 +382,8 @@ const voiceState = (raw) => ({ muted: Boolean(raw && raw.muted), deafened: Boole
 
 // ---------- chat, reações e "apontar" ----------
 
-const CHAT_HISTORY = 100;
+// Quantas mensagens o chat guarda: o dono escolhe no painel (padrão 100).
+const chatLimit = () => roomConfig.get().chatHistory;
 const CHAT_MAX_LENGTH = 500;
 const REACTIONS = ['🔥', '😂', '😮', '👏', '❤️', '💀'];
 const chatHistory = [];
@@ -408,7 +421,7 @@ function loadChatHistory() {
   try {
     const saved = JSON.parse(fs.readFileSync(CHAT_FILE, 'utf8'));
     if (!Array.isArray(saved)) return;
-    for (const m of saved.slice(-CHAT_HISTORY)) {
+    for (const m of chatLimit() ? saved.slice(-chatLimit()) : []) {
       if (!m || !Number.isFinite(m.id) || !Number.isFinite(m.at)) continue;
       const name = cleanName(m.name);
       const text = cleanChatText(m.text);
@@ -434,6 +447,13 @@ function saveChatNow() {
   }
 }
 
+// Painel: "Apagar o histórico do chat" (pra todo mundo, na hora).
+function clearChat() {
+  chatHistory.length = 0;
+  saveChatNow();
+  io.to(ROOM).emit('chat:cleared');
+}
+
 function saveChatSoon() {
   if (CHAT_FILE && !chatSaveTimer) chatSaveTimer = setTimeout(saveChatNow, 2000);
 }
@@ -457,6 +477,8 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     apiAuth: process.env.MEDIAMTX_API_AUTH,
     cleanName,
     turnLink,
+    authorizePublish,
+    authorizeView,
     onStreamsChanged(added, removed) {
       for (const stream of added) {
         logEvent(`OBS: ${stream.name} começou a transmitir`);
@@ -471,6 +493,35 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
   })
   : null;
 
+// ---------- contas e configurações da sala ----------
+
+const bearer = (req) => {
+  const match = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '');
+  return match ? match[1] : '';
+};
+// Transmitir pelo OBS: com contas, a chave da conta ("Bearer Token" no OBS) diz quem é.
+function authorizePublish(req, nick) {
+  const settings = roomConfig.get();
+  if (!settings.obs) return { status: 403, error: 'A transmissão pelo OBS está desligada nesta sala.' };
+  if (!accounts) return { nick };
+  const account = accounts.byObsKey(bearer(req));
+  if (!account || account.root) return { status: 401, error: 'Chave do OBS errada: no OBS, em Bearer Token, cole a chave que aparece em OBS e overlays, nas Configurações da sala.' };
+  if (settings.sharing === 'admins' && !account.admin) return { status: 403, error: 'Nesta sala só contas com administração transmitem.' };
+  return { nick: account.nick };
+}
+// Assistir uma transmissão do OBS: com contas, só com uma sessão aberta.
+function authorizeView(req) {
+  if (!accounts) return true;
+  const account = accounts.resume(bearer(req));
+  return Boolean(account && !account.root);
+}
+const obsOn = () => Boolean(obs) && roomConfig.get().obs;
+// O que a sala mostra (todo mundo, inclusive na tela de entrada).
+function publicSettings() {
+  const { roomName, notice, sharing, control } = roomConfig.get();
+  return { roomName, notice, sharing, control };
+}
+
 // IP de onde o cliente chega até este servidor (ex.: o do Tailscale). Vai junto dos
 // sinais pro outro lado alcançá-lo mesmo quando o navegador esconde o próprio IP.
 function clientAddress(socket) {
@@ -484,7 +535,22 @@ function ownsStream(user, id) {
   return Boolean(obs && obs.list().some((stream) => stream.id === id && stream.name === user.name));
 }
 
-const remoteControl = require('./control').createControl({ io, users, ownsStream, allow, logEvent });
+const remoteControl = require('./control').createControl({ io, users, ownsStream, allow, logEvent, enabled: () => roomConfig.get().control });
+
+// O painel mudou alguma coisa: a sala fica sabendo na hora.
+function applySettings(changed) {
+  if (changed.sharing === 'admins') {
+    for (const user of users.values()) {
+      if (user.sharing && !user.admin) io.to(user.id).emit('share:refused', { reason: 'Agora nesta sala só contas com administração transmitem.' });
+    }
+  }
+  if (changed.control === false) for (const user of users.values()) remoteControl.revoke(user);
+  io.emit('room:settings', { ...publicSettings(), obs: obsOn() });
+}
+const admin = accounts ? createAdmin({
+  io, accounts, config: roomConfig, users, removeUser, clearChat, onSettings: applySettings,
+  logEvent, allow, clientAddress, version: VERSION, obsAvailable: Boolean(obs),
+}) : null;
 const revokeControlFor = remoteControl.revokeFor;
 
 function removeUser(socket) {
@@ -498,6 +564,7 @@ function removeUser(socket) {
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
+  if (admin) admin.changed();
 }
 
 function listLanAddresses() {
@@ -514,11 +581,21 @@ function listLanAddresses() {
 }
 
 io.on('connection', (socket) => {
+  if (admin) admin.attach(socket);
   socket.on('join', (payload, ack) => {
     if (typeof ack !== 'function') return;
     if (users.has(socket.id)) return ack({ error: 'Você já está na sala.' });
-    const name = cleanName(payload && payload.name);
+    // Com contas, o nick é o da conta (entrou antes com auth:login ou auth:resume).
+    const account = admin ? admin.accountOf(socket) : null;
+    if (admin) {
+      if (!account) return ack({ error: 'Entre com a sua conta.', auth: true });
+      if (account.root) return ack({ error: 'A conta Admin só abre o painel de administração.', auth: true });
+      if (account.mustChange) return ack({ error: 'Crie a sua senha primeiro.', auth: true });
+    }
+    const name = account ? account.nick : cleanName(payload && payload.name);
     if (!name) return ack({ error: 'Escolha um nick.' });
+    const { maxUsers } = roomConfig.get();
+    if (maxUsers && users.size >= maxUsers && !(account && account.admin)) return ack({ error: `A sala está cheia (até ${maxUsers} pessoas).` });
 
     // Após uma queda de rede o cliente reconecta com outro socket, mas o antigo
     // continua "vivo" aqui até o timeout de ping. Derruba esse fantasma pra
@@ -534,7 +611,11 @@ io.on('connection', (socket) => {
       }
     }
 
-    const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId };
+    const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId, joinedAt: Date.now() };
+    if (account) {
+      user.account = account.id;
+      user.admin = Boolean(account.admin);
+    }
     const hue = cleanHue(payload.hue);
     if (hue !== null) user.hue = hue;
     const color = cleanColor(payload.color);
@@ -546,7 +627,8 @@ io.on('connection', (socket) => {
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
-    ack({ me: publicUser(user), users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION });
+    ack({ me: { ...publicUser(user), admin: Boolean(user.admin) }, users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION, settings: { ...publicSettings(), obs: obsOn() } });
+    if (admin) admin.changed();
   });
 
   // startedAt: quando a pessoa começou a transmitir, pra não zerar o tempo ao vivo
@@ -554,6 +636,10 @@ io.on('connection', (socket) => {
   socket.on('share', (sharing, startedAt) => {
     const user = users.get(socket.id);
     if (!user) return;
+    if (sharing && !user.sharing && roomConfig.get().sharing === 'admins' && !user.admin) {
+      socket.emit('share:refused', { reason: 'Nesta sala só contas com administração transmitem.' });
+      return;
+    }
     user.sharing = Boolean(sharing);
     const now = Date.now();
     user.since = user.sharing
@@ -645,8 +731,8 @@ io.on('connection', (socket) => {
     const message = { id: lastChatId, name: user.name, text, at: Date.now() };
     if (Number.isInteger(user.hue)) message.hue = user.hue; // a cor fica no histórico
     if (user.color) message.color = user.color;
-    chatHistory.push(message);
-    if (chatHistory.length > CHAT_HISTORY) chatHistory.shift();
+    if (chatLimit()) chatHistory.push(message);
+    while (chatHistory.length > chatLimit()) chatHistory.shift();
     saveChatSoon();
     io.to(ROOM).emit('chat:message', message);
     reply({ ok: true });
@@ -779,6 +865,9 @@ io.on('connection', (socket) => {
   socket.on('leave', () => removeUser(socket));
   socket.on('disconnect', () => removeUser(socket));
 });
+
+// A conta Admin (com a senha no log), na primeira vez; ADMIN_RESET_PASSWORD=1 dá outra.
+if (accounts) accounts.ensureRoot({ reset: process.env.ADMIN_RESET_PASSWORD === '1' }).catch((err) => logEvent(`ERRO criando a conta Admin: ${err.message}`));
 
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';

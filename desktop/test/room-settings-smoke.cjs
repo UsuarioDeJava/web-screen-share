@@ -26,7 +26,7 @@ async function until(check, label, timeout = 12000) {
     const port = reservation.address().port;
     await new Promise((resolve) => reservation.close(resolve));
     server = spawn('node', [path.join(__dirname, '..', '..', 'server', 'index.js')], {
-      env: { ...process.env, PORT: String(port), TURN_URLS: ' ', LOCAL_TURN_SECRET: '', CHAT_FILE: '' },
+      env: { ...process.env, PORT: String(port), TURN_URLS: ' ', LOCAL_TURN_SECRET: '', CHAT_FILE: '', ACCOUNTS: 'off' }, // sala sem contas (só o nick)
       stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     server.stdout.on('data', (chunk) => { serverLogs += chunk; });

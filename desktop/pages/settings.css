@@ -53,6 +53,13 @@ td:first-child { white-space: nowrap; color: #9ca6bf; } tr[data-level="warn"] { 
 .empty { text-align: center; color: #8793af; margin: 45px 12px; } #status { color: #a8bbff; min-height: 22px; } #status.error { color: #ff9b9b; }
 @media (max-width: 760px) { header, nav, main { padding-left: 16px; padding-right: 16px; } .toolbar { grid-template-columns: 1fr 1fr; } h1 { font-size: 20px; } }
 .user-preview { display: flex; align-items: center; gap: 18px; }
+/* Conta: nick e senha (com contas no servidor). */
+.inline-field { display: flex; gap: 8px; }
+.inline-field input { flex: 1; }
+.account-fields { display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
+.account-msg { min-height: 1.2em; margin: 6px 0 0; font-size: 12px; color: #9ca6bf; }
+.account-msg.is-bad { color: #ff9b9b; }
+.account-msg.is-ok { color: #7fe0a8; }
 .user-preview img, .user-initial { width: 74px; height: 74px; border-radius: 50%; object-fit: cover; flex: none; }
 .user-initial { display: grid; place-items: center; background: #5363ae; color: #fff; font-size: 28px; }
 .user-preview strong { font-size: 18px; }

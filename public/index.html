@@ -6,6 +6,7 @@
   <title>Web Screen Share</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b6cff'/%3E%3Cg fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='5' width='16' height='11' rx='1.5'/%3E%3Cpath d='M9 19.5h6M12 16v3.5'/%3E%3C/g%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/admin.css" />
   <link rel="stylesheet" href="js/gamepad.css">
   <link rel="stylesheet" href="css/fx.css" />
 </head>
@@ -15,16 +16,35 @@
       <div class="login-logo" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M9 10l3-3 3 3M12 7v6"/></svg>
       </div>
-      <h1>Web Screen Share</h1>
-      <p class="login-sub">Escolha um nick pra entrar na sala.</p>
-      <input id="nick" name="nick" maxlength="24" placeholder="Seu nick" aria-label="Seu nick" autofocus />
+      <h1 id="login-title">Web Screen Share</h1>
+      <p id="login-sub" class="login-sub">Escolha um nick pra entrar na sala.</p>
+      <p id="login-notice" class="login-notice" hidden></p>
+      <input id="nick" name="nick" maxlength="24" placeholder="Seu nick" aria-label="Seu nick" autocomplete="username" autofocus />
+      <input id="password" name="password" type="password" maxlength="200" placeholder="Senha" aria-label="Senha" autocomplete="current-password" hidden />
       <button type="submit" id="login-btn" class="btn btn-primary">Entrar</button>
       <p id="login-error" class="login-error" role="alert"></p>
       <p id="login-cert" class="cert-warning" role="alert" hidden></p>
-      <p class="login-hint">Sem senha: o nick só vale enquanto você estiver na sala.</p>
+      <p id="login-hint" class="login-hint">Sem senha: o nick só vale enquanto você estiver na sala.</p>
       <p id="login-version" class="app-version"></p>
     </form>
+    <!-- Primeiro acesso (ou senha resetada pelo administrador): a pessoa cria a senha dela. -->
+    <form id="newpass-form" class="login-card" hidden>
+      <div class="login-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <h1>Crie a sua senha</h1>
+      <p class="login-sub">Primeiro acesso de <b id="newpass-nick"></b>: troque a senha provisória por uma só sua.</p>
+      <input id="newpass" type="password" maxlength="200" placeholder="Senha nova (pelo menos 6 caracteres)" aria-label="Senha nova" autocomplete="new-password" />
+      <input id="newpass2" type="password" maxlength="200" placeholder="Repita a senha nova" aria-label="Repita a senha nova" autocomplete="new-password" />
+      <button type="submit" id="newpass-btn" class="btn btn-primary">Salvar e entrar</button>
+      <p id="newpass-error" class="login-error" role="alert"></p>
+      <button id="newpass-cancel" class="link-btn" type="button">Sair</button>
+    </form>
   </section>
+
+  <!-- Painel de administração (js/admin.js): a conta Admin só vê isto; as contas com
+       administração abrem pelo botão do escudo, no rodapé da lista. -->
+  <section id="admin" class="admin" hidden></section>
 
   <div id="app" class="app" hidden>
     <aside id="sidebar" class="sidebar">
@@ -32,7 +52,7 @@
         <span class="brand-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         </span>
-        Sala
+        <span id="room-name" class="room-name">Sala</span>
         <button id="btn-sidebar-close" class="icon-btn sidebar-close" type="button" title="Fixar a lista do lado" aria-label="Fixar a lista do lado">
           <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="chev chev-a" d="m11 17-5-5 5-5"/><path class="chev chev-b" d="m18 17-5-5 5-5"/></svg></span>
         </button>
@@ -57,6 +77,9 @@
           <div id="me-name" class="me-name"></div>
           <div class="me-status"><span id="conn-dot" class="dot"></span><span id="conn-text"></span></div>
         </div>
+        <button id="btn-admin" class="icon-btn" type="button" title="Administração" aria-label="Administração" hidden>
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        </button>
         <button id="btn-cursor" class="icon-btn" type="button" aria-pressed="true"></button>
         <button id="btn-sounds" class="icon-btn" type="button" aria-pressed="true"></button>
         <button id="btn-leave" class="icon-btn" type="button" title="Sair da sala" aria-label="Sair da sala">
@@ -167,7 +190,14 @@
             <button id="obs-copy" class="btn" type="button">Copiar</button>
           </span>
         </li>
-        <li>O <b>Bearer Token</b> pode ficar em branco (qualquer coisa serve).</li>
+        <li id="obs-token-free">O <b>Bearer Token</b> pode ficar em branco (qualquer coisa serve).</li>
+        <li id="obs-token-row" hidden>
+          Em <b>Bearer Token</b>, cole a sua chave (ela diz que é você; não passe pra ninguém):
+          <span class="copy-field">
+            <input id="obs-token" readonly aria-label="Chave do OBS (Bearer Token)" />
+            <button id="obs-token-copy" class="btn" type="button">Copiar</button>
+          </span>
+        </li>
         <li>Clique em <b>Iniciar transmissão</b>. Você aparece na sala como <b id="obs-nick"></b>, com a etiqueta OBS.</li>
       </ol>
       <p class="dialog-tip">Em <b>Saída</b>, use um codificador H.264, uns 6000 Kbps e intervalo de quadro-chave de 1 s: quem entra no meio começa a ver mais rápido. O nick vem do endereço: troque o final dele pra transmitir com outro nome.</p>
@@ -281,6 +311,27 @@
       <div class="profile-tabs" role="tablist" aria-label="Perfil">
         <button id="ptab-look" class="profile-tab" type="button" role="tab" aria-selected="true" aria-controls="ppanel-look">Foto e cor</button>
         <button id="ptab-fx" class="profile-tab" type="button" role="tab" aria-selected="false" aria-controls="ppanel-fx" tabindex="-1">Mouse e efeitos <span class="profile-tab-new">novo</span></button>
+        <button id="ptab-account" class="profile-tab" type="button" role="tab" aria-selected="false" aria-controls="ppanel-account" tabindex="-1" hidden>Conta</button>
+      </div>
+      <div id="ppanel-account" class="profile-panel" role="tabpanel" aria-labelledby="ptab-account" hidden>
+        <div class="profile-block">
+          <div class="dialog-label">Nick</div>
+          <div class="account-row">
+            <input id="account-nick" class="account-input" maxlength="24" aria-label="Seu nick" autocomplete="off" />
+            <button id="account-nick-save" class="btn btn-primary" type="button">Salvar nick</button>
+          </div>
+          <p id="account-nick-msg" class="account-msg" role="status"></p>
+        </div>
+        <div class="profile-block">
+          <div class="dialog-label">Senha</div>
+          <div class="account-fields">
+            <input id="account-pass-current" class="account-input" type="password" maxlength="200" placeholder="Senha atual" aria-label="Senha atual" autocomplete="current-password" />
+            <input id="account-pass-new" class="account-input" type="password" maxlength="200" placeholder="Senha nova (pelo menos 6 caracteres)" aria-label="Senha nova" autocomplete="new-password" />
+            <input id="account-pass-new2" class="account-input" type="password" maxlength="200" placeholder="Repita a senha nova" aria-label="Repita a senha nova" autocomplete="new-password" />
+          </div>
+          <button id="account-pass-save" class="btn" type="button">Trocar senha</button>
+          <p id="account-pass-msg" class="account-msg" role="status"></p>
+        </div>
       </div>
       <div id="ppanel-fx" class="profile-panel" role="tabpanel" aria-labelledby="ptab-fx" hidden>
         <p class="dialog-tip">Setinha, efeito, rastro, clique, ping e pincel: quem assiste junto e quem transmite (na tela de verdade, pelo app) veem do seu jeito.</p>
@@ -342,6 +393,7 @@
   <script src="js/gamepad-client.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/fx-image.js"></script>
+  <script src="js/admin.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

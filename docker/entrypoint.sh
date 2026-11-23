@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-DATA_DIR="${DATA_DIR:-/data}"
+export DATA_DIR="${DATA_DIR:-/data}"
 mkdir -p "$DATA_DIR"
 
 # Certificado próprio largado na pasta de dados (ex.: gerado com `tailscale cert`):

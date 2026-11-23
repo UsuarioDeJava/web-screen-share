@@ -3,7 +3,8 @@ const { permissions, kindDevice, validState } = require('../desktop/shared/gamep
 // Formatos do mouse de quem transmite (nomes de cursor do CSS) que quem controla pode usar.
 const CURSOR_SHAPES = new Set(['default', 'text', 'wait', 'crosshair', 'nwse-resize', 'nesw-resize', 'ew-resize', 'ns-resize', 'move', 'not-allowed', 'pointer', 'progress', 'help', 'none']);
 
-function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now, schedule = true }) {
+// enabled(): o dono deixou o controle remoto ligado na sala (painel de administração).
+function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now, schedule = true, enabled = () => true }) {
   const grants = (owner) => owner.controls || (owner.controls = new Map());
   const options = (owner) => owner.controlOptions || (owner.controlOptions = { gamepadPaused: false, maxGamepads: 4 });
   function details(owner) {
@@ -52,6 +53,7 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       const owner = users.get(socket.id);
       const target = msg && users.get(msg.to);
       if (!owner || !target || target.id === owner.id || target.kind === 'obs' || !ownsStream(owner, msg.stream)) return reply({ error: 'Não deu pra dar o controle.' });
+      if (!enabled()) return reply({ error: 'O controle remoto está desligado nesta sala.' });
       // Clientes antigos continuam recebendo somente teclado e mouse.
       const devices = msg.devices === undefined ? { keyboard: true, mouse: true, gamepad: false } : permissions(msg.devices);
       if (!Object.values(devices).some(Boolean)) return reply({ error: 'Selecione pelo menos um dispositivo.' });

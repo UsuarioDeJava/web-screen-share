@@ -33,7 +33,7 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     await new Promise((resolve) => reserve.listen(0, '127.0.0.1', resolve));
     const port = reserve.address().port; await new Promise((resolve) => reserve.close(resolve));
     server = spawn('node', [path.join(__dirname, '..', '..', 'server', 'index.js')], {
-      env: { ...process.env, PORT: String(port), TURN_URLS: ' ', LOCAL_TURN_SECRET: '', CHAT_FILE: '' },
+      env: { ...process.env, PORT: String(port), TURN_URLS: ' ', LOCAL_TURN_SECRET: '', CHAT_FILE: '', ACCOUNTS: 'off' }, // sala sem contas (só o nick)
       stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     server.stdout.on('data', (data) => { serverLogs += data; });

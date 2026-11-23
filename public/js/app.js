@@ -365,6 +365,8 @@
       setPageVersion(status.version);
       showCertificateWarning(status.certificate);
       btnObs.hidden = !status.obs;
+      applyRoomSettings({ ...status });
+      if (status.accounts) enableAccounts();
       if (status.proxy) {
         proxyBanner.textContent = proxyWarningText(status.proxy.port);
         proxyBanner.hidden = false;
@@ -384,11 +386,216 @@
 
   function showLogin(error) {
     appEl.hidden = true;
+    adminEl.hidden = true;
     loginEl.hidden = false;
+    loginForm.hidden = false;
+    newpassForm.hidden = true;
     loginBtn.disabled = false;
     loginBtn.textContent = 'Entrar';
     loginError.textContent = error || '';
-    nickInput.focus();
+    if (accountsMode && nickInput.value) passwordInput.focus();
+    else nickInput.focus();
+  }
+
+  // ---------- contas ----------
+  // Com contas (o padrão do servidor), só entra quem tem conta: nick e senha. A sessão
+  // (um token) fica guardada neste navegador/app e da próxima vez entra direto. A conta
+  // Admin só abre o painel de administração; as contas com administração entram na sala
+  // e abrem o painel pelo botão do escudo.
+  const passwordInput = $('password');
+  const newpassForm = $('newpass-form');
+  const adminEl = $('admin');
+  const btnAdmin = $('btn-admin');
+  let accountsMode = false;
+  let account = null; // { id, nick, admin, root, mustChange, obsKey }
+  let session = null;
+  try { session = localStorage.getItem('wss-session') || null; } catch {}
+  function saveSession(token) {
+    session = token || null;
+    try {
+      if (session) localStorage.setItem('wss-session', session);
+      else localStorage.removeItem('wss-session');
+    } catch {}
+  }
+  // Pra assistir pelo OBS (WHEP) com contas: a sessão vai junto.
+  const authHeaders = () => (accountsMode && session ? { Authorization: `Bearer ${session}` } : {});
+  let roomSettings = { roomName: '', notice: '', sharing: 'all', control: true };
+
+  function enableAccounts() {
+    if (accountsMode) return;
+    accountsMode = true;
+    passwordInput.hidden = false;
+    $('login-sub').textContent = 'Entre com a sua conta.';
+    $('login-hint').textContent = 'A sua conta é criada pelo dono do servidor: peça pra ele.';
+    $('ptab-account').hidden = false;
+    if (session && socket.connected) resumeSession();
+  }
+
+  // O nome da sala, o recado da entrada e as regras que o dono escolheu no painel.
+  function applyRoomSettings(next) {
+    roomSettings = {
+      roomName: typeof next.roomName === 'string' ? next.roomName : roomSettings.roomName,
+      notice: typeof next.notice === 'string' ? next.notice : roomSettings.notice,
+      sharing: next.sharing === 'admins' ? 'admins' : 'all',
+      control: next.control !== false,
+    };
+    $('login-title').textContent = roomSettings.roomName || 'Web Screen Share';
+    $('room-name').textContent = roomSettings.roomName || 'Sala';
+    $('login-notice').textContent = roomSettings.notice;
+    $('login-notice').hidden = !roomSettings.notice;
+    if (typeof next.obs === 'boolean') btnObs.hidden = !next.obs;
+  }
+  const shareAllowed = () => roomSettings.sharing !== 'admins' || Boolean(me && me.admin);
+
+  // Entrou na conta (ou voltou numa sessão guardada): cria a senha, abre o painel ou
+  // entra na sala.
+  function afterAuth(enter) {
+    try { localStorage.setItem('wss-nick', account.nick); } catch {}
+    nickInput.value = account.nick;
+    if (account.mustChange) {
+      showNewPass();
+      return;
+    }
+    if (account.root) {
+      wantedName = null;
+      if (!window.WssAdmin || !window.WssAdmin.isOpen()) openAdmin();
+      return;
+    }
+    if (enter || wantedName) {
+      wantedName = account.nick;
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Entrando…';
+      join();
+    }
+  }
+
+  function resumeSession(enter = true) {
+    socket.emit('auth:resume', { token: session }, (res) => {
+      if (!res || res.error) {
+        const wasIn = Boolean(me) || Boolean(wantedName);
+        forgetAccount();
+        if (wasIn || !loginEl.hidden) showLogin(wasIn ? (res && res.error) || 'Entre de novo.' : '');
+        return;
+      }
+      account = res.account;
+      afterAuth(enter);
+    });
+  }
+
+  function forgetAccount() {
+    saveSession(null);
+    account = null;
+    wantedName = null;
+    if (window.WssAdmin) window.WssAdmin.close();
+  }
+
+  // Sair da conta: a sessão deste aparelho acaba (as dos outros continuam).
+  function logout() {
+    leaveVoice();
+    stopSharing();
+    socket.emit('auth:logout');
+    forgetAccount();
+    if (me) leaveRoomLocally();
+    showLogin();
+  }
+
+  function showNewPass() {
+    loginEl.hidden = false;
+    appEl.hidden = true;
+    adminEl.hidden = true;
+    loginForm.hidden = true;
+    newpassForm.hidden = false;
+    $('newpass-nick').textContent = account.nick;
+    $('newpass-error').textContent = '';
+    $('newpass').value = '';
+    $('newpass2').value = '';
+    $('newpass').focus();
+  }
+
+  newpassForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const next = $('newpass').value;
+    const error = $('newpass-error');
+    if (next.length < 6) { error.textContent = 'A senha precisa de pelo menos 6 caracteres.'; return; }
+    if (next !== $('newpass2').value) { error.textContent = 'As duas senhas não estão iguais.'; return; }
+    $('newpass-btn').disabled = true;
+    socket.emit('auth:password', { next }, (res) => {
+      $('newpass-btn').disabled = false;
+      if (!res || res.error) { error.textContent = (res && res.error) || 'Não deu pra salvar a senha.'; return; }
+      account = res.account;
+      afterAuth(true);
+    });
+  });
+  $('newpass-cancel').addEventListener('click', logout);
+
+  function openAdmin() {
+    if (!window.WssAdmin || !account || !account.admin) return;
+    loginEl.hidden = true;
+    appEl.hidden = true;
+    adminEl.hidden = false;
+    window.WssAdmin.open({
+      socket,
+      root: adminEl,
+      account,
+      inRoom: Boolean(me),
+      onBack: () => {
+        adminEl.hidden = true;
+        if (me) appEl.hidden = false;
+        else showLogin();
+      },
+      onLogout: logout,
+      onAccount: (next) => { account = { ...account, ...next }; },
+    });
+  }
+  btnAdmin.addEventListener('click', openAdmin);
+
+  // A conta mudou do lado do servidor (nick, administração) ou acabou.
+  socket.on('auth:account', (next) => {
+    if (!next || !account || next.id !== account.id) return;
+    const renamed = next.nick !== account.nick;
+    account = next;
+    if (me) {
+      me.admin = Boolean(next.admin);
+      btnAdmin.hidden = !me.admin;
+      if (renamed) rejoin();
+    }
+  });
+  socket.on('auth:expired', (msg) => {
+    const wasIn = Boolean(me) || Boolean(account);
+    leaveVoice();
+    stopSharing();
+    forgetAccount();
+    if (me) leaveRoomLocally();
+    if (wasIn) showLogin((msg && msg.reason) || 'A sua sessão acabou: entre de novo.');
+  });
+  socket.on('room:kicked', (msg) => {
+    leaveVoice();
+    stopSharing();
+    wantedName = null;
+    saveSession(null);
+    account = null;
+    if (me) leaveRoomLocally();
+    showLogin(`Você foi desconectado da sala${msg && msg.by ? ` por ${msg.by}` : ''}.`);
+  });
+  socket.on('room:settings', (next) => {
+    if (!next) return;
+    applyRoomSettings(next);
+    if (me) renderUsers();
+  });
+  socket.on('share:refused', (msg) => {
+    stopSharing();
+    showToast((msg && msg.reason) || 'Você não pode transmitir nesta sala.');
+  });
+  socket.on('chat:cleared', () => { if (me) loadChat([]); });
+
+  // Trocou de nick: sai e entra de novo com o nick novo (pros outros, sai um e entra o
+  // outro; transmissão e voz continuam).
+  function rejoin() {
+    if (!me || !account) return;
+    socket.emit('leave');
+    leaveRoomLocally();
+    wantedName = account.nick;
+    join();
   }
 
   function showApp() {
@@ -406,6 +613,30 @@
       loginError.textContent = 'Digite um nick.';
       return;
     }
+    if (accountsMode) {
+      const password = passwordInput.value;
+      if (!password) {
+        loginError.textContent = 'Digite a senha.';
+        passwordInput.focus();
+        return;
+      }
+      sounds.unlock();
+      loginBtn.disabled = true;
+      loginBtn.textContent = socket.connected ? 'Entrando…' : 'Conectando ao servidor…';
+      loginError.textContent = '';
+      socket.emit('auth:login', { nick: name, password }, (res) => {
+        if (!res || res.error) {
+          showLogin((res && res.error) || 'Não deu pra entrar.');
+          passwordInput.select();
+          return;
+        }
+        passwordInput.value = '';
+        saveSession(res.token);
+        account = res.account;
+        afterAuth(true);
+      });
+      return;
+    }
     wantedName = name;
     try { localStorage.setItem('wss-nick', name); } catch {}
     sounds.unlock(); // o navegador só libera som depois de um clique
@@ -420,10 +651,15 @@
       if (!res || res.error) {
         wantedName = null;
         stopSharing();
+        // Com contas: sem sessão (expirou), ou a conta ainda precisa de senha nova.
+        if (res && res.auth && account && account.mustChange) { showNewPass(); return; }
+        if (res && res.auth && account && account.root) { openAdmin(); return; }
         showLogin((res && res.error) || 'Não foi possível entrar na sala.');
         return;
       }
-      me = { id: res.me.id, name: res.me.name };
+      me = { id: res.me.id, name: res.me.name, admin: Boolean(res.me.admin) };
+      btnAdmin.hidden = !me.admin;
+      if (res.settings) applyRoomSettings(res.settings);
       // Permissões de controle não sobrevivem a uma queda (o servidor já cancelou): o
       // aviso do app some junto.
       if (window.wssDesktop && window.wssDesktop.controlState) window.wssDesktop.controlState({ on: false });
@@ -512,6 +748,10 @@
     chatSeenId = null;
     joinedBefore = false;
     stopSharing();
+    if (accountsMode) {
+      logout();
+      return;
+    }
     socket.emit('leave');
     wantedName = null;
     leaveRoomLocally();
@@ -527,7 +767,10 @@
 
   socket.on('connect', () => {
     setConnection(true);
-    if (wantedName) join();
+    // Com contas, o socket novo precisa da sessão de novo antes de entrar (a sessão
+    // guardada entra direto, inclusive ao abrir a página).
+    if (accountsMode && session) resumeSession();
+    else if (wantedName) join();
   });
 
   socket.on('disconnect', () => {
@@ -861,6 +1104,10 @@
   });
 
   async function startSharing() {
+    if (!shareAllowed()) {
+      showToast('Nesta sala só contas com administração transmitem.');
+      return;
+    }
     let stream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
@@ -1207,7 +1454,7 @@
       if (!current()) return;
       const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/whep`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/sdp' },
+        headers: { 'Content-Type': 'application/sdp', ...authHeaders() },
         body: pc.localDescription.sdp,
       });
       const location = res.status === 201 && res.headers.get('Location');
@@ -1247,12 +1494,27 @@
     if (!me) return;
     obsUrlInput.value = `${window.location.origin}/obs/${encodeURIComponent(me.name)}`;
     obsNickEl.textContent = me.name;
+    // Com contas: a chave da conta vai no Bearer Token (sem ela o servidor recusa).
+    $('obs-token-row').hidden = !(accountsMode && account && account.obsKey);
+    $('obs-token-free').hidden = !$('obs-token-row').hidden;
+    $('obs-token').value = (account && account.obsKey) || '';
+    $('obs-token-copy').textContent = 'Copiar';
     obsCopyBtn.textContent = 'Copiar';
     // O OBS confere o certificado e recusa o autoassinado.
     obsCertEl.hidden = window.location.protocol !== 'https:' || Boolean(serverStatus.certificate);
     obsDialog.showModal();
     checkObsPort();
     renderObsOverlaySetting();
+  });
+
+  $('obs-token-copy').addEventListener('click', async () => {
+    $('obs-token').select();
+    try {
+      await navigator.clipboard.writeText($('obs-token').value);
+      $('obs-token-copy').textContent = 'Copiado!';
+    } catch {
+      $('obs-token-copy').textContent = 'Use Ctrl+C';
+    }
   });
 
   obsCopyBtn.addEventListener('click', async () => {
@@ -1424,7 +1686,7 @@
       await iceGatheringDone(pc, 3000);
       const res = await fetch(`/mtx/${encodeURIComponent(stream)}/whep`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/sdp' },
+        headers: { 'Content-Type': 'application/sdp', ...authHeaders() },
         body: pc.localDescription.sdp,
       });
       const body = await res.text();
@@ -2128,7 +2390,7 @@
   async function describeObsSource(s) {
     let st;
     try {
-      const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/stats`, { cache: 'no-store' });
+      const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/stats`, { cache: 'no-store', headers: authHeaders() });
       if (!res.ok) return [];
       st = await res.json();
     } catch {
@@ -3962,26 +4224,87 @@
     const tone = toneOf(me.name);
     return { color: markFill(tone), ink: inkFor(tone), letter: [...me.name][0] || '?', photo: profileAvatars.get(me.name) || null, name: me.name };
   }
-  function selectProfileTab(fx) {
-    $('ptab-look').setAttribute('aria-selected', String(!fx));
-    $('ptab-fx').setAttribute('aria-selected', String(fx));
-    $('ptab-look').tabIndex = fx ? -1 : 0;
-    $('ptab-fx').tabIndex = fx ? 0 : -1;
-    $('ppanel-look').hidden = fx;
-    $('ppanel-fx').hidden = !fx;
-    if (fx && !fxEditor) fxEditor = Fx.editor($('fx-editor'), { get: () => myFull, look: myLook, change: setMyStyle, images: { upload: uploadFxImage, remove: removeFxImage } });
-    else if (fx) fxEditor.refresh();
+  // Abas do perfil: 'look' (foto e cor), 'fx' (mouse e efeitos) e 'account' (nick e
+  // senha, com contas). Aceita true/false do jeito antigo (fx ou não).
+  const PROFILE_TABS = ['look', 'fx', 'account'];
+  function selectProfileTab(which) {
+    const name = which === true ? 'fx' : which === false ? 'look' : which;
+    for (const tab of PROFILE_TABS) {
+      const on = tab === name;
+      $(`ptab-${tab}`).setAttribute('aria-selected', String(on));
+      $(`ptab-${tab}`).tabIndex = on ? 0 : -1;
+      $(`ppanel-${tab}`).hidden = !on;
+    }
+    if (name === 'fx' && !fxEditor) fxEditor = Fx.editor($('fx-editor'), { get: () => myFull, look: myLook, change: setMyStyle, images: { upload: uploadFxImage, remove: removeFxImage } });
+    else if (name === 'fx') fxEditor.refresh();
+    if (name === 'account') renderAccountTab();
   }
-  $('ptab-look').addEventListener('click', () => selectProfileTab(false));
-  $('ptab-fx').addEventListener('click', () => selectProfileTab(true));
-  for (const tab of [$('ptab-look'), $('ptab-fx')]) {
-    tab.addEventListener('keydown', (e) => {
+  for (const tab of PROFILE_TABS) {
+    $(`ptab-${tab}`).addEventListener('click', () => selectProfileTab(tab));
+    $(`ptab-${tab}`).addEventListener('keydown', (e) => {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       e.preventDefault();
-      selectProfileTab(tab === $('ptab-look'));
-      (tab === $('ptab-look') ? $('ptab-fx') : $('ptab-look')).focus();
+      const shown = PROFILE_TABS.filter((t) => !$(`ptab-${t}`).hidden);
+      const next = shown[(shown.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : -1) + shown.length) % shown.length];
+      selectProfileTab(next);
+      $(`ptab-${next}`).focus();
     });
   }
+
+  // Aba Conta: trocar o nick (único na sala: se já existir, o aviso vermelho) e a senha.
+  function accountMessage(id, text, ok = false) {
+    const el = $(id);
+    el.textContent = text;
+    el.classList.toggle('is-bad', !ok && Boolean(text));
+    el.classList.toggle('is-ok', ok);
+  }
+  function renderAccountTab() {
+    $('account-nick').value = account ? account.nick : '';
+    accountMessage('account-nick-msg', '');
+    accountMessage('account-pass-msg', '');
+    for (const id of ['account-pass-current', 'account-pass-new', 'account-pass-new2']) $(id).value = '';
+  }
+  function changeNick(nick) {
+    return new Promise((resolve) => {
+      socket.emit('auth:nick', { nick }, (res) => {
+        if (!res || res.error) { resolve({ error: (res && res.error) || 'Não deu pra trocar o nick.' }); return; }
+        const renamed = account && res.account.nick !== account.nick;
+        account = res.account;
+        if (renamed) rejoin();
+        resolve({ ok: true, nick: res.account.nick });
+      });
+    });
+  }
+  function changePassword(current, next) {
+    return new Promise((resolve) => {
+      socket.emit('auth:password', { current, next }, (res) => {
+        if (!res || res.error) { resolve({ error: (res && res.error) || 'Não deu pra trocar a senha.' }); return; }
+        account = res.account;
+        resolve({ ok: true });
+      });
+    });
+  }
+  $('account-nick-save').addEventListener('click', async () => {
+    const nick = $('account-nick').value.replace(/\s+/g, ' ').trim();
+    if (!nick) { accountMessage('account-nick-msg', 'Digite um nick.'); return; }
+    $('account-nick-save').disabled = true;
+    const res = await changeNick(nick);
+    $('account-nick-save').disabled = false;
+    if (res.error) accountMessage('account-nick-msg', res.error);
+    else accountMessage('account-nick-msg', `Pronto: agora você é ${res.nick}.`, true);
+  });
+  $('account-pass-save').addEventListener('click', async () => {
+    const current = $('account-pass-current').value;
+    const next = $('account-pass-new').value;
+    if (next.length < 6) { accountMessage('account-pass-msg', 'A senha nova precisa de pelo menos 6 caracteres.'); return; }
+    if (next !== $('account-pass-new2').value) { accountMessage('account-pass-msg', 'As duas senhas novas não estão iguais.'); return; }
+    $('account-pass-save').disabled = true;
+    const res = await changePassword(current, next);
+    $('account-pass-save').disabled = false;
+    if (res.error) { accountMessage('account-pass-msg', res.error); return; }
+    for (const id of ['account-pass-current', 'account-pass-new', 'account-pass-new2']) $(id).value = '';
+    accountMessage('account-pass-msg', 'Senha trocada. As outras sessões da sua conta foram desconectadas.', true);
+  });
 
   // A sua cor ou foto mudou: a cor dos rabiscos no app, o seu mouse e a janela do perfil.
   function onMyProfileChanged() {
@@ -4895,7 +5218,7 @@
   let controlTargetsShown = null; // a transmissão controlável quando a lista foi desenhada
 
   function controlGrantButton(u) {
-    if (!desktop || !me || u.id === me.id || u.kind === 'obs') return null;
+    if (!desktop || !me || u.id === me.id || u.kind === 'obs' || !roomSettings.control) return null;
     const active = controlGrants.has(u.id);
     if (!active && !(desktopCaps && desktopCaps.control && myControlStream())) return null;
     const btn = el('button', 'grant-btn' + (active ? ' active' : '')); btn.type = 'button'; btn.append(icon('gamepad'));
@@ -5265,6 +5588,8 @@
         const info = await desktop?.displays?.();
         return { available: true, supported: Boolean(serverStatus.obs), name: me.name,
           url: `${location.origin}/obs/${encodeURIComponent(me.name)}`,
+          // Com contas: a chave da conta (o Bearer Token no OBS).
+          token: accountsMode && account ? account.obsKey || null : null,
           certificateWarning: location.protocol === 'https:' && !serverStatus.certificate,
           overlaySupported: Boolean(info?.overlay), displays: info?.displays || [], obsDisplay: info?.obsDisplay || 'off' };
       }
@@ -5278,6 +5603,8 @@
         shareCursor: cursorDefault, cursorPerStream: true, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
         gamepad: desktopCaps?.gamepad, controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
           .map((u) => ({ name: u.name, active: controlGrants.has(u.id), devices: controlGrants.get(u.id)?.devices || { keyboard: false, mouse: false, gamepad: false }, disabled: Boolean(problem) })),
+        // Com contas: o nick e se ela abre o painel de administração.
+        account: accountsMode && account ? { nick: account.nick, admin: Boolean(account.admin) } : null,
         diagnostics: diagOutput.textContent, serverVersion: sidebarVersionEl.textContent,
         shortcuts: [...keysDialog.querySelectorAll('dt')].filter((node) => !node.hidden && !node.nextElementSibling?.hidden)
           .map((node) => ({ keys: node.textContent.trim(), action: node.nextElementSibling?.textContent.trim() || '' })) };
@@ -5312,6 +5639,16 @@
         if (response.error) throw new Error(response.error);
         if (!(await photoStore.set(blob))) showToast('A foto foi aplicada, mas não foi possível salvá-la neste PC.');
         renderProfileDialog();
+      } else if (command.type === 'account-nick') {
+        const res = await changeNick(command.nick);
+        if (res.error) throw new Error(res.error);
+        return { ok: true, nick: res.nick };
+      } else if (command.type === 'account-password') {
+        const res = await changePassword(command.current, command.next);
+        if (res.error) throw new Error(res.error);
+      } else if (command.type === 'admin-open') {
+        if (!account || !account.admin) throw new Error('Só contas com administração.');
+        openAdmin();
       } else if (command.type === 'diagnostics') { runDiagnostics(); }
       else if (command.type === 'check-updates') return { ok: true, message: await checkUpdatesNow() };
       else if (command.type === 'obs-display') {

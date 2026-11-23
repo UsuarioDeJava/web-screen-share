@@ -5,7 +5,28 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
-## 1.9.0 — 2026-11-22
+## 1.9.0 — 2026-11-23
+
+### Contas (com a atualização do servidor)
+- **Só entra quem tem conta**, criada pelo dono do servidor. Na primeira vez que o
+  servidor sobe nesta versão, ele cria a conta **Admin** com uma senha aleatória que
+  aparece no log do container (no CasaOS, em Logs). O Admin entra na página da sala,
+  cria a senha dele e cai direto no **painel de administração**: ele não entra na sala
+  (não aparece na lista, não transmite nem assiste).
+- **Painel de administração**: criar contas (nick e senha provisória, que a pessoa troca
+  no primeiro acesso), marcar **Conta com administração** (ela também abre o painel,
+  pelo botão do escudo), renomear, dar senha nova, apagar; ver quem está na sala e
+  desconectar; e as configurações da sala, que valem na hora: nome da sala, recado na
+  tela de entrada, quem pode transmitir, controle remoto e OBS ligados ou não, limite
+  de pessoas, quantas mensagens o chat guarda e apagar o histórico do chat.
+- **Nick e senha no perfil** (aba Conta; no app, em Configurações > Perfil). Nick
+  repetido não pode (nem com maiúsculas diferentes): aviso vermelho na hora de salvar.
+- **Sessão lembrada**: da próxima vez entra direto, até clicar em Sair.
+- **OBS com a chave da conta**: o Bearer Token do OBS agora é a chave da sua conta
+  (aparece no botão OBS da sala e no app, em OBS e overlays). Assim ninguém transmite
+  com o nome de outra pessoa; assistir uma transmissão do OBS também exige estar
+  logado.
+- Pra rodar do jeito antigo (só o nick, sem senha), o container aceita `ACCOUNTS=off`.
 
 ### Controle remoto
 - **Um mouse só**: controlando alguém, antes você via dois mouses na transmissão (o seu e
