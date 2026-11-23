@@ -24,9 +24,9 @@ const PUBLIC_PORT = /^\d+$/.test(process.env.PUBLIC_PORT || '') ? process.env.PU
 const DISPLAY_PORT = PUBLIC_PORT || PORT;
 // Pasta de dados (no container, /data): contas e configurações da sala.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-// Contas (padrão: ligadas; só entra quem tem conta). ACCOUNTS=off volta pro jeito antigo:
-// entra quem escolher um nick, sem senha nem painel.
-const ACCOUNTS_ON = process.env.ACCOUNTS !== 'off';
+// Contas: desligadas por padrão (entra quem escolher um nick, sem senha nem painel).
+// ACCOUNTS=on liga: só entra quem tem conta, criada pelo dono no painel.
+const ACCOUNTS_ON = /^(on|true|1|yes|sim)$/i.test((process.env.ACCOUNTS || '').trim());
 const accounts = ACCOUNTS_ON ? createAccounts({ file: process.env.ACCOUNTS_FILE || path.join(DATA_DIR, 'accounts.json') }) : null;
 const roomConfig = createRoomConfig({ file: process.env.SETTINGS_FILE || path.join(DATA_DIR, 'settings.json') });
 const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;

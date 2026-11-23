@@ -266,9 +266,9 @@ No OBS, em **Configurações > Transmissão**:
 - **Serviço:** `WHIP`
 - **Servidor:** `https://<endereço-do-servidor>:3000/obs/SEU-NICK` (o final do endereço
   é o nome com que você aparece na sala)
-- **Bearer Token:** a chave da sua conta, que aparece no botão **OBS** da sala (no app,
-  em **Configurações > OBS e overlays**). Ela diz que é você: não passe pra ninguém. Sem
-  contas (`ACCOUNTS=off`), pode ficar em branco.
+- **Bearer Token:** sem contas (o padrão), pode ficar em branco. Com contas
+  (`ACCOUNTS=on`), é a chave da sua conta, que aparece no botão **OBS** da sala (no app,
+  em **Configurações > OBS e overlays**): ela diz que é você, não passe pra ninguém.
 
 Depois é só **Iniciar transmissão**. Se você estiver na sala com o mesmo nick, a
 transmissão aparece na sua própria linha da lista (com a etiqueta OBS), sem criar outra
@@ -304,11 +304,13 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 
 ## Contas e painel de administração
 
-Só entra na sala quem tem conta, e quem cria as contas é o dono do servidor:
+Por padrão a sala não tem contas: entra quem escolher um nick. Pra ligar as contas
+(só entra quem tem conta, e quem cria as contas é o dono do servidor), adicione no
+container a variável **`ACCOUNTS=on`** (no CasaOS: nas configurações do app, em
+variáveis de ambiente; no `docker-compose.yml`, descomente a linha `ACCOUNTS=on`).
 
-1. **A conta Admin.** Na primeira vez que o servidor sobe (instalando ou atualizando
-   pra esta versão), ele cria a conta **Admin** com uma senha aleatória e mostra no
-   log: no CasaOS, nos **Logs** do app; no Docker, `docker logs web-screen-share`.
+1. **A conta Admin.** Na primeira vez que o servidor sobe com `ACCOUNTS=on`, ele cria a
+   conta **Admin** com uma senha aleatória e mostra no log: no CasaOS, nos **Logs** do app; no Docker, `docker logs web-screen-share`.
    Procure a linha `Conta de administração criada: nick "Admin", senha: ...`. Ela só
    aparece essa vez. Esqueceu? Suba o container com a variável
    `ADMIN_RESET_PASSWORD=1`: uma senha nova aparece no log (depois tire a variável).
@@ -340,15 +342,16 @@ vermelho. A sessão fica lembrada no navegador/app: da próxima vez entra direto
 clicar em **Sair**.
 
 As contas e as configurações ficam na pasta de dados (`accounts.json` e
-`settings.json`; as senhas só como hash). Pra rodar sem contas, do jeito antigo (só o
-nick, sem senha nem painel), defina a variável `ACCOUNTS=off`.
+`settings.json`; as senhas só como hash). Tirando a variável `ACCOUNTS` (ou deixando
+vazia), a sala volta a ser só com nick, sem senha nem painel; as contas continuam
+guardadas pra quando ligar de novo.
 
 ## Uso
 
 1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`) e
-   entra com a sua conta (veja [Contas e painel de administração](#contas-e-painel-de-administração)).
-   Sem contas (`ACCOUNTS=off`), é só digitar um nick; se ele já estiver em uso, o
-   servidor acrescenta um número (ex.: `Ana (2)`).
+   digita um nick; se ele já estiver em uso, o servidor acrescenta um número (ex.:
+   `Ana (2)`). Com as contas ligadas (`ACCOUNTS=on`), entra com o nick e a senha da
+   sua conta (veja [Contas e painel de administração](#contas-e-painel-de-administração)).
 2. Pra transmitir, clique em **Compartilhar tela** no topo e escolha a tela/janela no
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO**, o tempo no ar e
    um contador de quantas pessoas estão assistindo (passe o mouse nele pra ver quem).

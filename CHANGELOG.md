@@ -7,10 +7,12 @@ nova do app. As notas de cada release no GitHub vêm daqui.
 
 ## 1.9.0 — 2026-11-23
 
-### Contas (com a atualização do servidor)
-- **Só entra quem tem conta**, criada pelo dono do servidor. Na primeira vez que o
-  servidor sobe nesta versão, ele cria a conta **Admin** com uma senha aleatória que
-  aparece no log do container (no CasaOS, em Logs). O Admin entra na página da sala,
+### Contas (opcional, com a atualização do servidor)
+- **Contas, se o dono quiser**: com a variável **`ACCOUNTS=on`** no container, só entra
+  quem tem conta, criada pelo dono do servidor. Sem a variável (o padrão), nada muda:
+  entra quem escolher um nick, como sempre. Na primeira vez que o servidor sobe com
+  `ACCOUNTS=on`, ele cria a conta **Admin** com uma senha aleatória que aparece no log
+  do container (no CasaOS, em Logs). O Admin entra na página da sala,
   cria a senha dele e cai direto no **painel de administração**: ele não entra na sala
   (não aparece na lista, não transmite nem assiste).
 - **Painel de administração**: criar contas (nick e senha provisória, que a pessoa troca
@@ -22,11 +24,10 @@ nova do app. As notas de cada release no GitHub vêm daqui.
 - **Nick e senha no perfil** (aba Conta; no app, em Configurações > Perfil). Nick
   repetido não pode (nem com maiúsculas diferentes): aviso vermelho na hora de salvar.
 - **Sessão lembrada**: da próxima vez entra direto, até clicar em Sair.
-- **OBS com a chave da conta**: o Bearer Token do OBS agora é a chave da sua conta
-  (aparece no botão OBS da sala e no app, em OBS e overlays). Assim ninguém transmite
-  com o nome de outra pessoa; assistir uma transmissão do OBS também exige estar
-  logado.
-- Pra rodar do jeito antigo (só o nick, sem senha), o container aceita `ACCOUNTS=off`.
+- **OBS com a chave da conta**: com contas, o Bearer Token do OBS é a chave da sua
+  conta (aparece no botão OBS da sala e no app, em OBS e overlays). Assim ninguém
+  transmite com o nome de outra pessoa; assistir uma transmissão do OBS também exige
+  estar logado. Sem contas, o OBS continua como antes (Bearer Token em branco).
 
 ### Controle remoto
 - **Um mouse só**: controlando alguém, antes você via dois mouses na transmissão (o seu e

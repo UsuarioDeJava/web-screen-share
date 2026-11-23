@@ -57,8 +57,9 @@ jobs:
 
       - name: Smoke test
         run: |
-          # Sem contas (ACCOUNTS=off): o WHIP aceita qualquer Bearer Token, como antes.
-          docker run -d --name wss -p 3000:3000 -p 3000:3478/udp -e ACCOUNTS=off web-screen-share:smoke-test
+          # Sem contas (o padrão, sem a variável ACCOUNTS): o WHIP aceita qualquer Bearer
+          # Token, como antes.
+          docker run -d --name wss -p 3000:3000 -p 3000:3478/udp web-screen-share:smoke-test
           # O coturn e o MediaMTX sobem em paralelo: espera o resultado dos dois.
           for i in $(seq 1 30); do
             logs="$(docker logs wss 2>&1)"
@@ -70,6 +71,10 @@ jobs:
           docker logs wss 2>&1 | grep -q "TURN embutido ativo"
           docker logs wss 2>&1 | grep -q "Transmissão pelo OBS ativa"
           curl -skf https://localhost:3000/version | grep -q '${{ steps.version.outputs.value }}'
+          curl -skf https://localhost:3000/status | grep -q '"accounts":false'
+          if docker logs wss 2>&1 | grep -q 'Conta de administração criada'; then
+            echo "Sem ACCOUNTS=on não era pra criar a conta Admin"; exit 1
+          fi
           curl -skf https://localhost:3000/ice-servers | grep -q 'turn:localhost:3000?transport=tcp'
           # Aberto por um proxy reverso sem PUBLIC_PORT: a página recebe o aviso.
           curl -skf https://localhost:3000/status | grep -q '"proxy":null'
@@ -135,7 +140,7 @@ jobs:
           printf "subjectAltName=DNS:nas.example.ts.net\n" > smoke-ext.cnf
           openssl x509 -req -in smoke.csr -CA smoke-ca.crt -CAkey smoke-ca.key -CAcreateserial -days 20 \
             -extfile smoke-ext.cnf -out smoke-data/nas.example.ts.net.crt
-          docker run -d --name wss-cert -p 3001:3000 -e PUBLIC_PORT=3001 -v "$PWD/smoke-data:/data" web-screen-share:smoke-test
+          docker run -d --name wss-cert -p 3001:3000 -e PUBLIC_PORT=3001 -e ACCOUNTS=on -v "$PWD/smoke-data:/data" web-screen-share:smoke-test
           for i in $(seq 1 20); do
             if docker logs wss-cert 2>&1 | grep -q "TURN embutido ativo"; then break; fi
             sleep 1
@@ -159,7 +164,7 @@ jobs:
           assert status["certificate"] == {"names": ["nas.example.ts.net"], "expiresAt": expected}, (status, expected)
           print("validade lida pela imagem:", expected)
           '
-          # Com contas (o padrão): a conta Admin é criada com a senha no log, a página sabe
+          # Com contas (ACCOUNTS=on): a conta Admin é criada com a senha no log, a página sabe
           # que tem contas, e o OBS sem a chave de uma conta é recusado.
           docker logs wss-cert 2>&1 | grep -q 'Conta de administração criada: nick "Admin", senha: '
           test -s smoke-data/accounts.json

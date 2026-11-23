@@ -73,10 +73,10 @@ sala que o painel muda, em `settings.json`) e `server/admin.js` (os eventos `aut
 `admin:*` do socket). Com contas, o `join` só aceita um socket que entrou antes
 (`auth:login` ou `auth:resume`), e o nick é o da conta; o WHIP do OBS exige a chave da
 conta (Bearer) e o WHEP, a sessão. Na página, `public/js/admin.js` monta o painel e o
-`app.js` cuida da entrada (token em `localStorage`, `wss-session`). `ACCOUNTS=off` volta
-pro modo sem contas (os testes antigos rodam assim); `DATA_DIR` diz onde ficam os
-arquivos (fora do container, `data/` na raiz do projeto); `ADMIN_RESET_PASSWORD=1` dá
-uma senha nova pro Admin.
+`app.js` cuida da entrada (token em `localStorage`, `wss-session`). As contas só ligam
+com `ACCOUNTS=on` (sem ela, fica o modo sem contas de sempre, em que os testes antigos
+rodam); `DATA_DIR` diz onde ficam os arquivos (fora do container, `data/` na raiz do
+projeto); `ADMIN_RESET_PASSWORD=1` dá uma senha nova pro Admin.
 
 Só o som deste programa (transmitindo uma janela): `desktop/window-audio-worker.js` roda
 num `utilityProcess` e usa o loopback por processo do Windows (`ActivateAudioInterfaceAsync`

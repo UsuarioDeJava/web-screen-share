@@ -21,6 +21,9 @@ services:
       # - /caminho/no/host/seu-dominio.key:/certs/cert.key:ro
     environment:
       - PORT=3000
+      # Contas (nick e senha, criadas por você no painel de administração). Sem esta
+      # linha, entra quem escolher um nick, como sempre.
+      # - ACCOUNTS=on
       # Só se a página for aberta por um proxy reverso (Caddy, nginx…) numa porta
       # diferente: a porta publicada acima (lado do host), pra onde o TURN vai direto.
       # - PUBLIC_PORT=3000
