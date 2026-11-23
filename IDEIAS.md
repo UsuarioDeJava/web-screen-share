@@ -16,7 +16,6 @@ Coisas pedidas que ainda não foram feitas.
   com um botão em cada uma pra desligar só nela.
 - **Controlando: um mouse só** (app 1.8.2, Windows): o mouse de quem é controlado some
   da captura e o seu fica com o formato dele (seta, texto, mãozinha...).
-- **Controle de teclado e mouse só na transmissão pelo app** (pelo OBS, só gamepad).
 
 ## Próximo
 

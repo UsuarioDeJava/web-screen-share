@@ -898,8 +898,6 @@ ipcMain.on('desktop:control', (event, msg) => {
     }
     return;
   }
-  // Teclado e mouse só com a tela transmitida direto pelo app (pelo OBS, só o gamepad).
-  if (overlayOwner !== 'share') return;
   const device = getInput();
   const display = screen.getAllDisplays().find((d) => d.id === overlay.displayId);
   if (!device || !display) return;

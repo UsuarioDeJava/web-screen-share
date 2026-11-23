@@ -41,16 +41,12 @@ test('proprietário autoriza por dispositivo, limita slots e revoga só o partic
   r.service.revokeStream('host');
   assert.equal(r.users.get('host').controls.size, 0);
 });
-test('transmissão pelo OBS: teclado e mouse não, só o gamepad (direto pelo app, tudo)', () => {
+test('transmissão pelo OBS também pode ser controlada (teclado, mouse e gamepad)', () => {
   // A transmissão "obs-host" é do OBS da mesma pessoa (mesmo nick).
   const r = room({ ownsStream: (u, id) => id === u.id || (u.id === 'host' && id === 'obs-host') });
-  const host = r.add('host'); r.add('a'); r.add('b');
-  for (const devices of [{ keyboard: true }, { mouse: true }, { keyboard: true, mouse: true, gamepad: true }, undefined]) {
-    const res = host.emit('control:grant', { to: 'a', stream: 'obs-host', devices });
-    assert.match(res.error || '', /direto pelo app/);
-  }
-  assert.equal(host.emit('control:grant', { to: 'a', stream: 'obs-host', devices: { gamepad: true } }).ok, true);
-  assert.equal(host.emit('control:grant', { to: 'b', stream: 'host', devices: { keyboard: true, mouse: true } }).ok, true);
+  const host = r.add('host'); r.add('a');
+  assert.equal(host.emit('control:grant', { to: 'a', stream: 'obs-host', devices: { keyboard: true, mouse: true, gamepad: true } }).ok, true);
+  assert.ok(host.emit('control:grant', { to: 'a', stream: 'de-outra-pessoa', devices: { mouse: true } }).error);
 });
 test('um mouse só: modo controle e formato do mouse só entre quem tem o mouse liberado', () => {
   const r = room(), host = r.add('host'), a = r.add('a'), b = r.add('b');

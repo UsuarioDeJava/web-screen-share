@@ -55,9 +55,6 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       // Clientes antigos continuam recebendo somente teclado e mouse.
       const devices = msg.devices === undefined ? { keyboard: true, mouse: true, gamepad: false } : permissions(msg.devices);
       if (!Object.values(devices).some(Boolean)) return reply({ error: 'Selecione pelo menos um dispositivo.' });
-      // Teclado e mouse só na transmissão feita direto pelo app (a tela da própria pessoa);
-      // pelo OBS, só o gamepad.
-      if ((devices.keyboard || devices.mouse) && msg.stream !== owner.id) return reply({ error: 'Teclado e mouse só dá pra liberar transmitindo direto pelo app (pelo OBS, só o gamepad).' });
       const others = [...grants(owner).values()].filter((g) => g.to !== target.id);
       if (devices.gamepad && others.filter((g) => g.devices.gamepad).length >= options(owner).maxGamepads) return reply({ error: `Limite de ${options(owner).maxGamepads} gamepads por computador.` });
       // Teclado e mouse são dispositivos únicos do PC; evitam teclas de pessoas diferentes se misturarem.

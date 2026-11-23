@@ -14,10 +14,10 @@ nova do app. As notas de cada release no GitHub vêm daqui.
   em cima dela, fica com o formato do de lá: seta, texto, mãozinha, setas de
   redimensionar, ampulheta... Fica só um mouse, e o atraso some da vista. Quem é
   controlado continua vendo o mouse dele (o app desenha ele na camada das marcações, que
-  não entra na transmissão) e, mexendo no mouse, o de verdade volta na hora. Precisa que
-  quem transmite esteja com o app 1.9 no Windows.
-- **Teclado e mouse só na transmissão pelo app**: transmitindo pelo OBS, dá pra liberar
-  só o gamepad (o painel deixa teclado e mouse desligados e explica).
+  não entra na transmissão) e, mexendo no mouse, o de verdade volta na hora. Vale pra
+  transmissão pelo app, com quem transmite no app 1.9 no Windows. Pelo OBS, o seu mouse
+  também pega o formato do de lá, e se o mouse de lá aparece é a captura do OBS que
+  decide ("Capturar cursor").
 
 ### Mouse e efeitos
 - **Saíram o "Enfeite" e o "Nome junto"**, e o **ping não mostra mais o nome** (em
