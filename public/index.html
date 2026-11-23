@@ -9,6 +9,9 @@
   <link rel="stylesheet" href="css/admin.css" />
   <link rel="stylesheet" href="js/gamepad.css">
   <link rel="stylesheet" href="css/fx.css" />
+  <!-- Tema (CSS próprio): fica por último pra mandar em tudo. Veja THEMES.md. -->
+  <style id="wss-theme"></style>
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <section id="login" class="login">
@@ -116,7 +119,11 @@
             <span id="chat-unread" class="unread-badge" hidden></span>
           </button>
           <button id="btn-obs" class="btn" type="button" title="Transmitir pelo OBS Studio" hidden></button>
-          <button id="btn-sharing-details" class="btn" type="button" aria-haspopup="dialog" aria-controls="sharing-dialog" title="Detalhes de compartilhamento">Detalhes <span id="sharing-count" class="sharing-count">0</span></button>
+          <button id="btn-sharing-details" class="btn sharing-btn" type="button" aria-haspopup="dialog" aria-controls="sharing-dialog" title="Detalhes de compartilhamento: quem pode controlar a sua transmissão">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.59C2.6 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.41-1.41A2 2 0 0 1 9.83 16h4.34a2 2 0 0 1 1.41.59L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.6-6.58-.68-7.26A4 4 0 0 0 17.32 5z"/></svg></span>
+            <span class="btn-label">Detalhes</span>
+            <span id="sharing-count" class="sharing-count" aria-label="controles conectados" hidden>0</span>
+          </button>
           <button id="btn-share" class="btn btn-primary" type="button"></button>
         </div>
       </header>
@@ -318,7 +325,7 @@
           <div class="dialog-label">Nick</div>
           <div class="account-row">
             <input id="account-nick" class="account-input" maxlength="24" aria-label="Seu nick" autocomplete="off" />
-            <button id="account-nick-save" class="btn btn-primary" type="button">Salvar nick</button>
+            <button id="account-nick-save" class="btn" type="button">Salvar nick</button>
           </div>
           <p id="account-nick-msg" class="account-msg" role="status"></p>
         </div>
@@ -329,7 +336,7 @@
             <input id="account-pass-new" class="account-input" type="password" maxlength="200" placeholder="Senha nova (pelo menos 6 caracteres)" aria-label="Senha nova" autocomplete="new-password" />
             <input id="account-pass-new2" class="account-input" type="password" maxlength="200" placeholder="Repita a senha nova" aria-label="Repita a senha nova" autocomplete="new-password" />
           </div>
-          <button id="account-pass-save" class="btn" type="button">Trocar senha</button>
+          <button id="account-pass-save" class="btn account-save" type="button">Trocar senha</button>
           <p id="account-pass-msg" class="account-msg" role="status"></p>
         </div>
       </div>

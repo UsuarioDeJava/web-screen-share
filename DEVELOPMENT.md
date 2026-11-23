@@ -117,6 +117,15 @@ fora, trocar de programa ou esconder a página desativa), e cada transmissão te
 liga/desliga (`wss-cursor-streams`, por nick de quem transmite). Tudo isso é só no
 navegador de quem assiste.
 
+## Temas
+
+O CSS da sala (`public/css/style.css` e `admin.css`) não usa cor solta: tudo sai das
+variáveis do `:root` (transparências como `rgb(var(--ink-rgb) / 0.08)`, cantos como
+`calc(10px * var(--radius-scale))`). Cor nova entra como variável, senão um tema não
+alcança. O tema do usuário fica em `<style id="wss-theme">` (o último do `<head>`),
+preenchido por `public/js/theme.js` a partir do `localStorage`. As variáveis, o papel de
+parede e os seletores estáveis estão em [THEMES.md](THEMES.md).
+
 ## Versões e novidades
 
 Toda versão nova do app (`desktop/package.json`) ganha a sua seção `## x.y.z — data` no

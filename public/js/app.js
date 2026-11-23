@@ -5064,6 +5064,7 @@
   function renderSharingDetails() {
     const counts = sharingState.counts;
     $('sharing-count').textContent = String(counts.connected);
+    $('sharing-count').hidden = !counts.connected; // "0" no topo era só ruído
     $('sharing-connected').textContent = String(counts.connected);
     $('sharing-receiving').textContent = String(counts.receiving);
     $('sharing-allowed').textContent = `${counts.allowed} / ${sharingState.options.maxGamepads}`;

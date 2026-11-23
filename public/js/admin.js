@@ -56,9 +56,11 @@
     const wrap = el('div', 'admin-wrap');
     const head = el('header', 'admin-head');
     const titles = el('div');
-    titles.append(el('p', 'admin-eyebrow', 'ADMINISTRAÇÃO'));
-    const title = el('h1', 'admin-title', 'Web Screen Share');
-    titles.append(title, el('p', 'admin-sub', `Entrou como ${opts.account.nick}${opts.account.root ? ' (dono do servidor)' : ''}`));
+    const title = el('h1', 'admin-title', 'Administração');
+    // O título diz o que é a página; o nome da sala vai na linha de baixo.
+    const who = `entrou como ${opts.account.nick}${opts.account.root ? ' (dono do servidor)' : ''}`;
+    const sub = el('p', 'admin-sub', `Web Screen Share · ${who}`);
+    titles.append(title, sub);
     const actions = el('div', 'admin-head-actions');
     if (opts.inRoom) actions.append(button('Voltar pra sala', 'btn btn-primary admin-back', () => { close(); opts.onBack(); }));
     actions.append(button('Sair da conta', 'btn admin-logout', () => { close(); opts.onLogout(); }));
@@ -87,7 +89,7 @@
     wrap.append(head, nav, main);
     root.append(wrap);
     select('accounts');
-    return { title, panels };
+    return { panels, setRoomName: (name) => { sub.textContent = `${name || 'Web Screen Share'} · ${who}`; } };
   }
 
   // ---------- contas ----------
@@ -234,7 +236,7 @@
     panel.append(card);
     return function render(state) {
       if (!state.online.length) {
-        list.replaceChildren(el('li', 'admin-empty', 'Ninguém na sala agora.'));
+        list.replaceChildren(el('li', 'admin-empty', 'Ninguém na sala agora. Quem entrar aparece aqui, com o botão Desconectar.'));
         return;
       }
       list.replaceChildren(...state.online.map((u) => {
@@ -433,7 +435,7 @@
           return;
         }
         error.hidden = true;
-        ui.title.textContent = state.settings.roomName || 'Web Screen Share';
+        ui.setRoomName(state.settings.roomName);
         for (const render of renders) render(state);
       });
       return loading;

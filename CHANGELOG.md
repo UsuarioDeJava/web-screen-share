@@ -73,6 +73,32 @@ nova do app. As notas de cada release no GitHub vêm daqui.
   do lado. O « vira um × (com uma transiçãozinha), a lista fica sempre aberta na coluna
   dela e as transmissões se ajeitam no resto; fica salvo. O × solta e esconde de novo.
 
+### Acabamento da interface
+Uma passada de polimento na sala inteira (entrada, sala, perfil, painel), no
+computador e no celular, mantendo o visual:
+- **Perfil > Conta**: os campos de senha apareciam esmagados (uma linha fininha); agora
+  são campos normais, e os dois botões de salvar (nick e senha) têm o mesmo peso.
+- **No celular**: o "Detalhes" do topo passava por cima do botão do OBS (agora é o ícone
+  do gamepad, como os outros botões); a barra de cima de cada transmissão quebrava em
+  duas linhas e o nome aparecia cortado ("Pa…"). Nos quadros pequenos de toque saem as
+  estatísticas e a barrinha de volume (o mudo fica); fixando o quadro, elas voltam.
+- **"Detalhes"** ganhou o ícone do gamepad e só mostra a contagem quando tem controle
+  conectado (o "0" fixo era ruído).
+- **Painel de administração**: título "Administração" (com o nome da sala embaixo), as
+  abas numa linha só no celular (rolam de lado), sem o vão no fim dos cartões e a lista
+  de quem está na sala explica o que aparece ali quando está vazia.
+- **Lista de pessoas**: os botões do rodapé ficaram juntos e o seu nome cabe mais.
+- Texto apagado (versão, horários, dicas) com mais contraste; textos curtos sem palavra
+  sozinha na última linha; seleção de texto, cursor de digitação e textos de exemplo dos
+  campos nas cores da sala.
+
+### Temas (a base)
+- A sala ficou pronta pra receber **temas** (CSS próprio, como os do Discord): todas as
+  cores, fundos e cantos saem de variáveis, tem uma camada de **papel de parede** (com
+  desfoque e escurecer) e o tema entra por último, antes de a página aparecer. Ainda
+  sem tela pra escolher; dá pra testar pelo console (`WssTheme.set(...)`). Tudo
+  explicado em [THEMES.md](THEMES.md).
+
 ## 1.8.1 — 2026-11-19
 
 - **Rolagem pros lados nas animações**: Shift + rodinha (e a rolagem lateral do touchpad)

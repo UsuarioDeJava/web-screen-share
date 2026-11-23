@@ -657,6 +657,9 @@ install && npm start`.
 
 ## Observações
 
+- **Temas** (em preparação): a sala já aceita um CSS próprio por cima do visual
+  padrão, com papel de parede, como os temas do Discord. Ainda sem tela pra escolher;
+  veja [THEMES.md](THEMES.md) pra testar e pra lista do que dá pra mudar.
 - `getDisplayMedia` exige um "contexto seguro": HTTPS, ou `localhost`. Sem HTTPS
   (`start.sh`/`start.bat` sem Tailscale), só quem está no próprio PC do servidor
   consegue transmitir; os outros só assistem. Com HTTPS (certificado do Tailscale, ou
