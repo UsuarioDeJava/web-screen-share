@@ -14,8 +14,11 @@ Coisas pedidas que ainda não foram feitas.
 - **Animações de clique paradas onde clicou** (não vão junto do mouse).
 - **Transmissão ativa/inativa**: o seu mouse só aparece na transmissão que você clicou,
   com um botão em cada uma pra desligar só nela.
-- **Controlando: um mouse só** (app 1.8.2, Windows): o mouse de quem é controlado some
+- **Controlando: um mouse só** (app 1.9, Windows): o mouse de quem é controlado some
   da captura e o seu fica com o formato dele (seta, texto, mãozinha...).
+- **Só o som do programa da janela** (app 1.9, experimental, Windows 10 2004+): quando o
+  Electron tiver isso pronto (electron/electron#54628), trocar a captura própria pela
+  dele.
 
 ## Próximo
 
