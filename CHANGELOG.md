@@ -37,6 +37,12 @@ nova do app. As notas de cada release no GitHub vêm daqui.
 - Correção: escolher opções rápido na prévia deixava um traço de demonstração parado.
 
 ### App e sala
+- **Só o som deste programa** (experimental, Windows 10 versão 2004 ou mais novo, e 11):
+  transmitindo uma janela, o seletor tem a opção de mandar só o som do programa daquela
+  janela, em vez do som do PC inteiro (o programa inteiro: num navegador, vão todas as
+  abas dele). Vem desligada; marcou, fica lembrada. O som é pego por um processo
+  separado do app: se o Windows não deixar ou der erro, aparece um aviso e vai o som do
+  PC, como sempre.
 - **Configurações como popup**: em vez de abrir uma janela a mais (que ficava no canto
   da tela ao minimizar), as Configurações abrem por cima da sala, dentro da própria
   janela do app, com o fundo escurecido. Muda o que precisa e fecha: no ×, no **Esc**,

@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { createInput } = require('./input');
 const { createSystemCursor } = require('./system-cursor');
+const { createWindowAudio } = require('./window-audio');
 const { createGamepads } = require('./gamepad');
 const { createGamepadSetup } = require('./gamepad-setup');
 const gamepadModel = require('./shared/gamepad');
@@ -81,6 +82,10 @@ let localCursorDrawn = ''; // o que a camada está desenhando agora ('' = nada)
 let lastCursorShape = null;
 const REMOTE_CURSOR_MS = 16;
 let picker = null; // seletor de tela aberto: { win, finish }
+const windowAudio = createWindowAudio({
+  send: (pcm) => toPage('desktop:window-audio-pcm', pcm),
+  log: (message) => log('error', message, 'warn'),
+});
 let keyHook; // gancho de teclado (Windows): undefined até a primeira vez, null se não tem
 let keysWanted = false; // você está controlando alguém, com o mouse em cima da transmissão
 const updates = createUpdates({
@@ -234,6 +239,7 @@ function createMainWindow() {
     if (!details.isMainFrame || details.isSameDocument) return;
     updates.pageGone();
     roomSettings?.cancel();
+    windowAudio.stop();
     shareWanted = false;
     obsWanted = false;
     closeOverlay();
@@ -454,7 +460,7 @@ function screenLabel(source, displays) {
   return display ? displayLabel(display, displays) : 'Tela';
 }
 
-ipcMain.handle('picker:info', () => ({ systemAudio: SYSTEM_AUDIO, overlay: OVERLAY_SUPPORTED }));
+ipcMain.handle('picker:info', () => ({ systemAudio: SYSTEM_AUDIO, windowAudio: windowAudio.supported, overlay: OVERLAY_SUPPORTED }));
 
 ipcMain.handle('picker:sources', async (event) => {
   if (!picker || event.sender !== picker.win.webContents) return [];
@@ -485,7 +491,7 @@ ipcMain.on('picker:choose', (event, choice) => {
   const source = lastSources.get(choice.id);
   if (!source) return;
   const kind = source.id.startsWith('screen:') ? 'screen' : 'window';
-  picker.finish({ source, kind, displayId: source.display_id, audio: Boolean(choice.audio) });
+  picker.finish({ source, kind, displayId: source.display_id, audio: Boolean(choice.audio), windowAudio: kind === 'window' && choice.windowAudio === true });
 });
 
 ipcMain.on('picker:cancel', (event) => {
@@ -870,6 +876,10 @@ ipcMain.handle('desktop:overlay-state', (event) => fromServer(event) ? overlaySt
 ipcMain.on('desktop:control-state', (event, data) => {
   if (fromServer(event)) setController(data && data.on && pendingPreferences.overlay && overlay ? data : null);
 });
+// "Só o som deste programa": a página pergunta se ele está vindo (e para no fim).
+ipcMain.handle('desktop:window-audio', (event) => (fromServer(event) ? windowAudio.status() : { wanted: false }));
+ipcMain.on('desktop:window-audio-stop', (event) => { if (fromServer(event)) windowAudio.stop(); });
+
 // Quem controla ligou/desligou o modo controle em cima da sua transmissão.
 ipcMain.on('desktop:control-mode', (event, data) => {
   if (!fromServer(event) || !data || typeof data.from !== 'string') return;
@@ -1157,6 +1167,10 @@ if (!app.requestSingleInstanceLock()) {
       picked = { kind: choice.kind, displayId: choice.displayId };
       const streams = { video: choice.source };
       if (choice.audio && SYSTEM_AUDIO) streams.audio = 'loopback';
+      // "Só o som deste programa": o app pega o som do programa da janela e a sala troca o
+      // som do PC por ele (se não der, fica o do PC).
+      if (choice.windowAudio) windowAudio.start(choice.source.id);
+      else windowAudio.stop();
       callback(streams);
     });
 
@@ -1178,6 +1192,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     restoreSystemCursor();
+    windowAudio.stop();
     globalShortcut.unregisterAll();
     gamepads.close();
     if (input) input.close();

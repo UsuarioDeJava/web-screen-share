@@ -38,6 +38,8 @@
       "room-settings.js",
       "input.js",
       "system-cursor.js",
+      "window-audio.js",
+      "window-audio-worker.js",
       "keyhook.js",
       "updates.js",
       "preload.js",

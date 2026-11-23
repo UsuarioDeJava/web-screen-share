@@ -572,6 +572,10 @@ que o navegador não faz:
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
   **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.
+  Transmitindo uma **janela**, dá pra marcar **Só o som deste programa** (experimental,
+  Windows 10 versão 2004 ou mais novo, e 11): em vez do som do PC inteiro, vai só o som
+  do programa daquela janela (o programa inteiro: num navegador, todas as abas dele).
+  Se o Windows não deixar, aparece um aviso e vai o som do PC, como sempre.
 - A transmissão e a voz continuam firmes com o app minimizado, e a barra de tarefas
   pisca quando chega mensagem no chat com o app em segundo plano.
 - **Aviso de versão nova**: o app procura atualização ao abrir e a cada 6 horas. Na

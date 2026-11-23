@@ -66,6 +66,16 @@ foto não muda. A imagem Docker inclui esse módulo compartilhado e o instalador
 `shared/**`. Para usar o novo contrato e o diagnóstico de vídeo na sala remota, atualize
 também os arquivos do servidor/interface; as mudanças não são publicadas automaticamente.
 
+Só o som deste programa (transmitindo uma janela): `desktop/window-audio-worker.js` roda
+num `utilityProcess` e usa o loopback por processo do Windows (`ActivateAudioInterfaceAsync`
+com `VAD\Process_Loopback`, pela koffi) pro processo dono da janela e os filhos dele;
+manda PCM 16 bits estéreo 48 kHz pro app (`desktop/window-audio.js`), que repassa pra
+sala (`desktop:window-audio-pcm`). A sala toca isso num AudioWorklet
+(`public/js/pcm-worklet.js`) e troca a faixa de áudio da transmissão pela dele; se não
+der, fica o loopback do PC. Nos testes fora do Windows, `WSS_FAKE_WINDOW_AUDIO=1` manda
+um tom de 440 Hz e `WSS_FAKE_WINDOW_AUDIO=error` finge a recusa do Windows. O Electron
+ainda não tem isso pronto (electron/electron#54628); quando tiver, dá pra trocar.
+
 Um mouse só no controle remoto: `desktop/system-cursor.js` (Windows, user32 pela koffi)
 deixa os cursores do sistema transparentes enquanto alguém com o mouse liberado está no
 modo controle (`control:mode`, repassado pelo servidor) e lê o formato atual

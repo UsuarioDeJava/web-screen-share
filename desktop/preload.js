@@ -108,6 +108,15 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     onGamepadError: (callback) => { ipcRenderer.on('desktop:gamepad-error', (_event, reason) => callback(reason)); },
     onGamepadState: (callback) => { ipcRenderer.on('desktop:gamepad-state', (_event, state) => callback(state)); },
     control: (msg) => ipcRenderer.send('desktop:control', msg),
+    // "Só o som deste programa": se está vindo ({ wanted, ok, rate, channels } ou { error }),
+    // o som (PCM 16 bits intercalado) e parar.
+    windowAudio: () => ipcRenderer.invoke('desktop:window-audio'),
+    windowAudioStop: () => ipcRenderer.send('desktop:window-audio-stop'),
+    onWindowAudio: (callback) => {
+      const listener = (_event, pcm) => callback(pcm);
+      ipcRenderer.on('desktop:window-audio-pcm', listener);
+      return () => ipcRenderer.removeListener('desktop:window-audio-pcm', listener);
+    },
     // Um mouse só: quem controla entrou/saiu do modo controle; o formato do seu mouse.
     controlMode: (data) => ipcRenderer.send('desktop:control-mode', { from: String((data && data.from) || ''), on: Boolean(data && data.on === true) }),
     onCursorShape: (callback) => { ipcRenderer.on('desktop:cursor-shape', (_event, shape) => callback(String(shape))); },

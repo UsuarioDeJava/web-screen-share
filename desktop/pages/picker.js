@@ -5,10 +5,12 @@ const empty = document.getElementById('empty');
 const shareBtn = document.getElementById('share');
 const audioRow = document.getElementById('audio-row');
 const audioBox = document.getElementById('audio');
+const windowAudioRow = document.getElementById('window-audio-row');
+const windowAudioBox = document.getElementById('window-audio');
 const hint = document.getElementById('hint');
 const tabs = [...document.querySelectorAll('.tab')];
 
-let info = { systemAudio: false, overlay: false };
+let info = { systemAudio: false, windowAudio: false, overlay: false };
 let sources = [];
 let kind = 'screen';
 let selected = null;
@@ -31,6 +33,22 @@ function renderHint() {
   else hint.textContent = 'Compartilhando só uma janela, as marcações aparecem só pra quem assiste (pra ver na sua tela, escolha a tela inteira).';
 }
 
+// "Só o som deste programa": só pra janelas (e com o som ligado). Fica lembrado.
+try { windowAudioBox.checked = localStorage.getItem('wss-window-audio') === '1'; } catch {}
+windowAudioBox.addEventListener('change', () => {
+  try { localStorage.setItem('wss-window-audio', windowAudioBox.checked ? '1' : '0'); } catch {}
+});
+audioBox.addEventListener('change', () => renderAudio());
+const pickedWindow = () => {
+  const source = sources.find((s) => s.id === selected);
+  return source ? source.kind === 'window' : kind === 'window';
+};
+const audioOn = () => !info.systemAudio || audioBox.checked;
+function renderAudio() {
+  windowAudioRow.hidden = !info.windowAudio || !pickedWindow();
+  windowAudioBox.disabled = !audioOn();
+}
+
 function select(id) {
   selected = id;
   for (const [key, { card }] of cards) {
@@ -39,10 +57,11 @@ function select(id) {
   }
   shareBtn.disabled = !id;
   renderHint();
+  renderAudio();
 }
 
 function share() {
-  if (selected) window.picker.choose(selected, info.systemAudio && audioBox.checked);
+  if (selected) window.picker.choose(selected, info.systemAudio && audioBox.checked, info.windowAudio && pickedWindow() && audioOn() && windowAudioBox.checked);
 }
 
 function render() {
@@ -119,6 +138,7 @@ function setKind(next) {
   if (current && current.kind !== kind) select(null);
   render();
   renderHint();
+  renderAudio();
 }
 
 tabs.forEach((tab) => tab.addEventListener('click', () => setKind(tab.dataset.kind)));
@@ -133,6 +153,7 @@ document.addEventListener('keydown', (event) => {
   info = await window.picker.info();
   audioRow.hidden = !info.systemAudio;
   renderHint();
+  renderAudio();
   render();
   refresh();
 })();

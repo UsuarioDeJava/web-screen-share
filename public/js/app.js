@@ -883,6 +883,12 @@
       stream.getTracks().forEach((t) => t.stop());
       return;
     }
+    await useWindowAudio(stream);
+    if (!me || localStream || stream.getVideoTracks()[0]?.readyState !== 'live') {
+      stopWindowAudio();
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
     localStream = stream;
     shareStartedAt = Date.now();
     // Botão nativo "Parar de compartilhar" do navegador.
@@ -894,8 +900,53 @@
     startDesktopOverlay();
   }
 
+  // App (Windows): "só o som deste programa", escolhido no seletor. O app pega o som do
+  // programa da janela e manda pra cá, ao vivo; ele entra na transmissão no lugar do som
+  // do PC. Não deu: fica o som do PC (e um aviso).
+  let windowAudio = null; // { ctx, unsubscribe }
+  async function useWindowAudio(stream) {
+    if (!desktop || typeof desktop.windowAudio !== 'function') return;
+    const status = await desktop.windowAudio().catch(() => null);
+    if (!status || !status.wanted) return;
+    if (!status.ok) {
+      showToast(`Não deu pra pegar só o som do programa${status.error ? ` (${status.error})` : ''}: vai o som do PC.`);
+      return;
+    }
+    let ctx = null;
+    let unsubscribe = null;
+    try {
+      ctx = new AudioContext({ sampleRate: status.rate, latencyHint: 'interactive' });
+      await ctx.audioWorklet.addModule('/js/pcm-worklet.js');
+      const node = new AudioWorkletNode(ctx, 'wss-pcm-player', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [status.channels] });
+      const dest = ctx.createMediaStreamDestination();
+      node.connect(dest);
+      unsubscribe = desktop.onWindowAudio((pcm) => node.port.postMessage(pcm));
+      await ctx.resume().catch(() => {});
+      for (const track of stream.getAudioTracks()) {
+        stream.removeTrack(track);
+        track.stop();
+      }
+      stream.addTrack(dest.stream.getAudioTracks()[0]);
+      windowAudio = { ctx, unsubscribe };
+    } catch (err) {
+      if (unsubscribe) unsubscribe();
+      if (ctx) ctx.close().catch(() => {});
+      desktop.windowAudioStop?.();
+      showToast(`Não deu pra pegar só o som do programa (${err.message}): vai o som do PC.`);
+    }
+  }
+  function stopWindowAudio() {
+    if (windowAudio) {
+      windowAudio.unsubscribe?.();
+      windowAudio.ctx.close().catch(() => {});
+      windowAudio = null;
+    }
+    desktop?.windowAudioStop?.();
+  }
+
   function stopSharing() {
     if (!localStream) return;
+    stopWindowAudio();
     if (me) {
       socket.emit('share', false);
       users.get(me.id).sharing = false;
