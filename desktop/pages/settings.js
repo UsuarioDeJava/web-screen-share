@@ -363,7 +363,8 @@ async function refreshObs() {
     $('obs-monitor').replaceChildren(...options, off);
     $('obs-monitor').value = data.obsDisplay || 'off';
     $('obs-monitor').disabled = !data.overlaySupported;
-    if (data.available && !data.overlaySupported) $('obs-status').textContent += ' As marcações não estão disponíveis neste sistema.';
+    // As marcações na tela só existem no app (no navegador a opção nem aparece).
+    if (data.available && !data.overlaySupported && !api.web) $('obs-status').textContent += ' As marcações não estão disponíveis neste sistema.';
     if (data.available && data.supported) checkObsPort();
   } catch (error) { $('obs-status').textContent = error.message; }
 }

@@ -9,6 +9,8 @@
   for (const node of document.querySelectorAll('[data-app-only]')) node.hidden = true;
   const hint = document.getElementById('settings-hint');
   if (hint) hint.textContent = 'Seu perfil e a sala em um só lugar.';
+  const saved = document.getElementById('profile-saved-hint');
+  if (saved) saved.textContent = 'PNG, JPG, WebP ou GIF animado, até 5 MB. O perfil é salvo nesta sala, neste navegador.';
 
   const room = window.parent !== window ? window.parent : null;
   const roomApi = () => {
