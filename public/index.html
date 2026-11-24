@@ -16,10 +16,12 @@
 <body>
   <section id="login" class="login">
     <form id="login-form" class="login-card" autocomplete="off">
-      <div class="login-logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M9 10l3-3 3 3M12 7v6"/></svg>
+      <div class="login-brand">
+        <div class="login-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M9 10l3-3 3 3M12 7v6"/></svg>
+        </div>
+        <h1 id="login-title">Web Screen Share</h1>
       </div>
-      <h1 id="login-title">Web Screen Share</h1>
       <p id="login-sub" class="login-sub">Escolha um nick pra entrar na sala.</p>
       <p id="login-notice" class="login-notice" hidden></p>
       <input id="nick" name="nick" maxlength="24" placeholder="Seu nick" aria-label="Seu nick" autocomplete="username" autofocus />
@@ -32,10 +34,12 @@
     </form>
     <!-- Primeiro acesso (ou senha resetada pelo administrador): a pessoa cria a senha dela. -->
     <form id="newpass-form" class="login-card" hidden>
-      <div class="login-logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      <div class="login-brand">
+        <div class="login-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </div>
+        <h1>Crie a sua senha</h1>
       </div>
-      <h1>Crie a sua senha</h1>
       <p class="login-sub">Primeiro acesso de <b id="newpass-nick"></b>: troque a senha provisória por uma só sua.</p>
       <input id="newpass" type="password" maxlength="200" placeholder="Senha nova (pelo menos 6 caracteres)" aria-label="Senha nova" autocomplete="new-password" />
       <input id="newpass2" type="password" maxlength="200" placeholder="Repita a senha nova" aria-label="Repita a senha nova" autocomplete="new-password" />

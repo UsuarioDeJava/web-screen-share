@@ -91,6 +91,18 @@ computador e no celular, mantendo o visual:
 - Texto apagado (versão, horários, dicas) com mais contraste; textos curtos sem palavra
   sozinha na última linha; seleção de texto, cursor de digitação e textos de exemplo dos
   campos nas cores da sala.
+- Passada do detector do Impeccable (as regras automáticas de qualidade de interface):
+  - **Botões principais** (Entrar, Compartilhar tela): o degradê ficou um pouco mais fundo
+    (do violeta ao azul) e o texto branco passa a ter contraste de leitura em todo o
+    rótulo; antes, na ponta azul-clara, ficava quase ilegível.
+  - **Menos brilho neon**: saíram os halos coloridos em volta de botões, pontinhos de
+    status, selos, do texto "ao vivo" e dos cartões. Os anéis que mostram estado
+    (foco, transmissão fixada, quem está falando, controlando) continuam. O brilho dos
+    botões virou uma sombra de elevação (`--glow`, que um tema pode trocar de volta
+    pelo neon).
+  - **Entrada**: o logo fica ao lado do título, não num quadradinho em cima dele.
+  - Selos e etiquetas (AO VIVO, OBS, NOVO, contagens, HEX) com pelo menos 11px; a
+    versão com 12px; o título do chat não encosta mais na linha de baixo.
 
 ### Temas (a base)
 - A sala ficou pronta pra receber **temas** (CSS próprio, como os do Discord): todas as

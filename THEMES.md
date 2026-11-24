@@ -64,7 +64,9 @@ Valores `R G B` separados por espaço. Usados como `rgb(var(--ink-rgb) / 0.08)`.
 | `--accent`, `--accent-2`, `--accent-hover` | Destaque. |
 | `--accent-text`, `--accent-2-text`, `--live-text`, `--ok-text`, `--warn-text` | Texto colorido em cima das etiquetas tingidas. |
 | `--live`, `--live-2`, `--live-hover`, `--ok`, `--warn` | Estados. |
-| `--grad`, `--grad-soft`, `--grad-danger`, `--glow` | Degradê dos botões principais, brilho em volta. |
+| `--grad-1`, `--grad-2`, `--grad-3` | As três cores do degradê dos botões principais (texto branco em cima: mantenha contraste de 4.5:1). |
+| `--grad`, `--grad-soft`, `--grad-danger` | Degradê dos botões principais, da borda dos cartões e do botão de perigo. |
+| `--glow` | Sombra dos botões principais. Padrão: elevação neutra. Pro neon: `0 0 24px -6px rgb(var(--accent-3-rgb) / 0.7)`. |
 
 ### Papel de parede e fundo
 
