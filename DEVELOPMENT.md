@@ -117,6 +117,18 @@ fora, trocar de programa ou esconder a página desativa), e cada transmissão te
 liga/desliga (`wss-cursor-streams`, por nick de quem transmite). Tudo isso é só no
 navegador de quem assiste.
 
+## Configurações (app e navegador)
+
+Uma página só: `desktop/pages/settings.html` (+ `settings.js`, `settings.css`,
+`common.css`). No app ela abre pela janela de Configurações, com o `settings-preload.js`
+(IPC). No navegador, o servidor entrega a mesma página em `/settings/` (e
+`desktop/shared` em `/shared/`) e a sala abre ela num `<dialog>` com iframe
+(`openSettings(section)` no `app.js`); `settings-web.js` faz o papel do preload: lê e
+muda a sala pelo `window.wssRoomSettings` dela e esconde o que tem `data-app-only`.
+Tudo que abre configuração na sala chama `openSettings('profile' | 'fx' | 'pointer' |
+'connection' | 'obs' | 'shortcuts')`, que no app vai pro `wssDesktop.openSettings`.
+Coisa nova nas Configurações: se só funciona no app, marque com `data-app-only`.
+
 ## Temas
 
 O CSS da sala (`public/css/style.css` e `admin.css`) não usa cor solta: tudo sai das

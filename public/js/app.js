@@ -84,7 +84,6 @@
   const obsUrlInput = $('obs-url');
   const obsCopyBtn = $('obs-copy');
   const obsNickEl = $('obs-nick');
-  const obsCheckEl = $('obs-check');
   const obsCertEl = $('obs-cert');
   const proxyBanner = $('proxy-banner');
   const sidebarEl = $('sidebar');
@@ -338,6 +337,7 @@
     const label = version === 'dev' ? 'versão de desenvolvimento' : `versão ${version}`;
     loginVersionEl.textContent = label;
     sidebarVersionEl.textContent = label;
+    window.wssServerVersion = version === 'dev' ? 'em desenvolvimento' : version; // topo das Configurações
   }
 
   function showCertificateWarning(cert) {
@@ -1492,21 +1492,8 @@
 
   btnObs.addEventListener('click', () => {
     if (!me) return;
-    obsUrlInput.value = `${window.location.origin}/obs/${encodeURIComponent(me.name)}`;
-    obsNickEl.textContent = me.name;
-    // Com contas: a chave da conta vai no Bearer Token (sem ela o servidor recusa).
-    $('obs-token-row').hidden = !(accountsMode && account && account.obsKey);
-    $('obs-token-free').hidden = !$('obs-token-row').hidden;
-    $('obs-token').value = (account && account.obsKey) || '';
-    $('obs-token-copy').textContent = 'Copiar';
-    obsCopyBtn.textContent = 'Copiar';
-    // O OBS confere o certificado e recusa o autoassinado.
-    obsCertEl.hidden = window.location.protocol !== 'https:' || Boolean(serverStatus.certificate);
-    obsDialog.showModal();
-    checkObsPort();
-    renderObsOverlaySetting();
+    openSettings('obs');
   });
-
   $('obs-token-copy').addEventListener('click', async () => {
     $('obs-token').select();
     try {
@@ -1533,7 +1520,9 @@
 
   // O OBS manda o vídeo pelo TURN em UDP (não sabe usar TURN por TCP). Testa daqui se
   // essa porta está publicada, que é o passo que mais fica pra trás no CasaOS.
-  async function checkObsPort() {
+  // Teste da porta UDP do TURN, por onde o OBS manda o vídeo. A aba OBS das
+  // Configurações mostra o resultado (ação 'obs-check'). null: sem TURN por UDP.
+  async function obsPortCheck() {
     const servers = await iceServersPromise;
     let server = null;
     let url = null;
@@ -1544,20 +1533,9 @@
         break;
       }
     }
-    if (!server) {
-      obsCheckEl.hidden = true;
-      return;
-    }
-    if (serverStatus.proxy) {
-      obsCheckEl.hidden = false;
-      obsCheckEl.className = 'obs-check is-bad';
-      obsCheckEl.textContent = proxyWarningText(serverStatus.proxy.port);
-      return;
-    }
+    if (!server) return null;
+    if (serverStatus.proxy) return { ok: false, text: proxyWarningText(serverStatus.proxy.port) };
     const port = (url.match(/:(\d+)\?/) || [])[1] || '3000';
-    obsCheckEl.hidden = false;
-    obsCheckEl.className = 'obs-check';
-    obsCheckEl.textContent = `Testando a porta ${port}/UDP do servidor…`;
     let pc;
     let ok = false;
     try {
@@ -1580,11 +1558,12 @@
     } finally {
       if (pc) pc.close();
     }
-    if (!obsDialog.open) return;
-    obsCheckEl.className = ok ? 'obs-check is-ok' : 'obs-check is-bad';
-    obsCheckEl.textContent = ok
-      ? `Porta ${port}/UDP do servidor respondendo: é por ela que o OBS manda o vídeo.`
-      : `A porta ${port}/UDP do servidor não respondeu daqui, e o OBS precisa dela pra mandar o vídeo. No CasaOS, edite o app e adicione a porta ${port} → 3478 com protocolo UDP (veja o README).`;
+    return {
+      ok,
+      text: ok
+        ? `Porta ${port}/UDP do servidor respondendo: é por ela que o OBS manda o vídeo.`
+        : `A porta ${port}/UDP do servidor não respondeu daqui, e o OBS precisa dela pra mandar o vídeo. No CasaOS, edite o app e adicione a porta ${port} → 3478 com protocolo UDP (veja o README).`,
+    };
   }
 
   // ---------- diagnóstico de conexão ----------
@@ -1773,10 +1752,7 @@
     }
   }
 
-  $('btn-diag').addEventListener('click', () => {
-    diagDialog.showModal();
-    runDiagnostics();
-  });
+  $('btn-diag').addEventListener('click', () => openSettings('connection'));
   $('diag-again').addEventListener('click', runDiagnostics);
   $('diag-copy').addEventListener('click', async () => {
     try {
@@ -3208,7 +3184,7 @@
     }
     if (key === '?') {
       e.preventDefault();
-      keysDialog.showModal();
+      openSettings('shortcuts');
       return;
     }
     const lower = key.toLowerCase();
@@ -3234,7 +3210,7 @@
     e.preventDefault();
   });
 
-  $('btn-keys').addEventListener('click', () => keysDialog.showModal());
+  $('btn-keys').addEventListener('click', () => openSettings('shortcuts'));
   keysDialog.addEventListener('click', (e) => {
     if (e.target === keysDialog) keysDialog.close();
   });
@@ -3669,6 +3645,59 @@
   // desenhando ou reagindo) aparece também na sua tela de verdade, numa camada por cima
   // de tudo que fica de fora da captura. No navegador, o rodapé oferece o app.
   const desktop = window.wssDesktop || null;
+
+  // ---------- Configurações: iguais no app e no navegador ----------
+  // No app, a janela de Configurações dele. No navegador, a MESMA página
+  // (/settings/settings.html, do app) num popup por cima da sala: ela desenha o fundo
+  // escurecido e o cartão, e fala com a sala pelo wssRoomSettings (settings-web.js).
+  // Perfil, OBS, atalhos, teste de conexão e mouse e controle abrem a aba certa dela.
+  let settingsLayer = null;
+  let settingsReturnFocus = null;
+  function openSettings(section = 'profile') {
+    if (desktop && typeof desktop.openSettings === 'function') { desktop.openSettings(section); return; }
+    if (!me && !accountsMode) return;
+    if (!settingsLayer) {
+      settingsLayer = document.createElement('dialog');
+      settingsLayer.className = 'settings-layer';
+      settingsLayer.setAttribute('aria-label', 'Configurações');
+      const frame = document.createElement('iframe');
+      frame.title = 'Configurações';
+      frame.src = '/settings/settings.html';
+      settingsLayer.append(frame);
+      // Esc com o foco fora da página das Configurações (raro): fecha igual.
+      settingsLayer.addEventListener('cancel', (e) => { e.preventDefault(); closeSettings(); });
+      document.body.append(settingsLayer);
+    }
+    const frame = settingsLayer.querySelector('iframe');
+    if (!settingsLayer.open) {
+      settingsReturnFocus = document.activeElement;
+      settingsLayer.showModal();
+    }
+    const show = () => {
+      frame.contentWindow.wssSettingsSection(section);
+      frame.focus();
+    };
+    if (frame.contentWindow && typeof frame.contentWindow.wssSettingsSection === 'function') show();
+    else frame.addEventListener('load', show, { once: true });
+  }
+  function closeSettings() {
+    if (!settingsLayer || !settingsLayer.open) return;
+    settingsLayer.close();
+    if (settingsReturnFocus && document.contains(settingsReturnFocus)) settingsReturnFocus.focus();
+    settingsReturnFocus = null;
+  }
+  window.WssSettings = Object.freeze({ open: openSettings, close: closeSettings });
+  // A engrenagem embaixo da lista (o app põe a dele no mesmo lugar).
+  const btnSettings = $('btn-settings');
+  btnSettings.hidden = Boolean(desktop);
+  btnSettings.addEventListener('click', () => openSettings('profile'));
+  // Ctrl+, como no app.
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === ',' || e.code === 'Comma') && me) {
+      e.preventDefault();
+      openSettings('profile');
+    }
+  });
   let desktopOverlay = false;
 
   function toDesktopOverlay(stream, event) {
@@ -4428,9 +4457,7 @@
 
   function openProfile() {
     if (!me) return;
-    $('photo-error').hidden = true;
-    if (!profileDialog.open) profileDialog.showModal();
-    renderProfileDialog();
+    openSettings('profile');
   }
 
   {
@@ -4647,7 +4674,7 @@
 
   // O botão embaixo da lista abre o painel "Mouse e controle".
   setIcon(btnCursor, 'pointer', 'Mouse e controle');
-  btnCursor.addEventListener('click', () => openControlPanel());
+  btnCursor.addEventListener('click', () => openSettings('pointer'));
 
   function saveCursorPrefs() {
     try {
@@ -5224,6 +5251,7 @@
     if (!active && !(desktopCaps && desktopCaps.control && myControlStream())) return null;
     const btn = el('button', 'grant-btn' + (active ? ' active' : '')); btn.type = 'button'; btn.append(icon('gamepad'));
     btn.title = 'Escolher permissões de teclado, mouse e gamepad para ' + u.name; btn.setAttribute('aria-label', btn.title);
+    // O 🎮 abre o painel de permissões (só existe no app, igual nos dois).
     btn.addEventListener('click', (e) => { e.stopPropagation(); openControlPanel(); });
     return btn;
   }
@@ -5651,6 +5679,7 @@
         if (!account || !account.admin) throw new Error('Só contas com administração.');
         openAdmin();
       } else if (command.type === 'diagnostics') { runDiagnostics(); }
+      else if (command.type === 'obs-check') return { ok: true, check: await obsPortCheck() };
       else if (command.type === 'check-updates') return { ok: true, message: await checkUpdatesNow() };
       else if (command.type === 'obs-display') {
         const info = await desktop?.displays?.();

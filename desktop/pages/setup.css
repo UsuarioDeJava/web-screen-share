@@ -9,7 +9,7 @@
   border: 1px solid transparent;
   border-radius: 20px;
   background: linear-gradient(rgba(12, 14, 23, 0.9), rgba(12, 14, 23, 0.9)) padding-box, var(--grad-soft) border-box;
-  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8), 0 0 60px -30px rgba(79, 123, 255, 0.6);
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
   text-align: center;
 }
 .logo { width: 64px; height: 64px; margin: 0 auto 2px; }

@@ -88,6 +88,9 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     // Mensagem nova com a janela sem foco: pisca na barra de tarefas.
     attention: () => ipcRenderer.send('desktop:attention'),
     changeServer: () => ipcRenderer.send('desktop:change-server'),
+    // As Configurações do app, numa aba (perfil, OBS, atalhos...): a sala abre elas no
+    // lugar dos diálogos dela, pra ficar igual no navegador e no app.
+    openSettings: (section) => ipcRenderer.send('desktop:settings-open', typeof section === 'string' ? section : 'profile'),
     // Transmissão pelo OBS: os monitores, ligar/desligar a camada e em qual monitor.
     displays: () => ipcRenderer.invoke('desktop:displays'),
     obs: (on) => ipcRenderer.invoke('desktop:obs', Boolean(on)),

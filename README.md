@@ -267,13 +267,14 @@ No OBS, em **Configurações > Transmissão**:
 - **Servidor:** `https://<endereço-do-servidor>:3000/obs/SEU-NICK` (o final do endereço
   é o nome com que você aparece na sala)
 - **Bearer Token:** sem contas (o padrão), pode ficar em branco. Com contas
-  (`ACCOUNTS=on`), é a chave da sua conta, que aparece no botão **OBS** da sala (no app,
-  em **Configurações > OBS e overlays**): ela diz que é você, não passe pra ninguém.
+  (`ACCOUNTS=on`), é a chave da sua conta, que aparece em **Configurações > OBS e
+  overlays** (o botão **OBS** da sala abre direto ali): ela diz que é você, não passe pra
+  ninguém.
 
 Depois é só **Iniciar transmissão**. Se você estiver na sala com o mesmo nick, a
 transmissão aparece na sua própria linha da lista (com a etiqueta OBS), sem criar outra
-pessoa. O botão **OBS** no topo da sala mostra esse
-endereço já com o seu nick, pronto pra copiar, e testa se a porta UDP está liberada. Em
+pessoa. O botão **OBS** no topo da sala abre **Configurações > OBS e overlays**, com
+esse endereço já com o seu nick, pronto pra copiar, e testa se a porta UDP está liberada. Em
 **Configurações > Saída**, um codificador H.264, uns 6000 Kbps e intervalo de
 quadro-chave de 1 s funcionam bem (o intervalo curto faz quem entra no meio começar a
 ver mais rápido).
@@ -336,8 +337,8 @@ O painel tem ainda:
 - **Minha conta** (trocar a sua senha) e **Servidor** (versão, desde quando está
   ligado, contas e pessoas na sala).
 
-Cada pessoa troca o próprio **nick** e a **senha** no perfil, na aba **Conta** (no app,
-em **Configurações > Perfil**). Nick que já existe não salva: aparece o aviso em
+Cada pessoa troca o próprio **nick** e a **senha** em **Configurações > Perfil**, no
+cartão **Conta**. Nick que já existe não salva: aparece o aviso em
 vermelho. A sessão fica lembrada no navegador/app: da próxima vez entra direto, até
 clicar em **Sair**.
 
@@ -421,7 +422,8 @@ guardadas pra quando ligar de novo.
 7. **Sair** (ícone no rodapé da lista de pessoas) volta pra tela de nick. Do lado
    dele, o **sino** liga e desliga os sons da sala (alguém entrou ou saiu, começou a
    transmitir, mensagem nova no chat, alguém te marcou ou apontou na tela).
-8. **Testar conexão** (no rodapé da lista de pessoas): quando alguém não consegue
+8. **Testar conexão** (no rodapé da lista de pessoas; abre **Configurações > Conexão e
+   testes**, com o botão **Executar teste**): quando alguém não consegue
    assistir, isso testa, no navegador dessa pessoa, o TURN do servidor por UDP e por
    TCP, uma conexão completa por ele, se o navegador decodifica H.264 (o formato do
    OBS) e a conexão com uma transmissão do OBS que estiver no ar. O botão **Copiar
@@ -459,11 +461,16 @@ guardadas pra quando ligar de novo.
     do sistema e está na voz: o app pede pro navegador deixar de fora da captura o som
     desta página (a voz dos outros e as outras transmissões), mas nem todo navegador
     atende; se alguém ouvir o próprio eco, quem transmite deve usar fone de ouvido.
-12. **Atalhos** (lista completa no rodapé da lista de pessoas, ou tecla **?**): valem
+12. **Atalhos** (lista completa em **Configurações > Atalhos**: pelo link no rodapé da
+    lista de pessoas ou a tecla **?**): valem
     pro quadro debaixo do mouse (ou o em tela cheia, o fixado ou o único na tela):
     **M** som, **F** tela cheia, **P** fixar, **S** print, **1** a **6** reações,
     **C** chat, **V** voz/microfone.
-13. **Perfil** (clique na sua fotinha, no rodapé da lista, ou em **Perfil**): escolha
+13. **Configurações** (a engrenagem ao lado do seu nome, a sua fotinha, o link **Perfil**
+    ou **Ctrl+,**): são as **mesmas do app**, num popup por cima da sala (fecha no ×, no
+    **Esc** ou clicando fora); no navegador só não aparecem as partes que existem só no
+    app (Aplicativo, Log, servidor, marcações na tela e controle remoto).
+    **Perfil**: escolha
     a sua **cor** e uma **foto** (PNG, JPG, WebP ou GIF animado até 5 MB; as fotos
     paradas viram um quadradinho de 256 px). A cor pode ser **Automática** (a do nick),
     uma das 20 prontas ou qualquer outra pelo lápis: quadrado de saturação e brilho,
@@ -473,7 +480,7 @@ guardadas pra quando ligar de novo.
     no chat, nos quadros, nos rabiscos e no mouse, e ficam salvas no navegador como o
     nick: na próxima vez elas já entram junto. As fotos ficam só na memória do servidor
     enquanto a pessoa está na sala.
-14. **Mouse e efeitos** (aba no **Perfil**; no app, em **Configurações**): deixe o seu
+14. **Mouse e efeitos** (aba das **Configurações**): deixe o seu
     mouse e as suas marcações do seu jeito, com uma **prévia ao vivo** pra testar do
     mesmo jeito que numa transmissão (mexer, clicar, rodinha, Alt + clique, Alt +
     arrastar, com Shift a flecha) e **pacotes prontos** (Neon,
@@ -546,8 +553,9 @@ que o navegador não faz:
   monitor principal. (A sua própria transmissão do OBS não abre sozinha na sala, pra
   não gastar internet à toa; pra ver como ela está chegando, clique em **Assistir** ao
   lado do seu nome, e o quadro "Você" mostra a etiqueta **na sua tela**.)
-  Pra escolher o monitor que o OBS está capturando, ou desligar, use o botão **OBS** da
-  sala: a janela dele ganha a opção **Marcações na sua tela**, e o app lembra a escolha.
+  Pra escolher o monitor que o OBS está capturando, ou desligar, use **Monitor das
+  marcações do OBS** em **Configurações > OBS e overlays** (o botão **OBS** da sala abre
+  ali), e o app lembra a escolha.
   As marcações caem no lugar certo quando a cena do OBS é a captura do monitor ocupando
   a tela toda (o normal); com a cena recortada ou montada, elas ficam na proporção da
   cena.
@@ -578,11 +586,11 @@ que o navegador não faz:
   uma setinha pra cima, pra baixo ou pros lados, com Shift + rodinha ou o touchpad), ou
   o estilo que ela escolheu. Quem assiste liga
   e desliga o próprio mouse em cada transmissão, no botão da setinha em cima dela; o
-  botão embaixo da lista de pessoas abre o painel **Mouse e controle**, onde quem
+  botão embaixo da lista de pessoas abre **Configurações > Ponteiro e controle**, onde quem
   transmite desliga o mouse de todo mundo.
 - **Controle remoto** (desligado por padrão): enquanto você transmite, cada pessoa da
   lista da sala ganha um botão 🎮; clique nele e confirme em **Permitir?** (uma pessoa
-  por vez; dá também pelo painel **Mouse e controle**). A pessoa ganha o botão 🎮 em
+  por vez; dá também por **Configurações > Ponteiro e controle**). A pessoa ganha o botão 🎮 em
   cima da sua transmissão, e o 🎮 dela na sua lista fica aceso (clicar nele tira o
   controle). Com ele ligado, o mouse dela mexe no seu mouse de verdade
   (clique, botão direito, rodinha) e, com o mouse dela em cima da transmissão, o

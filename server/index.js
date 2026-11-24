@@ -65,6 +65,15 @@ app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', '
 app.get('/js/fx.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.js')));
 app.get('/js/fx-image.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx-image.js')));
 app.get('/css/fx.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.css')));
+// Configurações: a mesma página do app (desktop/pages/settings.*). No navegador, a sala
+// abre ela num popup por cima de tudo; settings-web.js liga ela na sala e esconde o que
+// só existe no app. Ela carrega os compartilhados por ../shared/.
+const SETTINGS_FILES = new Set(['settings.html', 'settings.js', 'settings.css', 'common.css', 'settings-web.js']);
+app.get('/settings/:file', (req, res, next) => {
+  if (!SETTINGS_FILES.has(req.params.file)) return next();
+  res.sendFile(path.join(__dirname, '..', 'desktop', 'pages', req.params.file));
+});
+app.use('/shared', express.static(path.join(__dirname, '..', 'desktop', 'shared')));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Fotos de perfil (PNG, JPG, WebP ou GIF animado), guardadas na memória pelo hash do

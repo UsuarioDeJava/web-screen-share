@@ -104,6 +104,22 @@ computador e no celular, mantendo o visual:
   - Selos e etiquetas (AO VIVO, OBS, NOVO, contagens, HEX) com pelo menos 11px; a
     versão com 12px; o título do chat não encosta mais na linha de baixo.
 
+### Navegador igual ao app
+- **As Configurações do navegador agora são as mesmas do app**: o mesmo popup, com as
+  mesmas abas (Perfil, Mouse e efeitos, Ponteiro e controle, Conexão e testes, OBS e
+  overlays, Atalhos). No navegador só não aparecem as partes que existem só no app
+  (Aplicativo, Log, servidor, marcações na tela, driver do gamepad e controle remoto).
+  Antes o navegador tinha diálogos próprios (Perfil, OBS, Atalhos, Testar conexão,
+  Mouse e controle), com outro visual.
+- Tudo abre nelas, no navegador e no app: a **engrenagem** (agora também no navegador),
+  a sua fotinha, os links **Perfil**, **Atalhos** e **Testar conexão**, o botão **OBS**
+  (direto na aba do OBS), o **Mouse e controle**, a tecla **?** e o **Ctrl+,**. No app,
+  esses botões abriam os diálogos antigos da página, misturando os dois visuais.
+- A aba **OBS e overlays** ganhou o teste da porta UDP e a dica de Saída do OBS (H.264,
+  6000 Kbps, quadro-chave de 1 s), que só existiam no diálogo antigo.
+- Configurações também passaram pelo detector: o mesmo degradê legível dos botões, sem o
+  brilho colorido e sem o rótulo em cima do título.
+
 ### Temas (a base)
 - A sala ficou pronta pra receber **temas** (CSS próprio, como os do Discord): todas as
   cores, fundos e cantos saem de variáveis, tem uma camada de **papel de parede** (com

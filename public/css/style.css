@@ -253,6 +253,24 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   pointer-events: none;
 }
 
+/* Configurações no navegador: a página do app (/settings/settings.html) numa camada por
+   cima da sala. Ela mesma desenha o fundo escurecido e o cartão, igual no app. */
+.settings-layer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+}
+.settings-layer::backdrop { background: transparent; }
+.settings-layer iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; color-scheme: dark; }
+
 /* ---------- login ---------- */
 
 .login {

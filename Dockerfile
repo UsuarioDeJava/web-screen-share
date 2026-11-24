@@ -13,6 +13,7 @@ RUN npm ci --omit=dev
 COPY server ./server
 COPY public ./public
 COPY desktop/shared ./desktop/shared
+COPY desktop/pages ./desktop/pages
 COPY docker/entrypoint.sh ./docker/entrypoint.sh
 RUN sed -i 's/\r$//' ./docker/entrypoint.sh && chmod +x ./docker/entrypoint.sh
 

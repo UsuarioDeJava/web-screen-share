@@ -5,7 +5,8 @@ let paused = false;
 let initialized = false;
 let pendingRestart = false;
 let dirty = false;
-const tabs = ['profile', 'fx', 'pointer', 'settings', 'connection', 'obs', 'log', 'shortcuts'];
+// No navegador (settings-web.js), as abas só do app vêm escondidas e saem da navegação.
+const tabs = ['profile', 'fx', 'pointer', 'settings', 'connection', 'obs', 'log', 'shortcuts'].filter((name) => !document.getElementById(`tab-${name}`).hidden);
 let activeTab = 'profile';
 let diagnosticTimer;
 let diagnosticsRunning = false;
@@ -94,6 +95,13 @@ api.onLog((value) => {
 
 async function load() {
   const value = await api.read();
+  if (value.web) {
+    // No navegador não há preferências do app: só a versão do servidor no topo.
+    $('version').textContent = value.version ? `Servidor ${value.version}` : '';
+    $('version').hidden = !value.version;
+    initialized = true;
+    return;
+  }
   $('gamepad-client-path').textContent = `Componente para receber gamepads: ${value.gamepadClientPath || 'indisponível'}. Reinicie o aplicativo após configurar o driver e a DLL.`;
   if (!initialized || !dirty) {
     $('server').value = value.server || '';
@@ -356,7 +364,22 @@ async function refreshObs() {
     $('obs-monitor').value = data.obsDisplay || 'off';
     $('obs-monitor').disabled = !data.overlaySupported;
     if (data.available && !data.overlaySupported) $('obs-status').textContent += ' As marcações não estão disponíveis neste sistema.';
+    if (data.available && data.supported) checkObsPort();
   } catch (error) { $('obs-status').textContent = error.message; }
+}
+// A porta UDP por onde o OBS manda o vídeo (o teste roda na sala, que tem o TURN).
+let obsCheckRun = 0;
+async function checkObsPort() {
+  const run = ++obsCheckRun;
+  const box = $('obs-check');
+  box.hidden = false; box.className = 'obs-check'; box.textContent = 'Testando a porta UDP do servidor…';
+  try {
+    const result = await api.roomAction({ type: 'obs-check' });
+    if (run !== obsCheckRun) return;
+    if (!result || !result.check) { box.hidden = true; return; }
+    box.className = `obs-check ${result.check.ok ? 'is-ok' : 'is-bad'}`;
+    box.textContent = result.check.text;
+  } catch { if (run === obsCheckRun) box.hidden = true; } // sala antiga, sem o teste
 }
 $('obs-monitor').addEventListener('change', async () => {
   const value = $('obs-monitor').value;
