@@ -151,7 +151,7 @@ computador e no celular, mantendo o visual:
   cores, fundos e cantos saem de variáveis, tem uma camada de **papel de parede** (com
   desfoque e escurecer) e o tema entra por último, antes de a página aparecer. Ainda
   sem tela pra escolher; dá pra testar pelo console (`WssTheme.set(...)`). Tudo
-  explicado em [THEMES.md](THEMES.md).
+  explicado em [THEMES.md](https://github.com/UsuarioDeJava/web-screen-share/blob/main/THEMES.md).
 
 ### Transmissão e captura (Paolinho)
 - **Perfis de captura**, no botão **Transmissão** do topo: Tela e texto (30 FPS), Jogo até
