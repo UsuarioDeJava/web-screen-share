@@ -8,3 +8,5 @@ testes/
 desktop/**
 !desktop/shared
 !desktop/shared/**
+!desktop/pages
+!desktop/pages/**
