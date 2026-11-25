@@ -40,6 +40,7 @@
   --accent-hover: #6f7dff;
   --accent-text: #c0c7ff;
   --accent-2-text: #8fdcff;
+  --violet-text: #c9bbff;
   --live: #ff3b5c;
   --live-2: #ff6a3d;
   --live-hover: #ff5a76;
@@ -726,6 +727,28 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 }
 .watch-btn:hover { border-color: var(--live); background: var(--live); color: #fff; }
 .watch-btn .icon svg { width: 14px; height: 14px; }
+
+/* Usuário de testes (só quem tem administração vê): o selo e o botão de controlar. */
+.tag-test {
+  flex: none;
+  border: 1px solid rgb(var(--violet-rgb) / 0.45);
+  background: rgb(var(--violet-rgb) / 0.16);
+  color: var(--violet-text);
+  font-weight: 700;
+}
+.tester-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: calc(7px * var(--radius-scale));
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+.tester-btn .icon svg { width: 15px; height: 15px; }
+.tester-btn:hover { background: rgb(var(--violet-rgb) / 0.16); color: var(--violet-text); }
 
 /* Deixar a pessoa controlar o seu PC (no app, com a sua tela no ar). */
 .grant-btn {
@@ -1540,6 +1563,30 @@ kbd {
 .gamepad-mapping label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 .gamepad-mapping input[type=number] { width: 64px; min-width: 0; }
 #control-dialog { width:min(1100px,calc(100% - 32px)); }
+.tester-dialog { width: min(620px, calc(100% - 32px)); }
+.tester-body { display: flex; flex-direction: column; gap: 10px; }
+.tester-status { margin: 0; color: var(--text); font-size: 13px; }
+.tester-section { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: calc(10px * var(--radius-scale)); background: rgb(var(--ink-rgb) / 0.03); }
+.tester-section h4 { margin: 0; font-size: 13px; }
+.tester-note { margin: 0; color: var(--muted); font-size: 12px; text-wrap: pretty; }
+.tester-row, .tester-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tester-select {
+  flex: 1 1 220px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: calc(8px * var(--radius-scale));
+  background: rgb(var(--shade-rgb) / 0.35);
+  color: var(--text);
+}
+.tester-select option, .tester-select optgroup { background: var(--panel); }
+.tester-select:disabled, .tester-body .control-devices label:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+.tester-grants { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.tester-grant { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.tester-body .btn { height: 32px; padding: 0 12px; font-size: 13px; }
+.tester-log { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tester-log:empty::before { content: 'Nada ainda.'; }
 .dialog.sharing-dialog { width:min(920px,calc(100% - 32px)); }
 .sharing-btn { position: relative; }
 .sharing-count { display:inline-grid; place-items:center; min-width:21px; height:21px; border-radius: calc(20px * var(--radius-scale)); background:var(--panel-hover); color:var(--text); font-size:11px; font-variant-numeric: tabular-nums; }

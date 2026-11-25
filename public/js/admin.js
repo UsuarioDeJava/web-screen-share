@@ -94,10 +94,17 @@
 
   // ---------- contas ----------
 
+  // Só o dono (a conta Admin) marca administração e "de testes" e mexe nessas contas; as
+  // outras contas com administração cuidam das contas normais (o servidor confere).
+  const plain = (a) => !a.root && !a.admin && !a.tester;
+
   function buildAccounts(panel, view) {
+    const owner = Boolean(view.opts.account.root);
     const card = el('div', 'admin-card');
     card.append(el('h2', null, 'Criar conta'));
-    card.append(el('p', 'admin-hint', 'Só o nick e uma senha provisória: no primeiro acesso a pessoa troca por uma dela. Não pode repetir nick.'));
+    card.append(el('p', 'admin-hint', owner
+      ? 'Só o nick e uma senha provisória: no primeiro acesso a pessoa troca por uma dela. Não pode repetir nick.'
+      : 'Só o nick e uma senha provisória: no primeiro acesso a pessoa troca por uma dela. Não pode repetir nick. Contas com administração ou de testes, só o dono do servidor cria.'));
     const row = el('div', 'admin-create');
     const nick = input({ placeholder: 'Nick', maxLength: 24, autocomplete: 'off' });
     nick.setAttribute('aria-label', 'Nick da conta nova');
@@ -109,22 +116,31 @@
     const adminBox = input({ type: 'checkbox' });
     adminBox.className = '';
     adminLabel.append(adminBox, el('span', null, 'Conta com administração (também abre este painel)'));
+    const testerLabel = el('label', 'admin-check');
+    const testerBox = input({ type: 'checkbox' });
+    testerBox.className = '';
+    testerLabel.append(testerBox, el('span', null, 'Usuário de testes'));
+    const testerHint = el('small', 'admin-hint admin-check-hint', 'Pra quem usa, é uma conta normal. Quem tem administração vê o selo Teste nela e controla de longe, pela sala: transmissão, controle remoto e voz.');
+    adminLabel.hidden = !owner;
+    testerLabel.hidden = !owner;
+    testerHint.hidden = !owner;
     const create = button('Criar conta', 'btn btn-primary admin-create-btn');
     const msg = el('p', 'admin-msg');
     msg.setAttribute('role', 'status');
     create.addEventListener('click', async () => {
       const password = pass.value || readablePassword();
       create.disabled = true;
-      const res = await ask('admin:account-create', { nick: nick.value, password, admin: adminBox.checked });
+      const res = await ask('admin:account-create', { nick: nick.value, password, admin: owner && adminBox.checked, tester: owner && testerBox.checked });
       create.disabled = false;
       if (res.error) { message(msg, res.error); return; }
       message(msg, `Conta de ${res.account.nick} criada. Senha provisória: ${password} (passe pra pessoa; no primeiro acesso ela troca).`, true);
       nick.value = '';
       pass.value = '';
       adminBox.checked = false;
+      testerBox.checked = false;
       view.refresh();
     });
-    card.append(row, adminLabel, create, msg);
+    card.append(row, adminLabel, testerLabel, testerHint, create, msg);
 
     const listCard = el('div', 'admin-card');
     listCard.append(el('h2', null, 'Contas'));
@@ -147,6 +163,7 @@
         const badges = el('span', 'admin-badges');
         if (a.root) badges.append(el('span', 'admin-badge is-root', 'Admin'));
         else if (a.admin) badges.append(el('span', 'admin-badge is-admin', 'Administração'));
+        if (a.tester) badges.append(el('span', 'admin-badge is-test', 'Teste'));
         if (a.mustChange) badges.append(el('span', 'admin-badge is-temp', 'Senha provisória'));
         if (a.online) badges.append(el('span', 'admin-badge is-online', 'Na sala'));
         if (a.id === meId) badges.append(el('span', 'admin-badge', 'Você'));
@@ -160,7 +177,10 @@
           editor.hidden = false;
           build(editor);
         };
-        tools.append(button('Renomear', 'btn btn-small', () => openEditor((box) => {
+        const self = a.id === meId;
+        const manage = owner || plain(a);
+        if (!manage && !self) tools.append(el('small', 'admin-hint', 'Só o dono do servidor mexe nesta conta.'));
+        if (manage || self) tools.append(button('Renomear', 'btn btn-small', () => openEditor((box) => {
           const field = input({ value: a.nick, maxLength: 24 });
           field.setAttribute('aria-label', `Nick novo pra ${a.nick}`);
           const save = button('Salvar', 'btn btn-primary btn-small');
@@ -177,7 +197,7 @@
           field.focus();
           field.select();
         })));
-        if (a.id !== meId) tools.append(button('Senha nova', 'btn btn-small', () => openEditor((box) => {
+        if (!self && manage) tools.append(button('Senha nova', 'btn btn-small', () => openEditor((box) => {
           const field = input({ value: readablePassword(), maxLength: 200 });
           field.setAttribute('aria-label', `Senha provisória nova pra ${a.nick}`);
           const save = button('Dar essa senha', 'btn btn-primary btn-small');
@@ -194,7 +214,20 @@
           box.append(field, save, cancel, out);
           field.select();
         })));
-        if (!a.root) {
+        if (!a.root && owner) {
+          const testLabel = el('label', 'admin-check admin-check-small');
+          const testBox = input({ type: 'checkbox', checked: a.tester });
+          testBox.className = '';
+          testBox.addEventListener('change', async () => {
+            const res = await ask('admin:account-update', { id: a.id, tester: testBox.checked });
+            if (res.error) { testBox.checked = !testBox.checked; message(listMsg, res.error); return; }
+            message(listMsg, `${a.nick} ${testBox.checked ? 'agora é' : 'não é mais'} usuário de testes.`, true);
+            view.refresh();
+          });
+          testLabel.append(testBox, el('span', null, 'Testes'));
+          tools.append(testLabel);
+        }
+        if (!a.root && manage) {
           const adminLabel = el('label', 'admin-check admin-check-small');
           const box = input({ type: 'checkbox', checked: a.admin });
           box.className = '';
@@ -206,6 +239,7 @@
             view.refresh();
           });
           adminLabel.append(box, el('span', null, 'Administração'));
+          adminLabel.hidden = !owner;
           tools.append(adminLabel);
           const remove = button('Apagar', 'btn btn-small btn-danger-soft', async () => {
             if (!window.confirm(`Apagar a conta de ${a.nick}? Ela sai da sala na hora e não entra mais.`)) return;
@@ -249,6 +283,7 @@
         if (u.sharing) badges.append(el('span', 'admin-badge is-live', 'Transmitindo'));
         if (u.voice) badges.append(el('span', 'admin-badge is-online', 'Na voz'));
         if (u.admin) badges.append(el('span', 'admin-badge is-admin', 'Administração'));
+        if (u.tester) badges.append(el('span', 'admin-badge is-test', 'Teste'));
         if (u.since) badges.append(el('span', 'admin-badge', `desde ${when(u.since)}`));
         name.append(badges);
         who.append(name);

@@ -62,7 +62,7 @@ Valores `R G B` separados por espaço. Usados como `rgb(var(--ink-rgb) / 0.08)`.
 | `--text`, `--text-soft`, `--muted`, `--faint` | Texto, do mais forte pro mais apagado. Mantenha `--faint` com contraste de pelo menos 4.5:1 sobre `--bg`. |
 | `--on-accent` | Texto em cima do destaque (botão Compartilhar, Entrar). |
 | `--accent`, `--accent-2`, `--accent-hover` | Destaque. |
-| `--accent-text`, `--accent-2-text`, `--live-text`, `--ok-text`, `--warn-text` | Texto colorido em cima das etiquetas tingidas. |
+| `--accent-text`, `--accent-2-text`, `--violet-text`, `--live-text`, `--ok-text`, `--warn-text` | Texto colorido em cima das etiquetas tingidas. |
 | `--live`, `--live-2`, `--live-hover`, `--ok`, `--warn` | Estados. |
 | `--grad-1`, `--grad-2`, `--grad-3` | As três cores do degradê dos botões principais (texto branco em cima: mantenha contraste de 4.5:1). |
 | `--grad`, `--grad-soft`, `--grad-danger` | Degradê dos botões principais, da borda dos cartões e do botão de perigo. |

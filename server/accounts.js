@@ -1,7 +1,7 @@
 // Contas da sala: só entra quem tem conta, criada pelo dono do servidor no painel de
 // administração. Fica tudo num arquivo (accounts.json, na pasta de dados): as contas
-// (nick, senha guardada como scrypt com sal, se tem administração) e as sessões abertas
-// (só o hash do token: o token mesmo fica só no navegador/app da pessoa).
+// (nick, senha guardada como scrypt com sal, se tem administração, se é de testes) e as
+// sessões abertas (só o hash do token: o token mesmo fica só no navegador/app da pessoa).
 //
 // A conta "Admin" (root) é criada na primeira vez, com uma senha aleatória que aparece no
 // log do servidor/container. Ela só abre o painel: não entra na sala.
@@ -54,7 +54,7 @@ function passwordProblem(password) {
 }
 
 function createAccounts({ file, log = console.log, now = Date.now } = {}) {
-  let accounts = []; // { id, nick, password, admin, root, mustChange, obsKey, createdAt }
+  let accounts = []; // { id, nick, password, admin, tester, root, mustChange, obsKey, createdAt }
   let sessions = []; // { hash, account, createdAt, seenAt }
   let saveTimer = null;
   const tries = new Map(); // endereço -> [horários]
@@ -89,7 +89,7 @@ function createAccounts({ file, log = console.log, now = Date.now } = {}) {
     const key = nickKey(nick);
     return key ? accounts.find((a) => nickKey(a.nick) === key) || null : null;
   };
-  const publicAccount = (a) => ({ id: a.id, nick: a.nick, admin: Boolean(a.admin || a.root), root: Boolean(a.root), mustChange: Boolean(a.mustChange), createdAt: a.createdAt });
+  const publicAccount = (a) => ({ id: a.id, nick: a.nick, admin: Boolean(a.admin || a.root), tester: Boolean(a.tester && !a.root), root: Boolean(a.root), mustChange: Boolean(a.mustChange), createdAt: a.createdAt });
   function nickProblem(nick, except = null) {
     const clean = cleanNick(nick);
     if (!clean) return 'Escolha um nick.';
@@ -123,19 +123,21 @@ function createAccounts({ file, log = console.log, now = Date.now } = {}) {
     return { nick: root.nick, password };
   }
 
-  async function create({ nick, password, admin = false }) {
+  // tester: "Usuário de testes" (as contas com administração controlam ela de longe).
+  async function create({ nick, password, admin = false, tester = false }) {
     const problem = nickProblem(nick) || passwordProblem(password);
     if (problem) return { error: problem };
-    const account = { id: newId(), nick: cleanNick(nick), password: await hashPassword(password), admin: Boolean(admin), mustChange: true, createdAt: now(), obsKey: newSecret(18) };
+    const account = { id: newId(), nick: cleanNick(nick), password: await hashPassword(password), admin: Boolean(admin), tester: Boolean(tester), mustChange: true, createdAt: now(), obsKey: newSecret(18) };
     if (nickProblem(account.nick)) return { error: 'Já existe uma conta com esse nick.' }; // criada no meio
     accounts.push(account);
     saveNow();
     return { ok: true, account: publicAccount(account) };
   }
 
-  // O dono (ou outra conta com administração) muda: administração e senha (a nova vale
-  // como provisória: no próximo acesso ela pede outra). A conta Admin não perde nada.
-  async function update(id, { admin, password } = {}) {
+  // O painel muda: administração, "de testes" e senha (a nova vale como provisória: no
+  // próximo acesso ela pede outra). A conta Admin não perde nada. Quem pode mudar o quê,
+  // o admin.js decide.
+  async function update(id, { admin, tester, password } = {}) {
     const account = byId(id);
     if (!account) return { error: 'Essa conta não existe mais.' };
     if (password !== undefined) {
@@ -146,6 +148,7 @@ function createAccounts({ file, log = console.log, now = Date.now } = {}) {
       revokeSessions(id);
     }
     if (admin !== undefined && !account.root) account.admin = Boolean(admin);
+    if (tester !== undefined && !account.root) account.tester = Boolean(tester);
     saveNow();
     return { ok: true, account: publicAccount(account) };
   }

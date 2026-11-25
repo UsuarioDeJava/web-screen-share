@@ -41,6 +41,7 @@
     pointer: '<path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/>',
     pointerOff: '<path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/><path d="m2 2 20 20"/>',
     gamepad: '<path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.59C2.6 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.41-1.41A2 2 0 0 1 9.83 16h4.34a2 2 0 0 1 1.41.59L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.6-6.58-.68-7.26A4 4 0 0 0 17.32 5z"/>',
+    remote: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m10 7.5 4.5 2.5-4.5 2.5z"/>',
     broadcast: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/>',
   };
 
@@ -447,7 +448,9 @@
   const adminEl = $('admin');
   const btnAdmin = $('btn-admin');
   let accountsMode = false;
-  let account = null; // { id, nick, admin, root, mustChange, obsKey }
+  let account = null; // { id, nick, admin, tester, root, mustChange, obsKey }
+  // Usuários de testes na sala agora (ids da sala): só quem tem administração recebe.
+  let testerIds = new Set();
   let session = null;
   try { session = localStorage.getItem('wss-session') || null; } catch {}
   function saveSession(token) {
@@ -595,8 +598,11 @@
     const renamed = next.nick !== account.nick;
     account = next;
     if (me) {
+      const wasAdmin = me.admin;
       me.admin = Boolean(next.admin);
       btnAdmin.hidden = !me.admin;
+      if (me.admin && !wasAdmin) socket.emit('tester:list', applyTesterList);
+      if (!me.admin && wasAdmin) applyTesterList([]);
       if (renamed) rejoin();
     }
   });
@@ -735,6 +741,8 @@
       }
       me = { id: res.me.id, name: res.me.name, admin: Boolean(res.me.admin) };
       btnAdmin.hidden = !me.admin;
+      testerIds = new Set();
+      if (me.admin) socket.emit('tester:list', applyTesterList);
       if (res.settings) applyRoomSettings(res.settings);
       stopRelayProbe?.();
       if (transportExperiments.snapshot().active.relaySelection && window.WssRelayProbe)
@@ -871,7 +879,11 @@
   socket.on('disconnect', (reason) => {
     setConnection(false);
     if (me) leaveRoomLocally();
-    if (reason === 'io server disconnect' && roomAuth?.required) lockRoom('Sessão encerrada ou expirada. Entre novamente.');
+    if (reason !== 'io server disconnect') return; // queda: o Socket.IO reconecta sozinho
+    if (roomAuth?.required) lockRoom('Sessão encerrada ou expirada. Entre novamente.');
+    // O servidor fechou a conexão ao parar (reiniciando ou atualizando o container): nesse
+    // caso o Socket.IO não tenta de novo sozinho. Tenta, como numa queda.
+    else setTimeout(() => { if (!socket.connected) socket.connect(); }, 1000);
   });
   socket.on('connect_error', () => {
     refreshRoomAccess(false).then(state => {
@@ -977,6 +989,7 @@
       if (u.voice) li.append(voiceIndicator(u));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
       if (entry.obs) li.append(el('span', 'tag tag-obs', u.kind === 'obs' && !u.ownerId ? 'OBS · sem vínculo' : 'OBS'));
+      if (testerIds.has(u.id) && me && me.admin && u.id !== myId) li.append(el('span', 'tag tag-test', 'Teste'), testerButton(u));
       const grant = controlGrantButton(u);
       if (grant) li.append(grant);
       const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
@@ -5904,6 +5917,102 @@
   });
 
   if (desktop && typeof desktop.onControlRevoke === 'function') desktop.onControlRevoke(revokeControl);
+  // ---------- usuário de testes ----------
+  // Quem tem administração controla de longe as contas marcadas pelo dono como "de
+  // testes" (o selo "Teste" e o botão só aparecem pra administração). Quem é de testes
+  // executa os comandos aqui, como se tivesse clicado, e anota no Log do app.
+
+  const testerPanel = window.WssTester.panel({ socket, dialog: $('tester-dialog'), body: $('tester-body'), title: $('tester-title'), sub: $('tester-sub') });
+  // A lista vem do servidor; a própria conta sai dela (uma conta de testes com
+  // administração não vê o próprio selo nem se controla).
+  function applyTesterList(list) {
+    const mine = account ? account.id : null;
+    const next = new Set((Array.isArray(list) ? list : []).filter((t) => t && t.account !== mine).map((t) => t.id));
+    for (const id of testerIds) if (!next.has(id)) testerPanel.gone(id);
+    testerIds = next;
+    if (me) renderUsers();
+  }
+  socket.on('tester:list', applyTesterList);
+  function testerButton(u) {
+    const btn = el('button', 'tester-btn');
+    btn.type = 'button';
+    btn.append(icon('remote'));
+    btn.title = `Controlar ${u.name} (usuário de testes)`;
+    btn.setAttribute('aria-label', btn.title);
+    btn.addEventListener('click', (e) => { e.stopPropagation(); testerPanel.open(u); });
+    return btn;
+  }
+
+  const testerLog = (message, level) => {
+    if (desktop && typeof desktop.testerLog === 'function') desktop.testerLog(message, level);
+    else console.info(`[usuário de testes] ${message}`);
+  };
+  function testerState() {
+    const track = localStream && localStream.getVideoTracks()[0];
+    const canControl = Boolean(desktop && desktopCaps && desktopCaps.control && myControlStream() && roomSettings.control);
+    return {
+      app: Boolean(desktop), appVersion: (desktop && desktop.version) || '', remoteShare: Boolean(desktop && desktop.testerPreselect),
+      sharing: Boolean(localStream), sharePending: Boolean(capturePending), sharingName: (track && track.label) || '',
+      voice: { joined: voice.joined, muted: voice.muted, deafened: voice.deafened, noMic: voice.noMic },
+      canControl,
+      controlNote: !roomSettings.control ? 'O controle remoto está desligado nesta sala.'
+        : desktop && !(desktopCaps && desktopCaps.control) ? 'O controle remoto está indisponível neste app.' : '',
+      grants: [...controlGrants.values()].map((g) => ({ to: g.to, name: g.name, devices: g.devices })),
+      people: me ? [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id).map((u) => ({ id: u.id, name: u.name })) : [],
+    };
+  }
+  window.WssTester.agent({ socket, log: testerLog, handlers: {
+    state: () => ({ state: testerState() }),
+    async sources() {
+      if (!desktop || typeof desktop.testerSources !== 'function') throw new Error('Só no app (no navegador, quem escolhe a tela é a pessoa).');
+      return { sources: await desktop.testerSources() };
+    },
+    async 'share-start'({ source, audio, windowAudio }) {
+      if (!desktop || typeof desktop.testerPreselect !== 'function') throw new Error('Só no app (no navegador, quem escolhe a tela é a pessoa).');
+      if (localStream || capturePending) throw new Error('Já está transmitindo.');
+      if (!shareAllowed()) throw new Error('Nesta sala só contas com administração transmitem.');
+      const picked = await desktop.testerPreselect({ id: source, audio, windowAudio });
+      if (!picked || picked.error) throw new Error((picked && picked.error) || 'Não deu pra escolher essa tela ou janela.');
+      await startSharing();
+      if (!localStream) throw new Error('A transmissão não começou (veja o Log do app dele).');
+    },
+    'share-stop'() {
+      if (!localStream) throw new Error('Não está transmitindo.');
+      stopSharing();
+    },
+    'control-grant'({ to, devices }) {
+      const user = users.get(to);
+      if (!user || user.kind === 'obs' || !me || user.id === me.id) throw new Error('Essa pessoa não está mais na sala.');
+      if (!testerState().canControl) throw new Error(testerState().controlNote || 'Precisa estar transmitindo a tela inteira pelo app.');
+      return new Promise((resolve, reject) => grantControl(user, (res) => (res && res.error ? reject(new Error(res.error)) : resolve()), devices));
+    },
+    'control-revoke'({ to }) {
+      if (to && !controlGrants.has(to)) throw new Error('Essa pessoa não tinha o controle.');
+      revokeControl(to || undefined);
+    },
+    async 'voice-join'() {
+      if (voice.joined) return;
+      await joinVoice();
+      if (!voice.joined) throw new Error('Não entrou na voz (o microfone foi liberado?).');
+    },
+    'voice-leave'() {
+      if (!voice.joined) throw new Error('Não está na voz.');
+      leaveVoice();
+    },
+    mute({ muted }) {
+      if (!voice.joined) throw new Error('Não está na voz.');
+      if (voice.noMic && !muted) throw new Error('Sem microfone neste PC.');
+      voice.muted = Boolean(muted);
+      if (!voice.muted) voice.deafened = false; // como no botão: ligar o microfone volta a ouvir
+      sendVoiceState();
+    },
+    deafen({ deafened }) {
+      if (!voice.joined) throw new Error('Não está na voz.');
+      voice.deafened = Boolean(deafened);
+      sendVoiceState();
+    },
+  } });
+
   desktop?.onControlBlocked?.(value => {
     const grant = controlGrants.get(value?.from);
     if (!grant || (grant.session || '') !== value.session) return;

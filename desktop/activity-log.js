@@ -28,7 +28,7 @@ function createActivityLog({ enabled = true, limit = 2000 } = {}) {
       const row = {
         id: ++sequence, at: new Date().toISOString(),
         level: ['info', 'warn', 'error'].includes(entry.level) ? entry.level : 'info',
-        category: ['people', 'stream', 'connection', 'error', 'system'].includes(entry.category) ? entry.category : 'system',
+        category: ['people', 'stream', 'connection', 'test', 'error', 'system'].includes(entry.category) ? entry.category : 'system',
         direction: ['in', 'out', 'local'].includes(entry.direction) ? entry.direction : 'local',
         message: safeMessage(entry.message),
       };

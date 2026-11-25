@@ -12,6 +12,7 @@ const { setupObs } = require('./obs');
 const { createAccounts } = require('./accounts');
 const { createRoomConfig } = require('./room-config');
 const { createAdmin } = require('./admin');
+const { createTesters } = require('./testers');
 const { createTurnCredentials } = require('./turn-credentials');
 const { createCredentialLimiter } = require('./credential-limiter');
 const { createObsAuth } = require('./obs-auth');
@@ -633,8 +634,10 @@ function applySettings(changed) {
   if (changed.control === false) for (const user of users.values()) remoteControl.revoke(user);
   io.emit('room:settings', { ...publicSettings(), obs: obsOn() });
 }
+// Usuário de testes: as contas com administração controlam de longe (só com contas).
+const testers = accounts ? createTesters({ io, users, accounts, logEvent, allow }) : null;
 const admin = accounts ? createAdmin({
-  io, accounts, config: roomConfig, users, removeUser, clearChat, onSettings: applySettings,
+  io, accounts, config: roomConfig, users, removeUser, clearChat, onSettings: applySettings, onChanged: () => testers.broadcast(),
   logEvent, allow, clientAddress, version: VERSION, obsAvailable: Boolean(obs),
 }) : null;
 const revokeControlFor = remoteControl.revokeFor;
@@ -673,6 +676,7 @@ function listLanAddresses() {
 
 io.on('connection', (socket) => {
   if (admin) admin.attach(socket);
+  if (testers) testers.attach(socket);
   socket.on('relay:probe', (_payload, ack) => {
     if (typeof ack !== 'function') return;
     if (!users.has(socket.id) || !allow(socket, 'relay-probe', 1, 60000)) return ack(null);
@@ -717,6 +721,7 @@ io.on('connection', (socket) => {
     if (account) {
       user.account = account.id;
       user.admin = Boolean(account.admin);
+      user.tester = Boolean(account.tester);
     }
     const hue = cleanHue(payload.hue);
     if (hue !== null) user.hue = hue;

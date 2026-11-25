@@ -13,7 +13,7 @@ let diagnosticsRunning = false;
 let diagnosticRead = null;
 let diagnosticGeneration = 0;
 let roomState = { available: false };
-const categories = { people: 'Pessoas', stream: 'Transmissões', connection: 'Conexões', error: 'Erros', system: 'Aplicativo' };
+const categories = { people: 'Pessoas', stream: 'Transmissões', connection: 'Conexões', test: 'Testes', error: 'Erros', system: 'Aplicativo' };
 const directions = { in: 'Recebido', out: 'Enviado', local: 'Local' };
 const levels = { info: 'Info', warn: 'Aviso', error: 'Erro' };
 function status(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
@@ -336,14 +336,14 @@ async function roomAction(command) {
 $('show-cursors').addEventListener('change', () => roomAction({ type: 'cursor', field: 'show', enabled: $('show-cursors').checked }));
 $('room-sounds').addEventListener('change', () => roomAction({ type: 'sounds', enabled: $('room-sounds').checked }));
 function renderExperiments() {
-  const experiments = roomState.available && roomState.experiments;
+  const experiments = roomState.available ? roomState.experiments || null : null;
   updateRestartButton();
   let unsupported = false;
   for (const key of ['binaryFast', 'smallFastQueue', 'expireFastPackets', 'responsiveVideo', 'shortVideoBuffer', 'recoverDelayedVideo', 'relaySelection', 'gpuBudget']) {
     const input = $(`experiment-${key}`);
     input.disabled = !experiments || !Object.hasOwn(experiments.saved || {}, key);
     unsupported ||= input.disabled;
-    input.checked = experiments?.saved[key] === true;
+    input.checked = experiments?.saved?.[key] === true;
   }
   $('experimental-status').textContent = !experiments
     ? 'Entre na sala ou atualize o servidor para configurar estes experimentos.'

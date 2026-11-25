@@ -59,6 +59,7 @@ select.admin-input { padding-right: 8px; }
 .admin-badge.is-root { background: var(--grad); color: #fff; }
 .admin-badge.is-admin { background: rgb(var(--accent-rgb) / 0.22); color: var(--accent-text); }
 .admin-badge.is-temp { background: rgb(var(--warn-rgb) / 0.18); color: var(--warn); }
+.admin-badge.is-test { background: rgb(var(--violet-rgb) / 0.2); color: var(--violet-text); }
 .admin-badge.is-online { background: rgb(var(--ok-rgb) / 0.16); color: var(--ok); }
 .admin-badge.is-live { background: rgb(var(--live-rgb) / 0.18); color: var(--live-text); }
 .admin-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

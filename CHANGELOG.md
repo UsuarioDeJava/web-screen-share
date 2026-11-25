@@ -5,7 +5,28 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
-## 1.9.0 — 2026-11-23
+## 2.0.0 — 2026-11-25
+
+Versão grande: as contas com painel de administração, o usuário de testes, o tema, as
+Configurações iguais no navegador e no app e, junto, as 88 correções e melhorias de
+transmissão, controle remoto, OBS, servidor e diagnóstico do **Paolinho**
+([PR #5](https://github.com/UsuarioDeJava/web-screen-share/pull/5)), quase todas já
+testadas no Windows dele. Atualize o servidor e o app juntos.
+
+### Usuário de testes (com contas)
+- O dono marca uma conta como **Usuário de testes** (ao criar ou na lista do painel).
+  Pra quem usa, é uma conta normal: sem selo e sem aviso nenhum.
+- Quem tem administração vê o selo **Teste** e um botão de controlar ao lado dela, na
+  lista de pessoas. O botão abre um painel com o estado dela (app ou navegador,
+  transmitindo, na voz) e os comandos, executados na sala dela como se ela clicasse:
+  - **transmissão** (só com ela no app): a lista das telas e janelas só pelo nome, sem
+    prévia; com o som do PC, sem som ou só o som do programa; começar e parar;
+  - **controle remoto**: dar (teclado, mouse, gamepad) e tirar o controle de alguém;
+  - **voz**: entrar e sair, ligar e desligar o microfone e o som.
+- O servidor só aceita os comandos dessa lista, de quem tem administração, pra quem é de
+  testes, e anota cada um no log. No app de quem é de testes, cada comando aparece no
+  **Log** (categoria Usuário de testes). Uma conta de testes com administração não vê o
+  próprio selo nem se controla.
 
 ### Contas (opcional, com a atualização do servidor)
 - **Contas, se o dono quiser**: com a variável **`ACCOUNTS=on`** no container, só entra
@@ -17,19 +38,24 @@ nova do app. As notas de cada release no GitHub vêm daqui.
   (não aparece na lista, não transmite nem assiste).
 - **Painel de administração**: criar contas (nick e senha provisória, que a pessoa troca
   no primeiro acesso), marcar **Conta com administração** (ela também abre o painel,
-  pelo botão do escudo), renomear, dar senha nova, apagar; ver quem está na sala e
+  pelo botão do escudo) e **Usuário de testes**, renomear, dar senha nova, apagar; ver
+  quem está na sala e
   desconectar; e as configurações da sala, que valem na hora: nome da sala, recado na
   tela de entrada, quem pode transmitir, controle remoto e OBS ligados ou não, limite
   de pessoas, quantas mensagens o chat guarda e apagar o histórico do chat.
 - **Nick e senha no perfil** (aba Conta; no app, em Configurações > Perfil). Nick
   repetido não pode (nem com maiúsculas diferentes): aviso vermelho na hora de salvar.
 - **Sessão lembrada**: da próxima vez entra direto, até clicar em Sair.
+- **Só o dono marca administração e testes**: as outras contas com administração criam
+  e cuidam só das contas normais (e renomeiam a própria), pra ninguém sair criando
+  administradores.
 - **OBS com a chave da conta**: com contas, o Bearer Token do OBS é a chave da sua
-  conta (aparece no botão OBS da sala e no app, em OBS e overlays). Assim ninguém
-  transmite com o nome de outra pessoa; assistir uma transmissão do OBS também exige
-  estar logado. Sem contas, o OBS continua como antes (Bearer Token em branco).
+  conta, fixa (aparece em Configurações > OBS e overlays). Assim ninguém transmite com
+  o nome de outra pessoa; assistir uma transmissão do OBS também exige estar logado.
+- **Chave de acesso e contas juntas**: com `ROOM_ACCESS_KEY` (veja abaixo) e
+  `ACCOUNTS=on`, a chave da sala vem antes do login com nick e senha.
 
-### Controle remoto
+### Controle remoto: um mouse só
 - **Um mouse só**: controlando alguém, antes você via dois mouses na transmissão (o seu e
   o de lá, chegando atrasado no vídeo). Agora, enquanto você está no modo controle (o 🎮
   ligado em cima da transmissão), o mouse de quem transmite some da transmissão e o seu,
@@ -37,7 +63,7 @@ nova do app. As notas de cada release no GitHub vêm daqui.
   redimensionar, ampulheta... Fica só um mouse, e o atraso some da vista. Quem é
   controlado continua vendo o mouse dele (o app desenha ele na camada das marcações, que
   não entra na transmissão) e, mexendo no mouse, o de verdade volta na hora. Vale pra
-  transmissão pelo app, com quem transmite no app 1.9 no Windows. Pelo OBS, o seu mouse
+  transmissão pelo app, com quem transmite no app 2.0 no Windows. Pelo OBS, o seu mouse
   também pega o formato do de lá, e se o mouse de lá aparece é a captura do OBS que
   decide ("Capturar cursor").
 
@@ -126,12 +152,55 @@ computador e no celular, mantendo o visual:
   desfoque e escurecer) e o tema entra por último, antes de a página aparecer. Ainda
   sem tela pra escolher; dá pra testar pelo console (`WssTheme.set(...)`). Tudo
   explicado em [THEMES.md](THEMES.md).
-## 1.9.0 — Melhorias de transmissão e controle
 
-- A sala ganhou diagnóstico de rota e estatísticas por transmissão, perfis de captura e ajustes experimentais de vídeo.
-- O controle remoto usa canais WebRTC para comandos. Sob congestionamento, o app espaça os envios de eixos e gatilhos e mantém as transições de botões no canal confiável.
-- O servidor oferece autenticação individual opcional, credenciais por publicação do OBS e limites para uso do relay.
-- No Windows x64, a captura nativa experimental transmite uma janela em H.264 para um espectador. O áudio do sistema continua disponível pela captura padrão.
+### Transmissão e captura (Paolinho)
+- **Perfis de captura**, no botão **Transmissão** do topo: Tela e texto (30 FPS), Jogo até
+  1080p60 e Jogo até 720p60, mantendo a proporção da fonte. Prefere H.264 quando dá,
+  com os outros codecs de reserva.
+- Durante a transmissão: priorizar **Fluidez** ou **Nitidez do texto**, desligar a
+  prévia local e um **limite total de upload** dividido entre quem assiste.
+- O **(i)** de cada vídeo mostra decoder, tempo de decodificação e jitter buffer.
+- Com perfil de jogo ou controle remoto, a sala renova a conexão de mídia se o atraso
+  ficar preso depois de a rede voltar (no máximo a cada 60 s, sem perder a captura).
+- A fonte que some por um tempo é acompanhada até voltar; mudar de tamanho recalcula os
+  limites de envio.
+- **Captura nativa experimental** (Windows x64, aba **Experimental** das Configurações):
+  transmite uma janela em H.264 pra um espectador, com o motor próprio do app.
+
+### Controle remoto: comandos mais rápidos (Paolinho)
+- Os comandos vão por canais WebRTC próprios, num formato binário. Com a rede
+  congestionada, o app espaça os eixos e gatilhos e mantém os botões no canal confiável.
+- Comando demais de uma vez bloqueia a permissão (e avisa), em vez de travar o PC.
+- A vibração do gamepad virtual volta pra quem controla.
+
+### OBS
+- **Sem contas, cada participante tem o próprio endereço e token** (Configurações > OBS e
+  overlays): a transmissão fica ligada à pessoa, vale por até 8 horas e acaba quando ela
+  sai da sala. O endereço antigo `/obs/NICK` continua, com um `OBS_PUBLISH_TOKEN`
+  opcional no servidor (sem vínculo com a pessoa).
+- O botão **OBS** da sala abre direto Configurações > OBS e overlays, com o teste da
+  porta UDP.
+
+### Servidor e segurança (Paolinho)
+- **Chave de acesso opcional** pra entrar na sala (`ROOM_ACCESS_KEY`, ou uma chave por
+  pessoa em `ROOM_ACCOUNT_KEYS`), com sessão em cookie seguro.
+- Credenciais do TURN com validade e limites de emissão (por pessoa e no total);
+  quotas no coturn embutido; MediaMTX com UDP direto opcional.
+- **Seleção experimental de relay** e as rotas da sessão no diagnóstico.
+
+### App (Paolinho)
+- **Atalhos**: Configurações > Atalhos mostra quais atalhos globais estão ativos, em
+  conflito ou esperando (desenho, controle), com **Tentar registrar novamente** sem
+  reiniciar e os botões Ativar desenho e Revogar controle.
+- **Desempenho visual**: Completo, Econômico ou Automático (reduz partículas e brilhos
+  quando a interface atrasa).
+- **Diagnóstico**: copiar as métricas da sessão e amostras por condição (Wi-Fi, cabo,
+  VRR...).
+
+### Correções
+- Reiniciar ou atualizar o servidor (o container): a sala reconecta sozinha. Antes, com o
+  desligamento novo do servidor, ela ficava parada até recarregar a página.
+- Celular: o botão **Transmissão** ganhou ícone e não vaza mais pra fora da tela.
 
 ## 1.8.1 — 2026-11-19
 

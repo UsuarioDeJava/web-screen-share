@@ -135,6 +135,21 @@ Tudo que abre configuração na sala chama `openSettings('profile' | 'fx' | 'poi
 'connection' | 'obs' | 'shortcuts')`, que no app vai pro `wssDesktop.openSettings`.
 Coisa nova nas Configurações: se só funciona no app, marque com `data-app-only`.
 
+## Usuário de testes
+
+Com contas, a administração controla de longe uma conta marcada pelo dono como "de
+testes" (`tester` no `accounts.json`). Três pontas, pelo socket da sala:
+`server/testers.js` (lista fechada `COMMANDS`, com a limpeza dos argumentos e o texto do
+log; confere administração e destino a cada comando), `public/js/tester.js` (o painel de
+quem controla e o `agent()` que executa) e os handlers no `app.js` (procure
+`WssTester.agent`), que fazem o mesmo que os botões da sala. No app, a transmissão de
+longe usa `desktop:tester-sources` (telas e janelas sem miniatura) e
+`desktop:tester-preselect` (a próxima transmissão usa essa fonte no lugar do seletor) no
+`main.js`, e cada comando vai pro Log com a categoria `test`.
+
+Comando novo: uma entrada em `COMMANDS`, um handler no `app.js` e o texto em `LABELS`
+(`tester.js`); se precisar do app, um IPC novo com `fromServer(event)`.
+
 ## Temas
 
 O CSS da sala (`public/css/style.css` e `admin.css`) não usa cor solta: tudo sai das

@@ -135,7 +135,10 @@
             <span id="sharing-count" class="sharing-count" aria-label="controles conectados" hidden>0</span>
           </button>
           <button id="btn-share" class="btn btn-primary" type="button"></button>
-          <button id="btn-capture-settings" class="btn" type="button" aria-haspopup="dialog" aria-controls="capture-dialog">Transmissão</button>
+          <button id="btn-capture-settings" class="btn" type="button" title="Perfil e qualidade da transmissão" aria-label="Perfil e qualidade da transmissão" aria-haspopup="dialog" aria-controls="capture-dialog">
+            <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></span>
+            <span class="btn-label">Transmissão</span>
+          </button>
         </div>
       </header>
 
@@ -267,6 +270,20 @@
         <p id="control-note" class="obs-check" hidden></p>
         <ul id="control-list" class="control-list"></ul>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Usuário de testes: o painel de quem tem administração (montado pelo tester.js). -->
+  <dialog id="tester-dialog" class="dialog tester-dialog" aria-labelledby="tester-title">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="tester-title">Controlar</h3>
+        <button class="icon-btn" type="submit" title="Fechar" aria-label="Fechar">
+          <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+        </button>
+      </div>
+      <p id="tester-sub" class="dialog-sub"></p>
+      <div id="tester-body" class="tester-body"></div>
     </form>
   </dialog>
 
@@ -403,6 +420,7 @@
   <script src="js/visual-policy.js"></script>
   <script src="js/fx-image.js"></script>
   <script src="js/admin.js"></script>
+  <script src="js/tester.js"></script>
   <script src="js/visible-ticker.js"></script>
   <script src="js/performance-report.js"></script>
   <script src="js/decoder-health.js"></script>

@@ -1,15 +1,23 @@
 // Entrar com conta (auth:*) e o painel de administração (admin:*), pelo socket da sala.
 // Quem abre o painel: a conta Admin (que só faz isso) e as contas marcadas com
 // administração (que também entram na sala normalmente).
+//
+// Só o dono (a conta Admin) marca "Conta com administração" e "Usuário de testes" e mexe
+// nessas contas. As outras contas com administração criam e mexem só em contas normais
+// (e renomeiam a própria), pra ninguém sair criando administradores.
 const ADMINS = 'admins'; // sockets com administração: recebem os avisos de mudança
 
-function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSettings = () => {}, logEvent = () => {}, allow, clientAddress, version = 'dev', obsAvailable = false }) {
+function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSettings = () => {}, onChanged = () => {}, logEvent = () => {}, allow, clientAddress, version = 'dev', obsAvailable = false }) {
   const startedAt = Date.now();
   const accountOf = (socket) => socket.data.account || null;
   const isAdmin = (socket) => Boolean(accountOf(socket) && accountOf(socket).admin);
   const socketsOf = (id) => [...io.sockets.sockets.values()].filter((s) => s.data.account && s.data.account.id === id);
   // A própria pessoa vê também a chave do OBS dela.
   const selfInfo = (account) => ({ ...account, obsKey: accounts.obsKeyOf(account.id) });
+  // Conta normal: sem administração, não é de testes nem a do dono.
+  const plain = (account) => !account.root && !account.admin && !account.tester;
+  const canManage = (by, target) => Boolean(by.root) || plain(target);
+  const OWNER_ONLY = 'Só o dono do servidor (a conta Admin) mexe em contas com administração ou de testes.';
 
   function setAccount(socket, account, token) {
     socket.data.account = account || null;
@@ -25,6 +33,7 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
     changedTimer = setTimeout(() => {
       changedTimer = null;
       io.to(ADMINS).emit('admin:changed');
+      onChanged();
     }, 200);
   }
 
@@ -41,7 +50,10 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
       }
       setAccount(s, account);
       const user = users.get(s.id);
-      if (user) user.admin = account.admin;
+      if (user) {
+        user.admin = account.admin;
+        user.tester = account.tester;
+      }
       s.emit('auth:account', selfInfo(account));
     }
     changed();
@@ -52,7 +64,7 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
     return {
       settings: config.get(),
       accounts: accounts.list().map((a) => ({ ...a, online: onlineAccounts.has(a.id) })),
-      online: [...users.values()].map((u) => ({ id: u.id, name: u.name, sharing: Boolean(u.sharing), voice: Boolean(u.voice), admin: Boolean(u.admin), since: u.joinedAt || null })),
+      online: [...users.values()].map((u) => ({ id: u.id, name: u.name, sharing: Boolean(u.sharing), voice: Boolean(u.voice), admin: Boolean(u.admin), tester: Boolean(u.tester), since: u.joinedAt || null })),
       server: { version, startedAt, obs: obsAvailable },
     };
   }
@@ -152,9 +164,13 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
     }));
 
     socket.on('admin:account-create', guard(async (msg, by) => {
-      const res = await accounts.create({ nick: msg.nick, password: str(msg.password, 400), admin: msg.admin === true });
+      const admin = msg.admin === true;
+      const tester = msg.tester === true;
+      if ((admin || tester) && !by.root) return { error: 'Só o dono do servidor cria contas com administração ou de testes.' };
+      const res = await accounts.create({ nick: msg.nick, password: str(msg.password, 400), admin, tester });
       if (!res.ok) return res;
-      logEvent(`${by.nick} criou a conta ${res.account.nick}${res.account.admin ? ' (com administração)' : ''}`);
+      const marks = [res.account.admin && 'com administração', res.account.tester && 'de testes'].filter(Boolean);
+      logEvent(`${by.nick} criou a conta ${res.account.nick}${marks.length ? ` (${marks.join(', ')})` : ''}`);
       changed();
       return res;
     }));
@@ -162,10 +178,16 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
     socket.on('admin:account-update', guard(async (msg, by) => {
       const target = accounts.get(str(msg.id, 40));
       if (!target) return { error: 'Essa conta não existe mais.' };
+      if (!canManage(by, target)) return { error: OWNER_ONLY };
       const patch = {};
       if (typeof msg.admin === 'boolean') {
+        if (!by.root) return { error: OWNER_ONLY };
         if (target.id === by.id && !msg.admin) return { error: 'Você não pode tirar a sua própria administração.' };
         patch.admin = msg.admin;
+      }
+      if (typeof msg.tester === 'boolean') {
+        if (!by.root) return { error: OWNER_ONLY };
+        patch.tester = msg.tester;
       }
       if (typeof msg.password === 'string') patch.password = str(msg.password, 400);
       const res = await accounts.update(target.id, patch);
@@ -174,7 +196,8 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
         logEvent(`${by.nick} deu uma senha nova pra ${target.nick}`);
         refreshAccount(target.id, { kick: target.id !== by.id, reason: 'O administrador deu uma senha nova pra sua conta.' });
       } else {
-        logEvent(`${by.nick} ${patch.admin ? 'deu' : 'tirou'} a administração de ${target.nick}`);
+        if (patch.admin !== undefined) logEvent(`${by.nick} ${patch.admin ? 'deu' : 'tirou'} a administração de ${target.nick}`);
+        if (patch.tester !== undefined) logEvent(`${by.nick} ${patch.tester ? 'marcou' : 'desmarcou'} ${target.nick} como usuário de testes`);
         refreshAccount(target.id);
       }
       return res;
@@ -183,6 +206,7 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
     socket.on('admin:account-rename', guard((msg, by) => {
       const target = accounts.get(str(msg.id, 40));
       if (!target) return { error: 'Essa conta não existe mais.' };
+      if (target.id !== by.id && !canManage(by, target)) return { error: OWNER_ONLY };
       const res = accounts.rename(target.id, msg.nick);
       if (!res.ok) return res;
       if (res.account.nick !== target.nick) logEvent(`${by.nick} mudou o nick de ${target.nick} pra ${res.account.nick}`);
@@ -194,6 +218,7 @@ function createAdmin({ io, accounts, config, users, removeUser, clearChat, onSet
       const target = accounts.get(str(msg.id, 40));
       if (!target) return { error: 'Essa conta não existe mais.' };
       if (target.id === by.id) return { error: 'Você não pode apagar a sua própria conta.' };
+      if (!canManage(by, target)) return { error: OWNER_ONLY };
       const res = accounts.remove(target.id);
       if (!res.ok) return res;
       logEvent(`${by.nick} apagou a conta ${target.nick}`);

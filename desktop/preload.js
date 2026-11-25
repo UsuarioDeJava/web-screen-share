@@ -125,6 +125,13 @@ if (receiverPage) {
     // As Configurações do app, numa aba (perfil, OBS, atalhos...): a sala abre elas no
     // lugar dos diálogos dela, pra ficar igual no navegador e no app.
     openSettings: (section) => ipcRenderer.send('desktop:settings-open', typeof section === 'string' ? section : 'profile'),
+    // Usuário de testes (um administrador manda pela sala): as telas e janelas só pelo
+    // nome, a escolhida pra próxima transmissão (sem abrir o seletor) e o Log do app.
+    testerSources: () => ipcRenderer.invoke('desktop:tester-sources'),
+    testerPreselect: (choice) => ipcRenderer.invoke('desktop:tester-preselect', {
+      id: String((choice && choice.id) || ''), audio: Boolean(choice && choice.audio), windowAudio: Boolean(choice && choice.windowAudio),
+    }),
+    testerLog: (message, level) => ipcRenderer.send('desktop:tester-log', String(message || '').slice(0, 400), level === 'warn' ? 'warn' : 'info'),
     // Transmissão pelo OBS: os monitores, ligar/desligar a camada e em qual monitor.
     displays: () => ipcRenderer.invoke('desktop:displays'),
     obs: (on) => ipcRenderer.invoke('desktop:obs', Boolean(on)),
