@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="js/gamepad.css">
   <link rel="stylesheet" href="css/fx.css" />
+  <link rel="stylesheet" href="css/visual-policy.css" />
 </head>
 <body>
   <section id="login" class="login">
@@ -18,10 +19,11 @@
       <h1>Web Screen Share</h1>
       <p class="login-sub">Escolha um nick pra entrar na sala.</p>
       <input id="nick" name="nick" maxlength="24" placeholder="Seu nick" aria-label="Seu nick" autofocus />
+      <input id="room-access-key" name="room-access-key" type="password" maxlength="256" placeholder="Chave de acesso da sala" aria-label="Chave de acesso da sala" autocomplete="off" hidden />
       <button type="submit" id="login-btn" class="btn btn-primary">Entrar</button>
       <p id="login-error" class="login-error" role="alert"></p>
       <p id="login-cert" class="cert-warning" role="alert" hidden></p>
-      <p class="login-hint">Sem senha: o nick só vale enquanto você estiver na sala.</p>
+      <p id="room-access-hint" class="login-hint">O nick só vale enquanto você estiver na sala.</p>
       <p id="login-version" class="app-version"></p>
     </form>
   </section>
@@ -45,6 +47,7 @@
           <button id="btn-profile" class="link-btn" type="button">Perfil</button>
           <button id="btn-keys" class="link-btn" type="button">Atalhos</button>
           <button id="btn-diag" class="link-btn" type="button">Testar conexão</button>
+          <button id="btn-metrics" class="link-btn" type="button">Copiar métricas</button>
           <button id="btn-check-update" class="link-btn" type="button" hidden>Verificar atualização</button>
           <button id="btn-server" class="link-btn" type="button" hidden>Trocar servidor</button>
           <button id="btn-app-update-link" class="link-btn update-link" type="button" hidden>Atualizar o app</button>
@@ -95,6 +98,7 @@
           <button id="btn-obs" class="btn" type="button" title="Transmitir pelo OBS Studio" hidden></button>
           <button id="btn-sharing-details" class="btn" type="button" aria-haspopup="dialog" aria-controls="sharing-dialog" title="Detalhes de compartilhamento">Detalhes <span id="sharing-count" class="sharing-count">0</span></button>
           <button id="btn-share" class="btn btn-primary" type="button"></button>
+          <button id="btn-capture-settings" class="btn" type="button" aria-haspopup="dialog" aria-controls="capture-dialog">Transmissão</button>
         </div>
       </header>
 
@@ -167,10 +171,11 @@
             <button id="obs-copy" class="btn" type="button">Copiar</button>
           </span>
         </li>
-        <li>O <b>Bearer Token</b> pode ficar em branco (qualquer coisa serve).</li>
+        <li id="obs-token-hint">Se o servidor exigir um <b>Bearer Token</b>, use o token fornecido pelo administrador.</li>
+        <li id="obs-token-field" hidden><span class="copy-field"><input id="obs-token" type="password" readonly aria-label="Bearer Token privado para o OBS" autocomplete="off"><button id="obs-copy-token" class="btn" type="button">Copiar token</button></span></li>
         <li>Clique em <b>Iniciar transmissão</b>. Você aparece na sala como <b id="obs-nick"></b>, com a etiqueta OBS.</li>
       </ol>
-      <p class="dialog-tip">Em <b>Saída</b>, use um codificador H.264, uns 6000 Kbps e intervalo de quadro-chave de 1 s: quem entra no meio começa a ver mais rápido. O nick vem do endereço: troque o final dele pra transmitir com outro nome.</p>
+      <p class="dialog-tip">Em <b>Saída</b>, use um codificador H.264, uns 6000 Kbps e intervalo de quadro-chave de 1 s: quem entra no meio começa a ver mais rápido. Copie o endereço e o token juntos. Ao sair da sala ou expirar a credencial, gere uma nova configuração aqui.</p>
       <p id="obs-check" class="obs-check" hidden></p>
       <div id="obs-overlay" class="obs-overlay" hidden>
         <label class="obs-overlay-row">
@@ -196,6 +201,7 @@
       <div class="dialog-actions">
         <button id="diag-again" class="btn" type="button">Testar de novo</button>
         <button id="diag-copy" class="btn btn-primary" type="button">Copiar resultado</button>
+        <button id="diag-metrics" class="btn" type="button">Copiar métricas da sessão</button>
       </div>
     </form>
   </dialog>
@@ -331,16 +337,51 @@
 
   <div id="toast" class="toast" role="status" hidden></div>
 
+  <dialog id="capture-dialog" class="dialog capture-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head"><h2>Transmissão pelo app</h2><button class="icon-btn" type="submit" aria-label="Fechar configurações de transmissão">×</button></div>
+      <p class="dialog-sub">Escolha o perfil antes de compartilhar. O vídeo é enviado direto aos participantes quando a rede permite.</p>
+      <label>Captura <select id="capture-profile"><option value="desktop">Tela e texto · até 30 FPS</option><option value="game1080">Jogo · até 1080p60</option><option value="game720">Jogo · até 720p60</option></select></label>
+      <label>Priorizar <select id="capture-priority"><option value="auto">Conforme o perfil</option><option value="motion">Fluidez</option><option value="detail">Nitidez do texto</option></select></label>
+      <p class="dialog-sub">Para jogar por transmissão, escolha um perfil Jogo ou priorize Fluidez. Nitidez do texto pode reduzir os FPS.</p>
+      <label>Codec preferido <select id="capture-codec"><option value="auto">Automático</option><option value="h264">H.264</option><option value="vp8">VP8</option><option value="av1">AV1</option></select></label>
+      <p class="dialog-sub">O codec depende dos dois PCs. Preferir um codec não garante aceleração por hardware; confira os dados abaixo durante a transmissão.</p>
+      <button id="capture-probe" class="btn" type="button">Verificar capacidades antes de transmitir</button>
+      <label>Limite total de upload (Mbps) <input id="capture-upload" type="number" min="0" max="1000" step="0.5" value="0"></label>
+      <p class="dialog-sub">0 deixa sem teto do app. Com um limite, 80% são divididos entre os vídeos enviados; a margem restante ajuda áudio e comandos. Isso não mede a velocidade da internet.</p>
+      <label class="capture-check"><input id="capture-adaptive" type="checkbox" checked>Adaptar o envio para reduzir filas</label>
+      <label class="capture-check"><input id="capture-preview" type="checkbox" checked>Mostrar minha prévia</label>
+      <p class="dialog-sub">Desativar a prévia pode reduzir o uso de recursos no seu PC. As outras pessoas continuam recebendo o vídeo.</p>
+      <pre id="capture-status" class="diagnostic-output" aria-live="polite">Nenhuma transmissão ativa.</pre>
+      <button id="capture-close" class="btn btn-primary" type="submit">Fechar</button>
+    </form>
+  </dialog>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/quality.js"></script>
+  <script src="js/video-policy.js"></script>
+  <script src="js/signaling.js"></script>
   <script src="js/sounds.js"></script>
   <script src="js/color.js"></script>
   <script src="js/video-health.js"></script>
   <script src="js/gamepad.js"></script>
+  <script src="js/input-pacing.js"></script>
+  <script src="js/experiments.js"></script>
+  <script src="js/control-wire.js"></script>
+  <script src="js/network-health.js"></script>
+  <script src="js/control-transport.js"></script>
+  <script src="js/ice-servers.js"></script>
+  <script src="js/relay-probe.js"></script>
   <script src="js/gamepad-view.js"></script>
   <script src="js/gamepad-client.js"></script>
+  <script src="js/gamepad-feedback.js"></script>
   <script src="js/fx.js"></script>
+  <script src="js/visual-policy.js"></script>
   <script src="js/fx-image.js"></script>
+  <script src="js/visible-ticker.js"></script>
+  <script src="js/performance-report.js"></script>
+  <script src="js/decoder-health.js"></script>
+  <script src="js/native-video.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

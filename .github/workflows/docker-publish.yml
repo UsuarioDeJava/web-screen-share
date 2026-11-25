@@ -10,6 +10,7 @@ on:
       - docker/**
       - server/**
       - public/**
+      - desktop/shared/**
       - package.json
       - package-lock.json
       - .github/workflows/docker-publish.yml

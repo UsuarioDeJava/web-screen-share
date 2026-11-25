@@ -82,28 +82,9 @@ export LOCAL_TURN_SECRET="$(cat "$DATA_DIR/turn-secret")"
 export LOCAL_TURN_PORT="${LOCAL_TURN_PORT:-3478}"
 
 TURN_CONF="$(mktemp)"
-cat > "$TURN_CONF" <<EOF
-listening-port=$LOCAL_TURN_PORT
-relay-ip=127.0.0.1
-min-port=49152
-max-port=65535
-no-tls
-no-dtls
-no-cli
-no-tcp-relay
-fingerprint
-use-auth-secret
-static-auth-secret=$LOCAL_TURN_SECRET
-realm=web-screen-share
-allow-loopback-peers
-denied-peer-ip=0.0.0.0-255.255.255.255
-denied-peer-ip=::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-allowed-peer-ip=127.0.0.1
-simple-log
-no-stdout-log
-log-file=/tmp/turnserver.log
-pidfile=/tmp/turnserver.pid
-EOF
+# Validação estrita impede injeção de diretivas pelas variáveis de configuração.
+# mktemp cria o arquivo privado; ele contém o segredo e não deve ir para os logs.
+node server/turn-config.js > "$TURN_CONF"
 turnserver -c "$TURN_CONF" >> /tmp/turnserver.log 2>&1 &
 
 # MediaMTX: recebe a transmissão do OBS (WHIP) e repassa pra quem assiste (WHEP).
@@ -113,6 +94,20 @@ turnserver -c "$TURN_CONF" >> /tmp/turnserver.log 2>&1 &
 # cada início, que só o Node conhece; publicar e assistir só nos caminhos obs_*.
 MTX_API_PASS="$(openssl rand -hex 24)"
 MTX_CONF="$(mktemp)"
+# Opcional: UDP direto ao MediaMTX. O padrão continua restrito ao loopback/TURN.
+# Aceita um IP ou nome DNS, nunca texto YAML arbitrário vindo do ambiente.
+MTX_UDP_ADDRESS=127.0.0.1:8189
+MTX_HOSTS='[127.0.0.1]'
+if [ -n "${MEDIAMTX_PUBLIC_HOST:-}" ]; then
+  case "$MEDIAMTX_PUBLIC_HOST" in
+    *[!a-zA-Z0-9.:-]*) echo "MEDIAMTX_PUBLIC_HOST inválido: use IP ou nome DNS sem porta." >&2; exit 1 ;;
+    *:*) if ! node -e 'process.exit(require("node:net").isIP(process.env.MEDIAMTX_PUBLIC_HOST) === 6 ? 0 : 1)'; then
+      echo "MEDIAMTX_PUBLIC_HOST não aceita porta: use IP ou nome DNS." >&2; exit 1
+    fi ;;
+  esac
+  MTX_UDP_ADDRESS=0.0.0.0:8189
+  MTX_HOSTS="[127.0.0.1, \"$MEDIAMTX_PUBLIC_HOST\"]"
+fi
 # logLevel info: registra quando cada transmissão do OBS conecta e por que ela caiu.
 cat > "$MTX_CONF" <<EOF
 logLevel: info
@@ -124,9 +119,9 @@ authInternalUsers:
     ips: ["127.0.0.1"]
     permissions:
       - action: publish
-        path: ~^obs_
+        path: ~^(obs_|pub_)
       - action: read
-        path: ~^obs_
+        path: ~^(obs_|pub_)
   - user: web-screen-share
     pass: $MTX_API_PASS
     ips: ["127.0.0.1"]
@@ -144,10 +139,10 @@ srt: false
 moq: false
 webrtc: true
 webrtcAddress: 127.0.0.1:8889
-webrtcLocalUDPAddress: 127.0.0.1:8189
+webrtcLocalUDPAddress: $MTX_UDP_ADDRESS
 webrtcLocalTCPAddress: ""
 webrtcIPsFromInterfaces: false
-webrtcAdditionalHosts: [127.0.0.1]
+webrtcAdditionalHosts: $MTX_HOSTS
 paths:
   all_others:
 EOF

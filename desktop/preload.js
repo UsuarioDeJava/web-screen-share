@@ -1,6 +1,16 @@
 // Ponte entre a página aberta na janela principal e o app. Na sala (página do
 // servidor): `window.wssDesktop`. Na tela de configurar o servidor: `window.setupBridge`.
 const { contextBridge, ipcRenderer } = require('electron');
+const nativeCommands = createNativeCommandQueue(ipcRenderer);
+const receiverPage = process.argv.includes('--wss-control-receiver');
+ipcRenderer.on('desktop:visual-mode', (_event, mode) => {
+  const value = ['normal', 'economy', 'auto'].includes(mode) ? mode : 'normal';
+  const root = document.documentElement;
+  if (root && root.getAttribute('data-wss-visual-mode') !== value) {
+    root.setAttribute('data-wss-visual-mode', value);
+    root.toggleAttribute('data-wss-economy', value === 'economy');
+  }
+});
 // Também mantém as etiquetas coerentes em servidores antigos que ainda não
 // assinam onOverlayState. O estado nativo é a referência para a camada visível.
 ipcRenderer.on('desktop:overlay-state', (_event, state) => {
@@ -9,6 +19,7 @@ ipcRenderer.on('desktop:overlay-state', (_event, state) => {
 });
 
 window.addEventListener('DOMContentLoaded', () => {
+  if (receiverPage) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.id = 'wss-settings-open'; button.title = 'Configurações (Ctrl+,)';
@@ -68,7 +79,26 @@ if (process.argv.includes('--wss-borderless-window')) {
   });
 }
 
-if (location.protocol === 'https:' || location.protocol === 'http:') {
+if (receiverPage) {
+  contextBridge.exposeInMainWorld('wssReceiver', {
+    ready: () => ipcRenderer.invoke('desktop:receiver-ready'),
+    onState: callback => ipcRenderer.on('desktop:receiver-state', (_event, value) => {
+      nativeCommands.retain(value.grants.map(grant=>({id:grant.peer,session:grant.session})));callback(value);
+    }),
+    onEvent: callback => ipcRenderer.on('desktop:receiver-event', (_event, value) => callback(value)),
+    input: value => { const clean = projectNativeCommand(value); if (clean) nativeCommands.push('input', clean); },
+    pulse: value => { const clean = projectPeerIdentity(value, true); if (clean) nativeCommands.push('pulse', clean); },
+    reset: value => { const clean = projectPeerIdentity(value, true); if (clean) nativeCommands.push('reset', clean); },
+    fault: value => { const clean = projectPeerIdentity(value, true); if (clean) nativeCommands.fail(clean); },
+    report: value => {
+      const clean=projectPeerIdentity({from:value?.peer,session:value?.session},true);if(!clean)return;
+      clean.transport=value.transport==='webrtc'?'webrtc':'socket';
+      for(const key of ['binaryFastPacketsReceived','droppedIncomingPackets','peerPacketsSent','socketPacketsSent','analogPacketsSent','networkRttMs'])
+        if(Number.isFinite(value[key])&&value[key]>=0)clean[key]=value[key];
+      if(JSON.stringify(clean).length<=1024)nativeCommands.push('report',clean);
+    },
+  });
+} else if (location.protocol === 'https:' || location.protocol === 'http:') {
   try {
     contextBridge.executeInMainWorld({ func: installRoomObserver, args: [(entry) => ipcRenderer.send('desktop:activity', entry)] });
   } catch (error) {
@@ -77,6 +107,10 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
   contextBridge.exposeInMainWorld('wssDesktop', {
     version: ipcRenderer.sendSync('desktop:version'),
     platform: process.platform,
+    nativeVideoCaps: () => ipcRenderer.invoke('desktop:native-video-caps'),
+    nativeVideoPrepare: () => ipcRenderer.invoke('desktop:native-video-prepare'),
+    nativeVideoCommand: value => ipcRenderer.invoke('desktop:native-video-command', value),
+    onNativeVideo: callback => ipcRenderer.on('desktop:native-video', (_event, value) => callback(value)),
     // Começou/parou de transmitir: abre/fecha a camada de marcações na tela escolhida.
     sharing: (on) => ipcRenderer.invoke('desktop:sharing', Boolean(on)),
     onOverlayState: (callback) => {
@@ -101,14 +135,33 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     onLocalDraw: (callback) => { ipcRenderer.on('desktop:local-draw', (_event, data) => callback(data)); },
     // Mouse de quem assiste e controle remoto.
     readGamepadProfiles: () => ipcRenderer.invoke('desktop:gamepad-profiles'),
+    onGamepadProfiles: (callback) => {
+      const listener = (_event, value) => callback(value);
+      ipcRenderer.on('desktop:gamepad-profiles', listener);
+      return () => ipcRenderer.removeListener('desktop:gamepad-profiles', listener);
+    },
     saveGamepadProfile: (value) => ipcRenderer.invoke('desktop:gamepad-profile-save', value),
     caps: () => ipcRenderer.invoke('desktop:caps'),
-    controlState: (data) => ipcRenderer.send('desktop:control-state', data && data.on
-      ? { on: true, name: String(data.name || ''), hue: Number(data.hue) || 0, people: Array.isArray(data.people) ? data.people.slice(0, 16).map((p) => ({ id: String(p.id), devices: p.devices })) : [] } : { on: false }),
+    networkDiagnostics: () => ipcRenderer.invoke('desktop:network-diagnostics'),
+    mediaCapabilities: () => ipcRenderer.invoke('desktop:media-capabilities'),
+    controlState: (data) => { const clean=projectControlState(data);nativeCommands.retain(clean.people||[]);ipcRenderer.send('desktop:control-state',clean); },
+    hostControl: value => {
+      if (!value || !['owner','peer','session','stream','token'].every(key => typeof value[key] === 'string' && value[key].length <= 128)
+        || !/^[a-f0-9]{64}$/.test(value.token)) return Promise.reject(Error('Receptor inválido.'));
+      return ipcRenderer.invoke('desktop:receiver-host', {...Object.fromEntries(['owner','peer','session','stream','token'].map(key => [key,value[key]])),
+        options:{binaryFast:value.options?.binaryFast!==false,maxFastBufferedBytes:[0,512,2048,16384].includes(value.options?.maxFastBufferedBytes)?value.options.maxFastBufferedBytes:16384,
+          fastPacketLifeTimeMs:Number.isInteger(value.options?.fastPacketLifeTimeMs)&&value.options.fastPacketLifeTimeMs>0&&value.options.fastPacketLifeTimeMs<=1000?value.options.fastPacketLifeTimeMs:null}});
+    },
+    receiverSnapshot: () => ipcRenderer.invoke('desktop:receiver-snapshot'),
     onGamepadError: (callback) => { ipcRenderer.on('desktop:gamepad-error', (_event, reason) => callback(reason)); },
+    onInputError: (callback) => { ipcRenderer.on('desktop:input-error', (_event, reason) => callback(reason)); },
     onGamepadState: (callback) => { ipcRenderer.on('desktop:gamepad-state', (_event, state) => callback(state)); },
-    control: (msg) => ipcRenderer.send('desktop:control', msg),
+    onGamepadFeedback: (callback) => { ipcRenderer.on('desktop:gamepad-feedback', (_event, state) => callback(state)); },
+    control: (msg) => { const projected = projectNativeCommand(msg); if (projected) nativeCommands.push('input', projected); },
+    controlPulse: (msg) => { const projected = projectPeerIdentity(msg, true); if (projected) nativeCommands.push('pulse', projected); },
+    controlReset: (msg) => { const projected = projectPeerIdentity(msg, true); if (projected) nativeCommands.push('reset', projected); },
     onControlRevoke: (callback) => { ipcRenderer.on('desktop:control-revoke', () => callback()); },
+    onControlBlocked: (callback) => { ipcRenderer.on('desktop:control-blocked', (_event, value) => callback(value)); },
     // Controlando alguém: o app pega todas as teclas (Win, Alt+Tab...) e manda pra cá.
     captureKeys: (on) => ipcRenderer.invoke('desktop:capture-keys', Boolean(on)),
     onCapturedKey: (callback) => { ipcRenderer.on('desktop:captured-key', (_event, data) => callback(data)); },
@@ -126,6 +179,141 @@ if (location.protocol === 'https:' || location.protocol === 'http:') {
     connect: (address) => ipcRenderer.invoke('setup:connect', String(address || '')),
     retry: () => ipcRenderer.send('setup:retry'),
   });
+}
+
+// Um lote em voo, até 64 pendentes, 16 faults e prazo de 100 ms. O ACK pertence
+// ao processo principal; nenhuma confirmação depende da janela da sala.
+function createNativeCommandQueue(ipc) {
+  const queue = [], faults = new Map(), blocked = new Set();
+  let known=null;
+  const encoder=new TextEncoder();
+  let flight = null, flightItems = [], serial = 0, closed = false, disposed=false, timer = null;
+  const key = value => value.from + ':' + (value.session || '');
+  function stop() {
+    if (closed) return;
+    const identities=values=>[...new Map(values.filter(value=>!known||known.has(key(value))).map(value=>[key(value),{from:value.from,session:value.session}])).values()].slice(0,16);
+    const peers=identities(flightItems.map(item=>item.value));
+    const pending=identities([...queue.map(item=>item.value),...faults.values()]);
+    for(const value of pending)if(blocked.size<32)blocked.add(key(value));
+    closed = true; clearTimeout(timer); queue.length = 0; faults.clear();
+    ipc.send('desktop:input-stalled',{id:flight,peers,pending});
+  }
+  function flush() {
+    if (closed || flight || !queue.length && !faults.size) return;
+    const items=[];let bytes=256;
+    const add=entry=>{
+      const item={type:entry.type,value:entry.value,...(entry.at===undefined?{}:{at:entry.at})};
+      const size=encoder.encode(JSON.stringify(item)).byteLength+1;
+      if(items.length>=32||bytes+size>16384)return false;
+      bytes+=size;items.push(item);return true;
+    };
+    for(const [id,value]of faults){if(!add({type:'fault',value}))break;faults.delete(id);}
+    while(queue.length&&add(queue[0]))queue.shift();
+    flight = ++serial;
+    flightItems=items;
+    timer = setTimeout(stop, 250);
+    ipc.send('desktop:input-batch', { id: flight, at: Date.now(), items });
+  }
+  function fail(value, defer=false) {
+    const id = key(value);
+    if (closed || blocked.has(id)) return;
+    if (blocked.size >= 32 || faults.size >= 16) { stop(); return; }
+    blocked.add(id); faults.set(id, {from:value.from,session:value.session});
+    for (let i=queue.length-1;i>=0;i--) if (key(queue[i].value)===id) queue.splice(i,1);
+    if(!defer)flush();
+  }
+  ipc.on('desktop:input-ack', (_event, ack) => {
+    if (disposed || ack?.id !== flight) return;
+    clearTimeout(timer); timer = null; flight = null; flightItems=[];closed=false;
+    for (const item of queue.slice()) if (Date.now()-item.at > 100) fail(item.value,true);
+    flush();
+  });
+  window.addEventListener('pagehide', () => { disposed=true;closed=true;clearTimeout(timer);queue.length=0;faults.clear();flightItems=[]; }, { once:true });
+  return { fail, retain(people) {
+    const ids=new Set(people.map(p=>key({from:p.id,session:p.session})));
+    known=ids;
+    for(const id of blocked)if(!ids.has(id))blocked.delete(id);
+    for(const id of faults.keys())if(!ids.has(id))faults.delete(id);
+    for(let i=queue.length-1;i>=0;i--)if(!ids.has(key(queue[i].value)))queue.splice(i,1);
+  }, push(type, value) {
+    if (closed || blocked.has(key(value))) return false;
+    if (type==='reset') for(let i=queue.length-1;i>=0;i--)if(key(queue[i].value)===key(value))queue.splice(i,1);
+    const last=queue.at(-1);
+    const replace = last && key(last.value)===key(value) && last.type===type && (type==='pulse'||type==='report'
+      || type==='input' && last.value.kind===value.kind && (value.kind==='move' || value.kind==='gamepad'
+        && value.buttons.every((v,i)=>i===6||i===7||v===last.value.buttons[i])));
+    const entry={type,value,at:Date.now()};
+    if(encoder.encode(JSON.stringify(entry)).byteLength>4096){fail(value);return false;}
+    if(replace)queue[queue.length-1]=entry;
+    else if(queue.length>=64){fail(value);return false;}
+    else queue.push(entry);
+    flush(); return true;
+  } };
+}
+
+// Sandbox de preload não permite require de módulos locais. Esta projeção fica
+// aqui para limitar a segunda serialização (IPC), sem habilitar Node na página.
+// contextBridge já recebeu o argumento: isso não limita o custo da primeira cópia.
+function projectPeerIdentity(value, requireSession = false) {
+  if (!value) return null;
+  const from = value.from, session = value.session;
+  if (typeof from !== 'string' || !from || from.length > 128) return null;
+  if (session !== undefined && (typeof session !== 'string' || session.length > 128)) return null;
+  if (requireSession && typeof session !== 'string') return null;
+  const out = { from };
+  if (session !== undefined) out.session = session;
+  return out;
+}
+function nativePoint(v) { return Number.isFinite(v) && v >= 0 && v <= 1; }
+function projectNativeCommand(value) {
+  const out = projectPeerIdentity(value);
+  if (!out) return null;
+  const kind = value.kind;
+  out.kind = kind;
+  if (kind === 'gamepad') {
+    const axes = value.axes, buttons = value.buttons;
+    if (!Array.isArray(axes) || axes.length !== 4 || !Array.isArray(buttons) || buttons.length !== 17) return null;
+    out.axes = []; out.buttons = [];
+    // Não chamar slice/iteradores fornecidos junto de arrays da página.
+    for (let i = 0; i < 4; i++) { const v = axes[i]; if (!Number.isFinite(v) || v < -1 || v > 1) return null; out.axes.push(v); }
+    for (let i = 0; i < 17; i++) { const v = buttons[i]; if (!nativePoint(v)) return null; out.buttons.push(v); }
+  } else if (kind === 'key') {
+    const code = value.code, down = value.down;
+    if (typeof code !== 'string' || !/^[A-Za-z0-9]{1,24}$/.test(code) || typeof down !== 'boolean') return null;
+    out.code = code; out.down = down;
+  } else if (kind === 'move' || kind === 'button' || kind === 'wheel') {
+    const x = value.x, y = value.y;
+    if (nativePoint(x) && nativePoint(y)) { out.x = x; out.y = y; }
+    if (kind === 'move' && out.x === undefined) return null;
+    if (kind === 'button') {
+      const button = value.button, down = value.down;
+      if ((button !== 0 && button !== 1 && button !== 2) || typeof down !== 'boolean') return null;
+      out.button = button; out.down = down;
+    } else if (kind === 'wheel') {
+      const dy = value.dy, dx = value.dx;
+      if (!Number.isFinite(dy)) return null;
+      out.dy = Math.max(-10, Math.min(10, dy));
+      if (Number.isFinite(dx) && dx) out.dx = Math.max(-10, Math.min(10, dx));
+    }
+  } else return null;
+  return out;
+}
+function projectControlState(value) {
+  if (!value?.on) return { on: false };
+  const people = [];
+  const source = value.people;
+  if (Array.isArray(source)) for (let i = 0; i < Math.min(source.length, 16); i++) {
+    const p = source[i]; if (!p) continue;
+    const id = p.id, session = p.session, devices = p.devices;
+    if (typeof id !== 'string' || !id || id.length > 128
+      || session !== undefined && (typeof session !== 'string' || session.length > 128)) continue;
+    people.push({ id, session: session || '', devices: {
+      keyboard: devices?.keyboard === true, mouse: devices?.mouse === true, gamepad: devices?.gamepad === true,
+    } });
+  }
+  const name = value.name, hue = value.hue;
+  return { on: true, name: typeof name === 'string' ? name.slice(0, 40) : '',
+    hue: Number.isFinite(hue) ? hue : 0, people };
 }
 
 // Executado antes dos scripts da sala no mundo principal. Observa os eventos do

@@ -10,11 +10,13 @@ nav button[aria-selected="true"] { color: #fff; border-bottom-color: #8793ff; }
 main { padding-top: 20px; }
 .card { padding: 22px; border: 1px solid #252a3c; border-radius: 14px; background: #111521; margin-bottom: 16px; }
 label { display: block; margin: 10px 0 8px; color: #cdd2e3; }
-input:not([type="checkbox"]), select { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid #353d57; background: #0b0f1b; border-radius: 8px; color: #eef0f8; font: inherit; }
+input:not([type="checkbox"]), select, #camera-frames { box-sizing: border-box; width: 100%; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid #353d57; background: #0b0f1b; border-radius: 8px; color: #eef0f8; font: inherit; }
+#camera-frames { min-height: 5em; padding: 8px 12px; resize: vertical; }
 input[type="checkbox"] { accent-color: #8590ff; width: 16px; height: 16px; margin: 0; flex: none; }
 .check { display: flex; align-items: center; gap: 10px; }
 .hint { color: #9ca6bf; font-size: 12px; line-height: 1.6; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 14px 0; }
+.shortcut-list dd.error { color: #ff9b9b; }
 .toolbar { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; margin: 20px 0; }
 .info { margin-top: 22px; } pre { color: #c6cee5; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
 .log-wrap { overflow: auto; max-height: calc(100vh - 330px); min-height: 180px; border: 1px solid #252a3c; border-radius: 12px; }

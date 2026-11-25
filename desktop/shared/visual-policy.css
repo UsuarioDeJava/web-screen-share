@@ -1,0 +1,15 @@
+/* Só interface/efeitos; vídeo e permissões continuam ativos. */
+html[data-wss-economy] { --blur: none; }
+html[data-wss-economy] :is(.login-card, .sidebar, .topbar, .tile-tools, dialog, .hud, .control-banner, .card) {
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+html[data-wss-economy] dialog::backdrop { backdrop-filter: none !important; }
+html[data-wss-economy] :is(.btn, .icon-btn) { box-shadow: none !important; transition: none !important; }
+html[data-wss-economy] :is(.wfx-arrow, .wfx-name, .draw, .wfx-ed-stroke, .wfx-ping, .reaction) { filter: none !important; }
+html[data-wss-economy] .wfx-deco { display: none !important; }
+html[data-wss-economy] :is(.wfx-aura-rainbow, .wfx-aura-pulse, .wfx-aura-bounce, .wfx-aura-wiggle) > .wfx-arrow,
+html[data-wss-economy] :is(.wfx-tw, .wfx-deco-halo, .wfx-blades, .wfx-flag-cloth, .hud-live, .live-dot, .control-dot) {
+  animation: none !important;
+}
+/* Animações finitas mantêm animationend para remover seus nós. */

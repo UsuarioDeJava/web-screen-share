@@ -86,14 +86,18 @@ window.WssGamepadView = {
     function drawWires() {
       cancelAnimationFrame(wireFrame); wireFrame=requestAnimationFrame(()=>{
         if(!root.isConnected||!layout.clientWidth)return;
-        const bounds=layout.getBoundingClientRect();wiring.setAttribute('viewBox','0 0 '+bounds.width+' '+bounds.height);
-        buttonNodes.forEach((node,i)=>{
+        const bounds=layout.getBoundingClientRect();
+        // Leia toda a geometria antes de alterar o SVG; uma escrita por fio
+        // intercalada às leituras pode forçar layout até dezessete vezes.
+        const paths=buttonNodes.map((node,i)=>{
           const target=figure.querySelector('[data-button="'+i+'"]') || figure.querySelector('[data-trigger="'+i+'"]');
           const targetBox=target.getBoundingClientRect(), box=node.tile.getBoundingClientRect();const fromLeft=node.tile.parentElement===left;
           const isGuide=i===16; const x=(isGuide?box.left+box.width/2:fromLeft?box.right:box.left)-bounds.left, y=(isGuide?box.bottom:box.top+box.height/2)-bounds.top;
           const tx=targetBox.left+targetBox.width/2-bounds.left,ty=targetBox.top+targetBox.height/2-bounds.top;
-          const bend=x+(fromLeft?14:-14);wires[i].setAttribute('d',isGuide?'M'+x+' '+y+'L'+tx+' '+ty:'M'+x+' '+y+'H'+bend+'L'+tx+' '+ty);
+          const bend=x+(fromLeft?14:-14);return isGuide?'M'+x+' '+y+'L'+tx+' '+ty:'M'+x+' '+y+'H'+bend+'L'+tx+' '+ty;
         });
+        wiring.setAttribute('viewBox','0 0 '+bounds.width+' '+bounds.height);
+        paths.forEach((d,i)=>{if(wires[i].getAttribute('d')!==d)wires[i].setAttribute('d',d);});
       });
     }
     const resizeObserver=new ResizeObserver(drawWires);resizeObserver.observe(layout);resizeObserver.observe(figure);
@@ -102,6 +106,7 @@ window.WssGamepadView = {
     let layoutKey = '', extrasKey = ''; const extraNodes = [];
     return {
       mapping, vibrationLeft, vibrationRight,
+      isLearning: () => Boolean(learning),
       update(pad, state, config) {
         const profile = window.WssGamepad.profile(config); activePad=pad; const labels = window.WssGamepad.labelsFor(profile);
         badge.textContent = window.WssGamepad.presets.find((p) => p.id === profile.preset).name;

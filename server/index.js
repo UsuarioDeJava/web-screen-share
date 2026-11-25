@@ -6,13 +6,37 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const express = require('express');
+const signaling = require('../public/js/signaling');
 const { Server } = require('socket.io');
 const { setupObs } = require('./obs');
+const { createTurnCredentials } = require('./turn-credentials');
+const { createCredentialLimiter } = require('./credential-limiter');
+const { createObsAuth } = require('./obs-auth');
+const { createObsPublishers } = require('./obs-publishers');
+const { createRoomSessions } = require('./room-sessions');
+const { createRoomAccess } = require('./room-access');
+const { candidates: relayCandidates, createRelaySelection } = require('./relay-selection');
+const relaySelection = createRelaySelection();
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const VERSION = process.env.APP_VERSION || 'dev';
 const LOCAL_TURN_SECRET = process.env.LOCAL_TURN_SECRET;
+const obsAuth = createObsAuth(process.env.OBS_PUBLISH_TOKEN);
+if (process.env.ROOM_COOKIE_SECURE !== undefined && !['0', '1'].includes(process.env.ROOM_COOKIE_SECURE)) throw Error('ROOM_COOKIE_SECURE deve ser 0 ou 1.');
+const roomCookieSecure = process.env.ROOM_COOKIE_SECURE !== '0';
+const roomSessions = createRoomSessions({ accessKey: process.env.ROOM_ACCESS_KEY, accountKeys: process.env.ROOM_ACCOUNT_KEYS, secure: roomCookieSecure,
+  ttlMs: process.env.ROOM_SESSION_TTL_SECONDS === undefined ? 28800000 : Number(process.env.ROOM_SESSION_TTL_SECONDS) * 1000 });
+const roomAccess = createRoomAccess({ sessions: roomSessions, secure: roomCookieSecure, publicationProtected: obsAuth.enabled });
+const turnIssuer = LOCAL_TURN_SECRET ? createTurnCredentials({ secret: LOCAL_TURN_SECRET,
+  ttlSeconds: process.env.TURN_CREDENTIAL_TTL_SECONDS === undefined ? 3600 : Number(process.env.TURN_CREDENTIAL_TTL_SECONDS) }) : null;
+const credentialLimiter = createCredentialLimiter({
+  perMinute: process.env.TURN_ISSUE_PER_MINUTE === undefined ? 120 : Number(process.env.TURN_ISSUE_PER_MINUTE),
+  identityPerMinute: process.env.TURN_ISSUE_IDENTITY_PER_MINUTE === undefined ? undefined : Number(process.env.TURN_ISSUE_IDENTITY_PER_MINUTE),
+  globalPerMinute: process.env.TURN_ISSUE_GLOBAL_PER_MINUTE === undefined ? 1200 : Number(process.env.TURN_ISSUE_GLOBAL_PER_MINUTE),
+});
+const obsCredentialIdentity = Symbol('OBS publication credential');
+const obsPublishers = createObsPublishers({ onChanged: path => obs?.refreshOwner(path) });
 const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
 // Porta em que o app está publicado no servidor (o lado "Host" do mapeamento). Só
 // precisa ser definida quando a página é aberta por um proxy reverso (Caddy, nginx…)
@@ -46,10 +70,21 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
+app.use('/auth', roomAccess.router);
+app.use(roomAccess.http);
 app.get('/js/gamepad-view.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-view.js')));
 app.get('/js/gamepad.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.css')));
 app.get('/js/gamepad-client.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-client.js')));
+app.get('/js/gamepad-feedback.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-feedback.js')));
 app.get('/js/gamepad.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.js')));
+app.get('/js/control-wire.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'control-wire.js')));
+app.get('/js/input-pacing.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'input-pacing.js')));
+app.get('/js/experiments.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'experiments.js')));
+app.get('/js/visual-policy.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'visual-policy.js')));
+app.get('/css/visual-policy.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'visual-policy.css')));
+app.get('/js/network-health.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'network-health.js')));
+app.get('/js/video-policy.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'video-policy.js')));
+app.get('/js/decoder-health.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'native-video', 'decoder-health.js')));
 // Arquivos que a sala e o app usam iguais (desktop/shared): gamepads, cores e estilos do mouse.
 app.get('/js/color.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'color.js')));
 app.get('/js/fx.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'fx.js')));
@@ -125,7 +160,7 @@ app.get('/avatar/:hash', (req, res) => {
     res.status(404).end();
     return;
   }
-  res.set({ 'Content-Type': entry.type, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+  res.set({ 'Content-Type': entry.type, 'Cache-Control': roomSessions.enabled ? 'private, no-store' : 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
   res.send(entry.buf);
 });
 
@@ -159,11 +194,9 @@ function buildIceServers(req) {
 }
 
 // Credenciais temporárias no formato "TURN REST API" do coturn (--use-auth-secret):
-// usuário = validade em segundos Unix, senha = HMAC-SHA1(segredo, usuário).
+// usuário = validade Unix + identificador aleatório, senha = HMAC-SHA1(segredo, usuário).
 function turnCredentials() {
-  const username = `${Math.floor(Date.now() / 1000) + 30 * 24 * 3600}:web-screen-share`;
-  const credential = crypto.createHmac('sha1', LOCAL_TURN_SECRET).update(username).digest('base64');
-  return { username, credential };
+  return turnIssuer.issue();
 }
 
 const splitHostPort = (value) => {
@@ -216,8 +249,25 @@ function turnLink(req) {
   return `<turn:${hostname}:${udpPort}?transport=udp>; rel="ice-server"; username="${username}"; credential="${credential}"`;
 }
 
-app.get('/ice-servers', (req, res) => {
-  res.set('Cache-Control', 'no-store').json(buildIceServers(req));
+function limitCredentialRequests(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  // Não confiar em X-Forwarded-For fornecido pelo cliente; proxies compartilham cota.
+  // A identidade vem da sessão validada, nunca de ID/nick/header declarado pelo cliente.
+  // OBS sem cookie usa uma cota compartilhada da credencial de publicação válida.
+  const publicationPath = req.params.publisherId ? 'pub_' + req.params.publisherId : req.params.pathId;
+  const identity = obsPublishers.identity(publicationPath, req.get('authorization'))
+    || (req.method !== 'GET' && obsAuth.enabled && obsAuth.accepts(req.get('authorization'))
+      ? obsCredentialIdentity : roomSessions.quotaIdentity(req.headers.cookie));
+  const result = credentialLimiter.consume(req.socket.remoteAddress, identity);
+  if (!result.allowed) return res.status(429).set('Retry-After', String(result.retryAfter)).json({ error: 'Muitas consultas de conexão. Tente novamente em instantes.' });
+  next();
+}
+app.get('/ice-servers', limitCredentialRequests, (req, res) => {
+  const servers = buildIceServers(req);
+  // Não guardar uma escolha coletiva após entrada/saída ou expiração de amostras.
+  const cacheSeconds = relayCandidates(servers).length > 1 ? 0 : turnIssuer?.cacheSeconds || 300;
+  res.set({ 'Cache-Control': 'no-store', 'X-ICE-Cache-Seconds': String(cacheSeconds) })
+    .json(relaySelection.select(servers, users.keys()));
 });
 
 // HTTPS via certificado do Tailscale (`tailscale cert`): necessário em redes
@@ -253,6 +303,7 @@ app.get('/status', (req, res) => {
       ? { names: certificate.names, expiresAt: certificate.expiresAt }
       : null,
     obs: Boolean(obs),
+    obsAuthRequired: obsAuth.enabled,
     proxy: proxyWithoutPublicPort(req),
   });
 });
@@ -260,9 +311,11 @@ app.get('/status', (req, res) => {
 const webServer = useHttps
   ? https.createServer({ cert: fs.readFileSync(TLS_CERT), key: fs.readFileSync(TLS_KEY) }, app)
   : http.createServer(app);
-// Mensagens de até 8 MB: a foto de perfil (até 5 MB) vai pelo socket (e, sem WebSocket,
-// em base64, uns 33% maior).
+// Compatibilidade com clientes antigos que ainda enviam imagens pelo socket.
+// Clientes atuais usam HTTP binário separado da sinalização/fallback.
 const io = new Server(webServer, { maxHttpBufferSize: 8e6 });
+io.engine.use(roomAccess.engine);
+io.use(roomSessions.authorizeSocket);
 
 // Uma porta só pra tudo, pra não precisar publicar outra no Docker/CasaOS: conexões
 // que começam com uma mensagem STUN/TURN (magic cookie nos bytes 4-7) vão pro TURN
@@ -333,8 +386,9 @@ function uniqueName(name) {
 // escolheu. color é a cor exata (#rrggbb); hue, o tom dela (o app de antes da cor livre
 // só entende o tom).
 // cursorImg/pingImg: as imagens próprias da setinha e do ping (no mesmo lugar das fotos).
-const publicUser = ({ id, name, sharing, kind, stream, since, startedAt, voice, hue, color, avatar, style, cursorImg, pingImg }) => {
+const publicUser = ({ id, name, sharing, kind, stream, ownerId, since, startedAt, voice, hue, color, avatar, style, cursorImg, pingImg }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
+  if (kind === 'obs') user.ownerId = ownerId || null;
   if (sharing) user.since = since || startedAt || null;
   if (voice) user.voice = voice;
   if (Number.isInteger(hue)) user.hue = hue;
@@ -402,7 +456,10 @@ function cleanChatText(raw) {
 // O histórico vai pra um arquivo (na imagem Docker, na pasta de dados), pra continuar
 // lá depois de reiniciar ou atualizar o app.
 const CHAT_FILE = process.env.CHAT_FILE || null;
-let chatSaveTimer = null;
+const chatStore = require('./snapshot-store').createSnapshotStore({
+  file: CHAT_FILE, snapshot: () => chatHistory,
+  onError: err => console.log(`AVISO: não deu pra salvar o histórico do chat (${err.message}).`),
+});
 
 function loadChatHistory() {
   if (!CHAT_FILE) return;
@@ -422,30 +479,20 @@ function loadChatHistory() {
   }
 }
 
-function saveChatNow() {
-  clearTimeout(chatSaveTimer);
-  chatSaveTimer = null;
-  if (!CHAT_FILE) return;
-  try {
-    const tmp = `${CHAT_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(chatHistory));
-    fs.renameSync(tmp, CHAT_FILE);
-  } catch (err) {
-    console.log(`AVISO: não deu pra salvar o histórico do chat (${err.message}).`);
-  }
-}
-
-function saveChatSoon() {
-  if (CHAT_FILE && !chatSaveTimer) chatSaveTimer = setTimeout(saveChatNow, 2000);
-}
-
 loadChatHistory();
 
 // Parar o container (ou Ctrl+C) salva o que ainda não foi pro arquivo.
+let stopping = false;
 for (const signal of ['SIGTERM', 'SIGINT']) {
-  process.on(signal, () => {
-    if (chatSaveTimer) saveChatNow();
-    process.exit(0);
+  process.on(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    obs?.close();
+    obsPublishers.close();
+    server.close();
+    io.disconnectSockets(true);
+    const saved = await chatStore.close();
+    process.exit(saved ? 0 : 1);
   });
 }
 
@@ -458,6 +505,19 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     apiAuth: process.env.MEDIAMTX_API_AUTH,
     cleanName,
     turnLink,
+    credentialLimit: limitCredentialRequests,
+    publicationAuth: obsAuth.middleware,
+    publicationInfo: path => obsPublishers.info(path),
+    publisherAuth(req, res, next) {
+      res.set('Cache-Control', 'no-store');
+      const path = req.params.publisherId ? 'pub_' + req.params.publisherId : req.params.pathId;
+      if (obsPublishers.accepts(path, req.get('authorization'))) return next();
+      res.status(401).set('WWW-Authenticate', 'Bearer realm="obs"').json({ error: 'Credencial individual OBS ausente ou encerrada.' });
+    },
+    onStreamUpdated(stream) {
+      revokeControlFor(stream.id);
+      io.to(ROOM).emit('user:updated', publicUser(stream));
+    },
     onStreamsChanged(added, removed) {
       for (const stream of added) {
         logEvent(`OBS: ${stream.name} começou a transmitir`);
@@ -479,16 +539,21 @@ function clientAddress(socket) {
   return address.startsWith('::ffff:') ? address.slice(7) : address;
 }
 
-// A transmissão é dessa pessoa (pela página ou pelo OBS, com o mesmo nick)?
+// Nome não prova propriedade. OBS só pertence ao socket vinculado à credencial.
 function ownsStream(user, id) {
   if (id === user.id) return user.sharing;
-  return Boolean(obs && obs.list().some((stream) => stream.id === id && stream.name === user.name));
+  return Boolean(obs && obs.list().some((stream) => stream.id === id && stream.ownerId === user.id));
 }
 
 const remoteControl = require('./control').createControl({ io, users, ownsStream, allow, logEvent });
 const revokeControlFor = remoteControl.revokeFor;
+const assetUploads = require('./asset-uploads').createAssetUploads({ getOwner: socket => users.get(socket.id) });
+app.post('/asset-upload', assetUploads.http);
 
-function removeUser(socket) {
+function removeUser(socket, revokePublication = true) {
+  relaySelection.remove(socket.id);
+  obsPublishers.detach(socket.id, revokePublication);
+  assetUploads.revoke(socket);
   revokeControlFor(socket.id);
   const user = users.get(socket.id);
   if (user) {
@@ -515,6 +580,17 @@ function listLanAddresses() {
 }
 
 io.on('connection', (socket) => {
+  socket.on('relay:probe', (_payload, ack) => {
+    if (typeof ack !== 'function') return;
+    if (!users.has(socket.id) || !allow(socket, 'relay-probe', 1, 60000)) return ack(null);
+    const quota = credentialLimiter.consume(socket.handshake.address, roomSessions.quotaIdentity(socket.handshake.headers.cookie));
+    if (!quota.allowed) return ack(null);
+    const req = { get: name => socket.handshake.headers[name.toLowerCase()], secure: Boolean(socket.request.socket.encrypted) };
+    ack(relaySelection.begin(socket.id, buildIceServers(req)));
+  });
+  socket.on('relay:report', report => {
+    if (users.has(socket.id) && allow(socket, 'relay-report', 2, 60000)) relaySelection.report(socket.id, report);
+  });
   socket.on('join', (payload, ack) => {
     if (typeof ack !== 'function') return;
     if (users.has(socket.id)) return ack({ error: 'Você já está na sala.' });
@@ -529,7 +605,7 @@ io.on('connection', (socket) => {
       for (const u of users.values()) {
         const ghost = u.clientId === clientId && io.sockets.sockets.get(u.id);
         if (ghost) {
-          removeUser(ghost);
+          removeUser(ghost, false);
           ghost.disconnect(true);
         }
       }
@@ -547,7 +623,20 @@ io.on('connection', (socket) => {
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
-    ack({ me: publicUser(user), users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION });
+    ack({ me: publicUser(user), users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION, assetUpload: 1, obsPublication: obs ? 1 : 0 });
+  });
+  socket.on('obs:credentials', (previous, ack) => {
+    if (typeof ack !== 'function') return;
+    const user = users.get(socket.id);
+    if (!obs || !user || !allow(socket, 'obs-credentials', 8, 10000)) return ack({ error: 'Publicação OBS indisponível. Entre na sala e tente novamente.' });
+    const cookie = socket.handshake.headers.cookie, identity = roomSessions.identity(cookie);
+    const principal = roomSessions.account(cookie);
+    if (principal) {
+      const quota = credentialLimiter.consume(socket.handshake.address, principal);
+      if (!quota.allowed) return ack({ error: 'Muitas solicitações de credenciais.', retryAfter: quota.retryAfter });
+    }
+    ack(obsPublishers.issue({ user, identity, previous, principal,
+      authorized: () => !roomSessions.enabled || identity !== null && roomSessions.identity(cookie) === identity }));
   });
 
   // startedAt: quando a pessoa começou a transmitir, pra não zerar o tempo ao vivo
@@ -586,11 +675,11 @@ io.on('connection', (socket) => {
   });
 
   // Foto de perfil: os bytes da imagem (ou null pra tirar).
-  socket.on('avatar', (data, ack) => {
+  const updateAvatar = (data, ack, charge = true) => {
     const reply = typeof ack === 'function' ? ack : () => {};
     const user = users.get(socket.id);
     if (!user) return reply({ error: 'Você não está na sala.' });
-    if (!allow(socket, 'avatar', 6, 60000)) return reply({ error: 'Calma aí: muitas trocas de foto seguidas.' });
+    if (charge && !allow(socket, 'avatar', 6, 60000)) return reply({ error: 'Calma aí: muitas trocas de foto seguidas.' });
     let hash = null;
     if (data != null) {
       const buf = Buffer.isBuffer(data) ? data : data instanceof ArrayBuffer ? Buffer.from(data) : null;
@@ -600,22 +689,24 @@ io.on('connection', (socket) => {
       if (!type) return reply({ error: 'Use uma foto PNG, JPG, WebP ou GIF.' });
       hash = storeAvatar(buf, type);
     }
+    if (charge) assetUploads.cancel(socket, 'avatar');
     releaseAvatar(user.avatar);
     if (hash) user.avatar = hash;
     else delete user.avatar;
     socket.to(ROOM).emit('user:updated', publicUser(user));
     reply({ ok: true, avatar: hash ? `/avatar/${hash}` : null });
-  });
+  };
+  socket.on('avatar', (data, ack) => updateAvatar(data, ack));
 
   // Imagens próprias do estilo (a setinha e o ping): PNG, GIF, WebP ou JPG pequenos (o
   // navegador já reduz e converte .cur/.ani). Ficam junto das fotos de perfil.
-  socket.on('fx:image', (msg, ack) => {
+  const updateFxImage = (msg, ack, charge = true) => {
     const reply = typeof ack === 'function' ? ack : () => {};
     const user = users.get(socket.id);
     if (!user) return reply({ error: 'Você não está na sala.' });
     const kind = msg && msg.kind;
     if (kind !== 'cursor' && kind !== 'ping') return reply({ error: 'Imagem de quê?' });
-    if (!allow(socket, 'fx-image', 12, 60000)) return reply({ error: 'Calma aí: muitas trocas de imagem seguidas.' });
+    if (charge && !allow(socket, 'fx-image', 12, 60000)) return reply({ error: 'Calma aí: muitas trocas de imagem seguidas.' });
     let hash = null;
     if (msg.data != null) {
       const buf = Buffer.isBuffer(msg.data) ? msg.data : msg.data instanceof ArrayBuffer ? Buffer.from(msg.data) : null;
@@ -628,11 +719,25 @@ io.on('connection', (socket) => {
       hash = storeAvatar(buf, type);
     }
     const field = kind === 'cursor' ? 'cursorImg' : 'pingImg';
+    if (charge) assetUploads.cancel(socket, kind);
     releaseAvatar(user[field]);
     if (hash) user[field] = hash;
     else delete user[field];
     socket.to(ROOM).emit('user:updated', publicUser(user));
     reply({ ok: true, url: hash ? `/avatar/${hash}` : null });
+  };
+  socket.on('fx:image', (msg, ack) => updateFxImage(msg, ack));
+  socket.on('asset:permit', (kind, ack) => {
+    if (typeof ack !== 'function') return;
+    if (!users.has(socket.id) || !['avatar', 'cursor', 'ping'].includes(kind)) return ack({ error: 'Upload inválido.' });
+    if (!allow(socket, kind === 'avatar' ? 'avatar' : 'fx-image', kind === 'avatar' ? 6 : 12, 60000)) return ack({ error: 'Calma aí: muitas trocas de imagem seguidas.' });
+    ack(assetUploads.issue(socket, kind, data => {
+      let result;
+      const reply = value => { result = value; };
+      if (kind === 'avatar') updateAvatar(data, reply, false);
+      else updateFxImage({ kind, data }, reply, false);
+      return result;
+    }));
   });
 
   socket.on('chat:send', (raw, ack) => {
@@ -648,7 +753,7 @@ io.on('connection', (socket) => {
     if (user.color) message.color = user.color;
     chatHistory.push(message);
     if (chatHistory.length > CHAT_HISTORY) chatHistory.shift();
-    saveChatSoon();
+    chatStore.changed();
     io.to(ROOM).emit('chat:message', message);
     reply({ ok: true });
   });
@@ -772,12 +877,14 @@ io.on('connection', (socket) => {
 
   // Relay ponto a ponto da sinalização WebRTC (watch/offer/answer/candidate/...).
   socket.on('signal', (msg) => {
-    if (!users.has(socket.id) || !msg || typeof msg.to !== 'string' || !users.has(msg.to)) return;
-    io.to(msg.to).emit('signal', { from: socket.id, address: clientAddress(socket), data: msg.data });
+    if (!users.has(socket.id) || !msg || typeof msg.to !== 'string' || msg.to.length > 128 || !users.has(msg.to)
+      || !allow(socket, 'signal', 400, 1000)) return;
+    const data = signaling.clean(msg.data);
+    if (data) io.to(msg.to).emit('signal', { from: socket.id, address: clientAddress(socket), data });
   });
 
   socket.on('leave', () => removeUser(socket));
-  socket.on('disconnect', () => removeUser(socket));
+  socket.on('disconnect', reason => removeUser(socket, !['transport close', 'transport error', 'ping timeout'].includes(reason)));
 });
 
 server.listen(PORT, HOST, () => {
@@ -814,7 +921,7 @@ server.listen(PORT, HOST, () => {
 async function checkObs(attempt = 1) {
   if (await obs.ready()) {
     const host = `${certificate && certificate.names[0] ? certificate.names[0] : 'IP-DO-NAS'}:${DISPLAY_PORT}`;
-    console.log(`Transmissão pelo OBS ativa: no OBS, Serviço "WHIP", servidor https://${host}/obs/SEU-NICK`);
+    console.log('Transmissão pelo OBS ativa: entre na sala e abra OBS para copiar seu endereço e Bearer Token individuais.');
   } else if (attempt < 10) {
     setTimeout(() => checkObs(attempt + 1), 1000);
   } else {

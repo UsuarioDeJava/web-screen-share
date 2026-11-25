@@ -12,6 +12,8 @@ services:
       # Transmissão pelo OBS: o vídeo chega pelo TURN embutido em UDP (o OBS não
       # sabe usar TURN por TCP). Mesmo número da porta do site, só que UDP.
       - "3000:3478/udp"
+      # Opcional: habilite junto com MEDIAMTX_PUBLIC_HOST para mídia OBS por UDP direto.
+      # - "8189:8189/udp"
     volumes:
       - web-screen-share-data:/data
       # Pra usar um certificado de verdade (ex.: gerado com `tailscale cert` no
@@ -21,6 +23,36 @@ services:
       # - /caminho/no/host/seu-dominio.key:/certs/cert.key:ro
     environment:
       - PORT=3000
+      # Acesso opcional à sala: chave aleatória, 32 a 256 caracteres ASCII sem espaços.
+      # Sem chave (ou vazia), a sala permanece aberta. Requer versão com esta opção.
+      # Contas individuais (JSON), como alternativa à chave compartilhada:
+      # - ROOM_ACCOUNT_KEYS
+      # - ROOM_ACCESS_KEY=SUBSTITUA_POR_UMA_CHAVE_ALEATORIA
+      # Prazo absoluto da sessão: 60 a 86400 s, padrão oito horas.
+      # - ROOM_SESSION_TTL_SECONDS=28800
+      # Cookie Secure exige HTTPS; 0 somente para desenvolvimento HTTP local.
+      # - ROOM_COOKIE_SECURE=1
+      # Token opcional de publicação OBS: segredo aleatório, 32 a 256 caracteres sem espaços.
+      # Sem esta variável, a publicação continua aberta. Não autentica a sala.
+      # - OBS_PUBLISH_TOKEN=SUBSTITUA_POR_UM_SEGREDO_ALEATORIO
+      # Validade de novas credenciais do TURN embutido: 60 a 86400 s (padrão: 3600).
+      # - TURN_CREDENTIAL_TTL_SECONDS=3600
+      # Cotas de consultas ICE/publicação OBS por minuto, com rajada inicial igual.
+      # NAT/proxy compartilham a cota por endereço de transporte.
+      # - TURN_ISSUE_PER_MINUTE=120
+      # Por sessão autenticada/credencial OBS compartilhada; herda a cota por endereço.
+      # - TURN_ISSUE_IDENTITY_PER_MINUTE=120
+      # - TURN_ISSUE_GLOBAL_PER_MINUTE=1200
+      # Quotas do coturn embutido: alocações simultâneas totais e por credencial.
+      # Não equivalem ao número de jogadores. Total: 1 a 16384; por credencial: 1 ao total.
+      # - TURN_TOTAL_QUOTA=128
+      # - TURN_USER_QUOTA=16
+      # Banda opcional em BYTES/s; 0 desativa o limite. Ajuste com medições reais.
+      # - TURN_MAX_BPS=0
+      # - TURN_BPS_CAPACITY=0
+      # IP/DNS alcançável pelos clientes (LAN, Tailscale ou público), sem porta.
+      # Configure também o firewall para UDP 8189. TURN permanece como fallback.
+      # - MEDIAMTX_PUBLIC_HOST=100.x.y.z
       # Só se a página for aberta por um proxy reverso (Caddy, nginx…) numa porta
       # diferente: a porta publicada acima (lado do host), pra onde o TURN vai direto.
       # - PUBLIC_PORT=3000

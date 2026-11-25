@@ -44,24 +44,41 @@
     };
   }
   function sample(pad, config) {
-    const p = profile(config);
-    const valueOf = (index) => Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
-    const buttons = p.buttons.map(valueOf);
-    p.triggers.forEach((trigger, i) => {
-      const raw = trigger.type === 'axis' ? Number(pad.axes[trigger.source]) : valueOf(trigger.type === 'button' ? trigger.source : p.buttons[6 + i]);
+    return sampleProfile(pad, profile(config));
+  }
+  function createSampler(config, { reuseOutput = false } = {}) {
+    const normalized = profile(config);
+    // Opt-in para leitura interna: o próximo sample sobrescreve o resultado.
+    // Quem retém/envia um estado deve copiar os vetores antes da próxima leitura.
+    const output = reuseOutput ? neutral() : null;
+    return pad => sampleProfile(pad, normalized, output);
+  }
+  const buttonValue = (pad, index) => Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
+  function sampleProfile(pad, p, output = null) {
+    const result = output || { buttons: Array(17), axes: Array(4) }, buttons = result.buttons;
+    for (let i = 0; i < 17; i++) buttons[i] = buttonValue(pad, p.buttons[i]);
+    for (let i = 0; i < 2; i++) {
+      const trigger = p.triggers[i];
+      const raw = trigger.type === 'axis' ? Number(pad.axes[trigger.source]) : buttonValue(pad, trigger.type === 'button' ? trigger.source : p.buttons[6 + i]);
       buttons[6 + i] = Number.isFinite(raw) ? Math.round(Math.max(0, Math.min(1, (raw - trigger.min) / (trigger.max - trigger.min))) * 1e6) / 1e6 : 0;
-    });
-    if (p.preset === 'custom') for (const binding of p.extraButtons) buttons[binding.target] = Math.max(buttons[binding.target], valueOf(binding.source));
+    }
+    if (p.preset === 'custom') for (const binding of p.extraButtons) buttons[binding.target] = Math.max(buttons[binding.target], buttonValue(pad, binding.source));
     for (let i = 0; i < 2; i++) buttons[6 + i] *= p.triggerLimits[i];
-    return {
-      buttons,
-      axes: p.axes.map((index, i) => {
-        let value = Math.max(-1, Math.min(1, Number(pad.axes[index]) || 0));
-        value = Math.abs(value) <= p.deadzone ? 0 : Math.sign(value) * (Math.abs(value) - p.deadzone) / (1 - p.deadzone);
-        return Math.round(value * (p.invert[i] ? -1 : 1) * 1000) / 1000;
-      }),
-    };
+    for (let i = 0; i < 4; i++) {
+      let value = Math.max(-1, Math.min(1, Number(pad.axes[p.axes[i]]) || 0));
+      value = Math.abs(value) <= p.deadzone ? 0 : Math.sign(value) * (Math.abs(value) - p.deadzone) / (1 - p.deadzone);
+      result.axes[i] = Math.round(value * (p.invert[i] ? -1 : 1) * 1000) / 1000;
+    }
+    return result;
   }
   const neutral = () => ({ axes: [0, 0, 0, 0], buttons: Array(17).fill(0) });
-  return { labels, labelsFor, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, neutral };
+  // Comparação de estados já normalizados pelo sampler; não substitui validação
+  // de pacotes. Preserva toda a precisão, sem serializar a cada leitura física.
+  function sameState(a, b) {
+    if (!a || !b || a.axes?.length !== 4 || b.axes?.length !== 4 || a.buttons?.length !== 17 || b.buttons?.length !== 17) return false;
+    for (let i = 0; i < 4; i++) if (a.axes[i] !== b.axes[i]) return false;
+    for (let i = 0; i < 17; i++) if (a.buttons[i] !== b.buttons[i]) return false;
+    return true;
+  }
+  return { labels, labelsFor, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
 });
