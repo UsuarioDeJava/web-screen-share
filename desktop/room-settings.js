@@ -245,12 +245,13 @@ function validateRoomAction(value) {
   if (value.type === 'style' && value.style && typeof value.style === 'object' && !Array.isArray(value.style)) return { type: value.type, style: normalizeStyle(value.style) };
   if (value.type === 'cursor' && ['share', 'show'].includes(value.field) && typeof value.enabled === 'boolean') return { type: value.type, field: value.field, enabled: value.enabled };
   if (value.type === 'sounds' && typeof value.enabled === 'boolean') return { type: value.type, enabled: value.enabled };
+  if (value.type === 'experiment' && typeof value.key === 'string' && Object.hasOwn(require('./shared/experiments').DEFAULTS, value.key) && typeof value.enabled === 'boolean') return { type: value.type, key: value.key, enabled: value.enabled };
   if (value.type === 'obs-display' && typeof value.value === 'string' && (value.value === 'off' || /^-?\d{1,20}$/.test(value.value))) return { type: value.type, value: value.value };
   if (value.type === 'control' && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 80 && typeof value.grant === 'boolean') return { type: value.type, name: value.name, grant: value.grant, ...(value.devices ? { devices: require('./shared/gamepad').permissions(value.devices) } : {}) };
   if (value.type === 'color' && (value.color === null || /^#[0-9a-f]{6}$/i.test(value.color))) {
     return { type: value.type, color: value.color === null ? null : value.color.toLowerCase(), commit: value.commit !== false };
   }
-  if (['photo-remove', 'diagnostics', 'check-updates', 'admin-open', 'obs-check'].includes(value.type)) return { type: value.type };
+  if (['photo-remove', 'diagnostics', 'check-updates', 'admin-open', 'obs-check', 'performance-report'].includes(value.type)) return { type: value.type };
   // Conta (com contas no servidor): trocar o nick e a senha.
   if (value.type === 'account-nick' && typeof value.nick === 'string' && value.nick.trim() && value.nick.length <= 80) return { type: value.type, nick: value.nick };
   if (value.type === 'account-password' && typeof value.current === 'string' && typeof value.next === 'string'
@@ -275,6 +276,7 @@ const { normalize: normalizeStyle } = require('./shared/fx');
 function createRoomSettings({ getContents, isServer }) {
   const lanes = new Map();
   const waiting = new Set();
+  const reads = new Map();
   let generation = 0;
   const execute = (fn, argument) => {
     const contents = getContents();
@@ -302,13 +304,23 @@ function createRoomSettings({ getContents, isServer }) {
     return result;
   };
   return {
-    read: (section) => run(readRoomSettings, ['diagnostics', 'obs', 'media'].includes(section) ? section : undefined),
+    read(section) {
+      const key = ['diagnostics', 'obs', 'media'].includes(section) ? section : undefined;
+      if (reads.has(key)) return reads.get(key);
+      const pending = run(readRoomSettings, key).finally(() => {
+        if (reads.get(key) === pending) reads.delete(key);
+      });
+      reads.set(key, pending);
+      return pending;
+    },
     action(value) {
       const command = validateRoomAction(value);
+      // Uma leitura iniciada antes da alteração não atende consultas posteriores.
+      reads.clear();
       const lane = command.type.startsWith('photo') ? 'photo' : command.type.startsWith('fx-image') ? 'fx-image' : command.type === 'color' ? 'color' : command.type === 'control' ? undefined : command.type;
-      return run(applyRoomAction, command, lane);
+      return run(applyRoomAction, command, lane).finally(() => reads.clear());
     },
-    cancel() { generation++; for (const cancel of waiting) cancel(); lanes.clear(); },
+    cancel() { generation++; for (const cancel of waiting) cancel(); lanes.clear(); reads.clear(); },
   };
 }
 

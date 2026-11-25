@@ -1,9 +1,29 @@
 const { contextBridge, ipcRenderer } = require('electron');
+ipcRenderer.on('desktop:visual-mode', (_event, mode) => {
+  const value = ['normal', 'economy', 'auto'].includes(mode) ? mode : 'normal';
+  const root = document.documentElement;
+  if (root && root.getAttribute('data-wss-visual-mode') !== value) {
+    root.setAttribute('data-wss-visual-mode', value);
+    root.toggleAttribute('data-wss-economy', value === 'economy');
+  }
+});
 contextBridge.exposeInMainWorld('desktopSettings', {
   readGamepadProfiles: () => ipcRenderer.invoke('settings:gamepad-profiles'),
+  onGamepadProfiles: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('desktop:gamepad-profiles', listener);
+    return () => ipcRenderer.removeListener('desktop:gamepad-profiles', listener);
+  },
   prepareGamepad: () => ipcRenderer.invoke('settings:gamepad-setup'),
   saveGamepadProfile: (value) => ipcRenderer.invoke('settings:gamepad-profile-save', value),
   read: () => ipcRenderer.invoke('settings:read'),
+  readShortcuts: () => ipcRenderer.invoke('settings:shortcuts-read'),
+  shortcutAction: (action) => ipcRenderer.invoke('settings:shortcuts-action', action),
+  onShortcuts: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('settings:shortcuts', listener);
+    return () => ipcRenderer.removeListener('settings:shortcuts', listener);
+  },
   save: (value) => ipcRenderer.invoke('settings:save', value),
   restart: () => ipcRenderer.invoke('settings:restart'),
   clearLog: () => ipcRenderer.invoke('settings:clear-log'),

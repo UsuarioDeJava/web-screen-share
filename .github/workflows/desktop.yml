@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - desktop/**
+      - scripts/build-wgc-encode-probe.ps1
       - .github/workflows/desktop.yml
   workflow_dispatch: {}
 

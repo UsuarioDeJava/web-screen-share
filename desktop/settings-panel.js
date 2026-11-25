@@ -8,7 +8,7 @@ const { pathToFileURL } = require('node:url');
 // desenha o fundo escurecido e o cartão). Fecha no X, no Esc, clicando fora ou no Ctrl+,;
 // minimiza, muda de tamanho e fecha junto com a janela. `getInset` é a altura da barra de
 // título própria (janela sem bordas), que continua de fora pra minimizar e fechar.
-function createSettingsPanel({ getParent, getInset = () => 0, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity }) {
+function createSettingsPanel({ getParent, getInset = () => 0, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity, getShortcuts, shortcutAction }) {
   let view = null;
   let parent = null;
   let timer = null;
@@ -70,6 +70,8 @@ function createSettingsPanel({ getParent, getInset = () => 0, getState, readGame
 
   for (const [channel, handler] of Object.entries({
     'settings:read': getState,
+    'settings:shortcuts-read': getShortcuts,
+    'settings:shortcuts-action': shortcutAction,
     'settings:gamepad-profiles': readGamepadProfiles,
     'settings:gamepad-profile-save': saveGamepadProfile,
     'settings:gamepad-setup': prepareGamepad,
@@ -132,6 +134,7 @@ function createSettingsPanel({ getParent, getInset = () => 0, getState, readGame
       wc.once('did-finish-load', () => {
         if (contents() !== wc) return;
         wc.send('settings:section', section);
+        wc.send('desktop:visual-mode', getState().preferences.visualMode);
         wc.focus();
         queue();
       });
@@ -145,6 +148,9 @@ function createSettingsPanel({ getParent, getInset = () => 0, getState, readGame
     close,
     layout,
     isOpen: () => Boolean(contents()),
+    gamepadProfilesChanged(value) { if (contents()) contents().send('desktop:gamepad-profiles', value); },
+    visualModeChanged(value) { if (contents()) contents().send('desktop:visual-mode', value); },
+    shortcutsChanged(value) { if (contents()) contents().send('settings:shortcuts', value); },
   };
 }
 

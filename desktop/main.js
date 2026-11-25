@@ -19,12 +19,23 @@ const { createWindowAudio } = require('./window-audio');
 const { createGamepads } = require('./gamepad');
 const { createGamepadSetup } = require('./gamepad-setup');
 const gamepadModel = require('./shared/gamepad');
+const controlWire = require('./shared/control-wire');
+const { createNativeInputBudget } = require('./shared/native-input-budget');
+const { createControlReceiver } = require('./control-receiver');
+const { createNativeVideo } = require('./native-video');
+const commandBatch = require('./shared/native-command-batch');
+const { installNativeRoomAssets } = require('./shared/native-room-assets');
+const { pathToFileURL } = require('node:url');
+const networkDiagnostics = require('./shared/network-diagnostics').createNetworkDiagnostics();
+const gpuTelemetry = require('./gpu-telemetry').createGpuTelemetry();
 const { createUpdates } = require('./updates');
 const { createKeyHook } = require('./keyhook');
 const { createBorderlessFullscreen } = require('./borderless-fullscreen');
+const { resolveCaptureDisplay, findSelectedDisplay, snapshotInputDisplay } = require('./capture-display');
 const { normalizePreferences, startupPreferences } = require('./preferences');
 const { createActivityLog } = require('./activity-log');
 const { createSettingsPanel } = require('./settings-panel');
+const { createShortcuts } = require('./shortcuts');
 const { createRoomSettings } = require('./room-settings');
 const { readConfig, writeConfig } = require('./config-store');
 const { normalize: normalizeStyle } = require('./shared/fx');
@@ -66,9 +77,24 @@ let drawMode = false; // você está rabiscando a sua tela (a camada pega o mous
 let identity = { hue: 200, color: null, style: null }; // a sua cor (color: #rrggbb) e o seu estilo (pincel) na sala
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
-const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad') });
+const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad'), onFeedback(value) {
+  const session = controlSessions.get(value.id);
+  if (controller && overlay && !overlay.isDestroyed() && controlPeople.get(value.id)?.gamepad && session && !nativeInputBudget.blocked(value.id)) {
+    toPage('desktop:gamepad-feedback', { from: value.id, session, strong: value.strong, weak: value.weak, duration: value.duration });
+    commandReceiver.event('feedback',{from:value.id,session,strong:value.strong,weak:value.weak,duration:value.duration});
+  }
+} });
 const gamepadSetup = createGamepadSetup({ directory: path.join(app.getPath('userData'), 'gamepad') });
 let controlPeople = new Map();
+let controlSessions = new Map();
+const controlPulses = new Map();
+const nativeInputBudget = createNativeInputBudget({ onBlock(id, session) {
+  resetPeerInput(id);
+  controlPulses.delete(id);
+  toPage('desktop:control-blocked', { from: id, session });
+  commandReceiver.event('blocked',{from:id,session});
+  log('control', 'Concessão de controle bloqueada por excesso de comandos.', 'warn');
+} });
 const gamepadReceivers = new Map();
 let controller = null; // quem está controlando agora: { name }
 // Um mouse só: enquanto alguém com o mouse liberado está no modo controle (o 🎮 ligado em
@@ -81,6 +107,9 @@ let remoteCursorTimer = null;
 let localCursorDrawn = ''; // o que a camada está desenhando agora ('' = nada)
 let lastCursorShape = null;
 const REMOTE_CURSOR_MS = 16;
+const commandReceiver=createControlReceiver({getServer:()=>config.server,getMain:()=>mainWindow?.webContents,
+  allowed:(peer,grant)=>controlSessions.get(peer)===grant&&controlPeople.has(peer)&&!nativeInputBudget.blocked(peer),
+  fault:value=>nativeInputBudget.block(value.from,value.session)});
 let picker = null; // seletor de tela aberto: { win, finish }
 const windowAudio = createWindowAudio({
   send: (pcm) => toPage('desktop:window-audio-pcm', pcm),
@@ -237,6 +266,8 @@ function createMainWindow() {
   });
   webContents.on('did-start-navigation', (details) => {
     if (!details.isMainFrame || details.isSameDocument) return;
+    nativeVideo.stop();
+    lastInputBatch.delete(webContents);
     updates.pageGone();
     roomSettings?.cancel();
     windowAudio.stop();
@@ -246,7 +277,7 @@ function createMainWindow() {
     if (borderlessFullscreen) borderlessFullscreen.exit();
     setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
-  webContents.on('render-process-gone', () => { setKeyCapture(false); setController(null); });
+  webContents.on('render-process-gone', () => { nativeVideo.stop(); setKeyCapture(false); setController(null); });
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
     serverLoadFailed = true;
@@ -263,6 +294,7 @@ function createMainWindow() {
     await webContents.insertCSS(fs.readFileSync(path.join(PAGES, 'window.css'), 'utf8'));
     if (borderlessFullscreen) borderlessFullscreen.publish();
     publishOverlayState();
+    publishVisualMode();
     log('connection', isServerUrl(webContents.getURL()) ? 'Página da sala carregada.' : 'Tela de configuração carregada.');
     if (SELF_TEST) {
       const keys = await selfTestKeys();
@@ -378,9 +410,10 @@ function settingsState() {
     || pendingPreferences.fullscreen !== activePreferences.fullscreen
     || pendingPreferences.hardwareAcceleration !== activePreferences.hardwareAcceleration;
   return {
+    nativeVideo: nativeVideo.caps(),
     server: config.pendingServer || config.server, activeServer: config.server,
     gamepadClientPath: path.join(app.getPath('userData'), 'gamepad', process.arch, 'ViGEmClient.dll'),
-    preferences: pendingPreferences, active: activePreferences, restartRequired, log: activity.snapshot(),
+    preferences: pendingPreferences, active: activePreferences, restartRequired, log: activity.snapshot(), shortcuts: shortcutState(),
     environment: {
       app: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome,
       platform: `${process.platform} ${process.arch}`,
@@ -402,14 +435,20 @@ function saveSettings(value) {
   const overlayChanged = pendingPreferences.overlay !== preferences.overlay;
   pendingPreferences = preferences;
   activity.configure(preferences);
+  publishVisualMode();
   if (overlayChanged) reconcileOverlays();
   log('system', 'Configurações do aplicativo salvas.');
   return { ok: true };
 }
 
 // ---------- seletor de tela/janela ----------
+const nativeVideo = createNativeVideo({ pickSource, enabled: () => pendingPreferences.nativeVideo,
+  notify: value => { if(mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:native-video',value); } });
+ipcMain.handle('desktop:native-video-caps', event => fromServer(event) ? nativeVideo.caps() : {available:false,enabled:false});
+ipcMain.handle('desktop:native-video-prepare', event => { if(!fromServer(event))throw Error('Origem não autorizada.');return nativeVideo.prepare(); });
+ipcMain.handle('desktop:native-video-command', (event,value) => { if(!fromServer(event))throw Error('Origem não autorizada.');return nativeVideo.command(value); });
 
-function pickSource() {
+function pickSource(options = {}) {
   if (picker) {
     picker.win.focus();
     return Promise.resolve(null);
@@ -439,7 +478,7 @@ function pickSource() {
       resolve(result);
       if (!win.isDestroyed()) win.close();
     };
-    picker = { win, finish };
+    picker = { win, finish, nativeWindow: options.nativeWindow === true };
     win.on('closed', () => finish(null));
     win.once('ready-to-show', () => win.show());
     win.loadFile(path.join(PAGES, 'picker.html'));
@@ -460,15 +499,18 @@ function screenLabel(source, displays) {
   return display ? displayLabel(display, displays) : 'Tela';
 }
 
-ipcMain.handle('picker:info', () => ({ systemAudio: SYSTEM_AUDIO, windowAudio: windowAudio.supported, overlay: OVERLAY_SUPPORTED }));
+ipcMain.handle('picker:info', () => ({ systemAudio: SYSTEM_AUDIO && !picker?.nativeWindow, windowAudio: windowAudio.supported && !picker?.nativeWindow,
+  overlay: OVERLAY_SUPPORTED, nativeWindow: !!picker?.nativeWindow }));
 
 ipcMain.handle('picker:sources', async (event) => {
   if (!picker || event.sender !== picker.win.webContents) return [];
+  const currentPicker = picker;
   const sources = await desktopCapturer.getSources({
-    types: ['screen', 'window'],
+    types: picker.nativeWindow ? ['window'] : ['screen', 'window'],
     thumbnailSize: { width: 480, height: 270 },
     fetchWindowIcons: true,
   });
+  if(picker !== currentPicker) return [];
   // As janelas do próprio app ficam de fora.
   const own = new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
   const displays = screen.getAllDisplays();
@@ -491,7 +533,8 @@ ipcMain.on('picker:choose', (event, choice) => {
   const source = lastSources.get(choice.id);
   if (!source) return;
   const kind = source.id.startsWith('screen:') ? 'screen' : 'window';
-  picker.finish({ source, kind, displayId: source.display_id, audio: Boolean(choice.audio), windowAudio: kind === 'window' && choice.windowAudio === true });
+  if(picker.nativeWindow && kind!=='window') return;
+  picker.finish({ source, kind, displayId: source.display_id, audio: Boolean(choice.audio), windowAudio: kind === 'window' && choice.windowAudio === true && !picker.nativeWindow });
 });
 
 ipcMain.on('picker:cancel', (event) => {
@@ -504,14 +547,14 @@ ipcMain.on('picker:cancel', (event) => {
 // cada ponto cai).
 function shareDisplay() {
   if (!picked || picked.kind !== 'screen') return null;
-  const displays = screen.getAllDisplays();
-  return displays.find((d) => String(d.id) === String(picked.displayId)) || (displays.length === 1 ? displays[0] : null);
+  return findSelectedDisplay(picked.displayId, screen.getAllDisplays());
 }
 
 // Monitor que o OBS está capturando: o escolhido na janela do OBS da sala, ou o principal.
 function obsDisplay() {
   if (config.obsDisplay === 'off') return null;
-  return screen.getAllDisplays().find((d) => String(d.id) === String(config.obsDisplay)) || screen.getPrimaryDisplay();
+  if (config.obsDisplay == null || config.obsDisplay === '') return screen.getPrimaryDisplay();
+  return screen.getAllDisplays().find((d) => String(d.id) === String(config.obsDisplay)) || null;
 }
 
 function openObsOverlay() {
@@ -524,7 +567,16 @@ function overlayState() {
   return { enabled: pendingPreferences.overlay, share: active && overlayOwner === 'share', obs: active && overlayOwner === 'obs' };
 }
 
-function publishOverlayState() { toPage('desktop:overlay-state', overlayState()); }
+function publishOverlayState() {
+  toPage('desktop:overlay-state', overlayState());
+  shortcuts.setActive(['draw'], Boolean(OVERLAY_SUPPORTED && overlay && !overlay.isDestroyed()));
+  publishShortcutState();
+}
+function publishVisualMode() {
+  toPage('desktop:visual-mode', pendingPreferences.visualMode);
+  if (overlay && !overlay.isDestroyed()) overlay.webContents.send('desktop:visual-mode', pendingPreferences.visualMode);
+  settingsPanel?.visualModeChanged(pendingPreferences.visualMode);
+}
 
 function reconcileOverlays() {
   if (!pendingPreferences.overlay) closeOverlay();
@@ -536,9 +588,11 @@ function reconcileOverlays() {
 
 function openOverlay(display, owner) {
   if (!OVERLAY_SUPPORTED || !display || !pendingPreferences.overlay) return false;
+  const inputDisplay = snapshotInputDisplay(display);
+  if (!inputDisplay) { closeOverlay(); return false; }
   closeOverlay();
   overlay = new BrowserWindow({
-    ...display.bounds,
+    ...inputDisplay.bounds,
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
@@ -553,7 +607,8 @@ function openOverlay(display, owner) {
     title: 'Web Screen Share (marcações)',
     webPreferences: { preload: path.join(__dirname, 'overlay-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
-  overlay.displayId = display.id;
+  overlay.displayId = inputDisplay.id;
+  overlay.inputDisplay = inputDisplay;
   overlayOwner = owner;
   overlay.setIgnoreMouseEvents(true);
   overlay.setAlwaysOnTop(true, 'screen-saver');
@@ -561,8 +616,19 @@ function openOverlay(display, owner) {
   // Fora da captura: quem assiste já vê as marcações por cima do vídeo, no navegador.
   overlay.setContentProtection(true);
   const self = overlay;
+  self.webContents.once('did-finish-load', () => {
+    if (!self.isDestroyed() && overlay === self) {
+      self.webContents.send('desktop:visual-mode', pendingPreferences.visualMode);
+      toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue, color: identity.color, style: identity.style });
+      publishShortcutState(true); renderControlBanner();
+    }
+  });
   overlay.on('closed', () => {
     if (overlay !== self) return;
+    if (controller) {
+      setController(null);
+      toPage('desktop:control-revoke');
+    }
     setDrawMode(false);
     overlay = null;
     overlayOwner = null;
@@ -597,10 +663,47 @@ function closeOverlay(owner) {
 // Enquanto ele está ligado, estas teclas valem em qualquer programa (a camada não pega
 // o foco, pra não tirar o jogo da frente).
 const DRAW_KEYS = [
-  ['Escape', () => setDrawMode(false)],
-  ['CommandOrControl+Z', () => toOverlay({ type: 'draw-undo' })],
-  ['Delete', () => toOverlay({ type: 'draw-clear' })],
+  { id: 'drawExit', accelerator: 'Escape', keys: 'Esc', label: 'Sair do desenho', context: 'draw', action: () => setDrawMode(false) },
+  { id: 'drawUndo', accelerator: 'CommandOrControl+Z', keys: process.platform === 'darwin' ? '⌘+Z' : 'Ctrl+Z', label: 'Desfazer desenho', context: 'draw', action: () => toOverlay({ type: 'draw-undo' }) },
+  { id: 'drawClear', accelerator: 'Delete', keys: 'Del', label: 'Limpar desenho', context: 'draw', action: () => toOverlay({ type: 'draw-clear' }) },
 ];
+const shortcutStatuses = new Map();
+let shortcutRevision = 0, shortcutSerialized = '', shortcutPublished = 0;
+const shortcuts = createShortcuts({ api: globalShortcut, definitions: [
+  { id: 'draw', accelerator: DRAW_SHORTCUT, keys: process.platform === 'darwin' ? '⌘+Shift+D' : 'Ctrl+Shift+D', label: 'Alternar desenho na tela', context: 'share', action: toggleDrawMode },
+  { id: 'revoke', accelerator: REVOKE_SHORTCUT, keys: process.platform === 'darwin' ? '⌘+Shift+X' : 'Ctrl+Shift+X', label: 'Revogar controle remoto', context: 'control', action: revokeByShortcut },
+  ...DRAW_KEYS,
+], onChange(rows) {
+  for (const row of rows) {
+    if (['unavailable', 'release-failed'].includes(row.status) && shortcutStatuses.get(row.id) !== row.status)
+      log('system', `Atalho ${row.keys}: ${row.status === 'release-failed' ? 'não foi possível liberar' : 'não foi possível registrar; verifique conflitos com outros programas'}.`, 'warn');
+    shortcutStatuses.set(row.id, row.status);
+  }
+  publishShortcutState();
+} });
+function shortcutState() {
+  const value = { entries: shortcuts.snapshot(), drawing: drawMode, drawAvailable: Boolean(overlay && !overlay.isDestroyed()),
+    controlling: Boolean(controller), emergencyPolling: Boolean(controller && input?.revokeKeysDown), overlaySupported: OVERLAY_SUPPORTED };
+  const serialized = JSON.stringify(value);
+  if (serialized !== shortcutSerialized) { shortcutSerialized = serialized; shortcutRevision++; }
+  return { ...value, revision: shortcutRevision };
+}
+function publishShortcutState(force = false) {
+  const state = shortcutState();
+  if (!force && state.revision === shortcutPublished) return;
+  shortcutPublished = state.revision;
+  settingsPanel?.shortcutsChanged(state);
+  toOverlay({ type: 'draw-shortcuts', availability: Object.fromEntries(state.entries.map(row => [row.id, row.status === 'registered'])) });
+}
+function shortcutAction(action) {
+  if (action === 'retry') { shortcuts.retry(); renderControlBanner(); }
+  else if (action === 'draw-toggle') {
+    if (!overlay || overlay.isDestroyed()) throw new Error('Inicie uma transmissão com marcações para desenhar.');
+    toggleDrawMode();
+  } else if (action === 'revoke') revokeByShortcut();
+  else throw new Error('Ação de atalho inválida.');
+  publishShortcutState(); return shortcutState();
+}
 
 function toOverlay(event) {
   if (overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:event', event);
@@ -619,15 +722,10 @@ function setDrawMode(on) {
   if (next === drawMode) return;
   drawMode = next;
   if (overlay && !overlay.isDestroyed()) overlay.setIgnoreMouseEvents(!drawMode);
-  for (const [accelerator, action] of DRAW_KEYS) {
-    if (drawMode) {
-      try { globalShortcut.register(accelerator, action); } catch {}
-    } else if (globalShortcut.isRegistered(accelerator)) {
-      globalShortcut.unregister(accelerator);
-    }
-  }
+  shortcuts.setActive(DRAW_KEYS.map(key => key.id), drawMode);
   toOverlay({ type: 'draw-mode', on: drawMode, hue: identity.hue, color: identity.color, style: identity.style });
   if (!drawMode) toRoom({ type: 'clear' }); // saindo, os rabiscos somem pra todo mundo
+  publishShortcutState();
 }
 
 function toggleDrawMode() {
@@ -670,8 +768,28 @@ ipcMain.on('overlay:exit', (event) => {
 
 // ---------- controle remoto ----------
 
-const getInput = () => {
-  if (input === undefined) input = createInput();
+let inputGeneration = 0, inputRecoveryReady = false, inputFailedAt = -Infinity, inputQuitting = false;
+const getInput = (retry = false) => {
+  if (inputQuitting) return null;
+  if (input?.available?.() === false) {
+    if (!retry || controller || !inputRecoveryReady || performance.now() - inputFailedAt < 1000) return null;
+    input = undefined;
+  }
+  if (input === undefined) {
+    const generation = ++inputGeneration;
+    inputRecoveryReady = false;
+    input = createInput({ onFailure(reason) {
+      if (generation !== inputGeneration) return;
+      inputFailedAt = performance.now();
+      setController(null); toPage('desktop:control-revoke');
+      toPage('desktop:input-error', reason + ' Controle interrompido; abra Controle na sala para tentar novamente após a neutralização.');
+    } });
+    input?.settled?.then(ok => {
+      if (generation !== inputGeneration) return;
+      inputRecoveryReady = ok === true;
+      if (!ok) toPage('desktop:input-error', 'A neutralização não foi confirmada. O controle permanece bloqueado; verifique as teclas/botões localmente e reinicie o app.');
+    });
+  }
   return input;
 };
 
@@ -701,7 +819,6 @@ let localUntil = 0;
 let localPaused = false;
 let controlTimer = null;
 let revokeKeysWereDown = false;
-let revokeShortcutOk = false;
 
 function localActive() {
   const now = Date.now();
@@ -728,6 +845,9 @@ function localActive() {
 
 function controlTick() {
   if (!controller) return;
+  for (const [id, at] of controlPulses) if (Date.now() - at > 750) {
+    resetPeerInput(id); controlPulses.delete(id);
+  }
   localActive();
   if (localPaused && Date.now() >= localUntil) {
     localPaused = false;
@@ -753,7 +873,7 @@ function renderControlBanner() {
     name: controller && controller.name,
     hue: controller && controller.hue,
     paused: localPaused,
-    shortcut: revokeShortcutOk || Boolean(input && input.revokeKeysDown),
+    shortcut: shortcuts.registered('revoke') || Boolean(input && input.revokeKeysDown),
   });
 }
 
@@ -761,13 +881,24 @@ function setController(next) {
   const wasOn = Boolean(controller);
   const previousPeople = controlPeople;
   const people = Array.isArray(next?.people) ? next.people.slice(0, 16) : [];
+  for (const [id, devices] of previousPeople) {
+    const replacement = people.find(p => p.id === id);
+    const changedSession = !replacement || (replacement.session || '') !== (controlSessions.get(id) || '');
+    const revoked = { keyboard: devices.keyboard && (changedSession || !replacement.devices?.keyboard),
+      mouse: devices.mouse && (changedSession || !replacement.devices?.mouse) };
+    input?.releaseDevices?.(revoked);
+    if (devices.gamepad && (changedSession || !replacement.devices?.gamepad)) gamepads.neutralize?.(id);
+    if (changedSession) controlPulses.delete(id);
+  }
+  nativeInputBudget.retain(people);
   controlPeople = new Map(people.filter((p) => typeof p.id === 'string').map((p) => [p.id, gamepadModel.permissions(p.devices)]));
+  controlSessions = new Map(people.filter((p) => typeof p.id === 'string' && typeof p.session === 'string').map((p) => [p.id, p.session]));
+  commandReceiver.sync(people);
+  for (const id of controlPulses.keys()) if (!controlPeople.has(id)) controlPulses.delete(id);
   gamepads.retain(new Set([...controlPeople].filter(([, devices]) => devices.gamepad).map(([id]) => id)));
   for (const id of gamepadReceivers.keys()) if (!controlPeople.get(id)?.gamepad) {
     gamepadReceivers.delete(id); toPage('desktop:gamepad-state', { id, connected: false });
   }
-  if (input && [...previousPeople].some(([id, devices]) =>
-    (devices.keyboard && !controlPeople.get(id)?.keyboard) || (devices.mouse && !controlPeople.get(id)?.mouse))) input.releaseAll();
   controller = next && next.name ? { name: String(next.name).slice(0, 40), hue: Number(next.hue) || 0 } : null;
   if (wasOn && !controller && input) input.releaseAll(); // nada fica apertado
   if (controller && !wasOn) {
@@ -777,20 +908,19 @@ function setController(next) {
     localPaused = false;
     revokeKeysWereDown = false;
     getInput();
-    try { revokeShortcutOk = globalShortcut.register(REVOKE_SHORTCUT, revokeByShortcut); } catch { revokeShortcutOk = false; }
-    if (!revokeShortcutOk) console.error(`O atalho ${REVOKE_SHORTCUT} está com outro programa.`);
+    shortcuts.setActive(['revoke'], true);
     clearInterval(controlTimer);
     controlTimer = setInterval(controlTick, CONTROL_TICK_MS);
   } else if (!controller && wasOn) {
     clearInterval(controlTimer);
     controlTimer = null;
     localPaused = false;
-    if (revokeShortcutOk && globalShortcut.isRegistered(REVOKE_SHORTCUT)) globalShortcut.unregister(REVOKE_SHORTCUT);
-    revokeShortcutOk = false;
+    shortcuts.setActive(['revoke'], false);
   }
   for (const id of [...controlModes]) if (!controller || !controlPeople.get(id)?.mouse) controlModes.delete(id);
   updateRemoteCursorTimer();
   renderControlBanner();
+  publishShortcutState();
 }
 
 // ---- um mouse só (veja controlModes)
@@ -862,14 +992,46 @@ function saveGamepadProfile(value) {
   const profiles = readGamepadProfiles(); delete profiles[value.id];
   config.gamepadProfiles = Object.fromEntries([...Object.entries(profiles).slice(-31), [value.id, gamepadModel.profile(value.profile)]]);
   if (!saveConfig()) { config.gamepadProfiles = previous; throw new Error('Não foi possível salvar o gamepad.'); }
+  const updated = readGamepadProfiles();
+  toPage('desktop:gamepad-profiles', updated);
+  settingsPanel?.gamepadProfilesChanged?.(updated);
   return { ok: true };
 }
 ipcMain.handle('desktop:gamepad-profiles', (event) => fromServer(event) ? readGamepadProfiles() : {});
 ipcMain.handle('desktop:gamepad-profile-save', (event, value) => { if (!fromServer(event)) throw new Error('Não permitido.'); return saveGamepadProfile(value); });
 
+ipcMain.handle('desktop:network-diagnostics', (event) => {
+  if (!fromServer(event)) return { available: false, reason: 'Origem não autorizada.' };
+  return networkDiagnostics.inspect(config.server);
+});
+let mediaCapabilities = null;
+let mediaCapabilitiesAt = 0;
+ipcMain.handle('desktop:media-capabilities', async (event) => {
+  if (!fromServer(event)) return null;
+  if (Date.now() - mediaCapabilitiesAt > 60000) mediaCapabilities = null;
+  if (!mediaCapabilities) mediaCapabilities = (async () => {
+    mediaCapabilitiesAt = Date.now();
+    const features = app.getGPUFeatureStatus();
+    let info, timer;
+    // O modo basic pode listar todos os adaptadores como inativos. Complete
+    // identifica o adaptador do renderer; ausência não autoriza adivinhá-lo.
+    try { info = await Promise.race([app.getGPUInfo('complete'), new Promise(resolve => { timer = setTimeout(resolve, 3000); })]); }
+    catch {}
+    finally { clearTimeout(timer); }
+    return { features: { video_encode: features.video_encode || null, video_decode: features.video_decode || null,
+      gpu_compositing: features.gpu_compositing || null }, devices: (info?.gpuDevice || []).slice(0, 4).map(d => ({
+      vendorId: d.vendorId, deviceId: d.deviceId, active: d.active === true })) };
+  })();
+  const basic = await mediaCapabilities;
+  const telemetry = await gpuTelemetry.read();
+  const active = basic.devices.filter(d => d.active && d.vendorId === 0x10de);
+  for (const device of telemetry.devices) device.active = active.length === 1 && active[0].deviceId === device.deviceId
+    && telemetry.devices.filter(d => d.deviceId === device.deviceId).length === 1;
+  return { ...basic, telemetry };
+});
 ipcMain.handle('desktop:caps', (event) => {
   if (!fromServer(event)) return {};
-  return { gamepad: gamepads.status(), overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && pendingPreferences.overlay && Boolean(getInput()) };
+  return { gamepad: gamepads.status(), overlay: OVERLAY_SUPPORTED, control: OVERLAY_SUPPORTED && pendingPreferences.overlay && Boolean(getInput(true)) };
 });
 ipcMain.handle('desktop:overlay-state', (event) => fromServer(event) ? overlayState() : null);
 
@@ -890,17 +1052,42 @@ ipcMain.on('desktop:control-mode', (event, data) => {
   updateRemoteCursorTimer();
 });
 
-// O que quem controla fez em cima da sua transmissão, já validado pelo servidor.
+// A permissão e o formato são conferidos aqui também: o DataChannel não passa
+// pela validação do servidor e a página não pode fornecer coordenadas arbitrárias.
+function resetPeerInput(id) {
+  const devices = controlPeople.get(id);
+  if (!devices) return;
+  input?.releaseDevices?.(devices);
+  if (devices.gamepad) gamepads.neutralize?.(id);
+}
+function validPeerSession(msg, allowLegacy=false) {
+  return msg && typeof msg.from === 'string' && controlPeople.has(msg.from)
+    && commandBatch.matchesSession(msg,controlSessions.get(msg.from),allowLegacy);
+}
+function receiveControlPulse(msg) {
+  if (controller && validPeerSession(msg)
+    && nativeInputBudget.accept(msg.from, msg.session, 'metadata')) controlPulses.set(msg.from, Date.now());
+}
+function receiveControlReset(msg) {
+  if (validPeerSession(msg) && nativeInputBudget.accept(msg.from, msg.session, 'metadata')) {
+    resetPeerInput(msg.from); controlPulses.delete(msg.from);
+  }
+}
 let lastGamepadError = 0;
-ipcMain.on('desktop:control', (event, msg) => {
-  if (!fromServer(event) || !controller || !msg || !overlay || overlay.isDestroyed()) return;
+function receiveControl(msg) {
+  if (!controller || !msg || !overlay || overlay.isDestroyed()) return;
   const allowed = controlPeople.get(msg.from);
   const kind = gamepadModel.kindDevice(msg.kind);
   if (!allowed || !kind || !allowed[kind]) return;
+  const clean = controlWire.cleanNativeInput(msg, allowed, controlSessions.get(msg.from));
+  if (!clean) return;
+  if (!nativeInputBudget.accept(msg.from, msg.session)) return;
+  msg = { ...clean, from: msg.from, session: msg.session };
   if (msg.kind === 'gamepad') {
     const connected = gamepads.update(msg.from, msg);
     if (gamepadReceivers.get(msg.from) !== connected) {
       gamepadReceivers.set(msg.from, connected); toPage('desktop:gamepad-state', { id: msg.from, connected, failed: !connected });
+      commandReceiver.event('gamepad-state',{id:msg.from,connected,failed:!connected});
     }
     if (!connected && Date.now() - lastGamepadError > 3000) {
       lastGamepadError = Date.now();
@@ -909,7 +1096,7 @@ ipcMain.on('desktop:control', (event, msg) => {
     return;
   }
   const device = getInput();
-  const display = screen.getAllDisplays().find((d) => d.id === overlay.displayId);
+  const display = overlay.inputDisplay;
   if (!device || !display) return;
   // Você mexendo no seu mouse: o da pessoa espera (só soltar tecla/botão passa).
   const release = (msg.kind === 'button' || msg.kind === 'key') && !msg.down;
@@ -927,6 +1114,44 @@ ipcMain.on('desktop:control', (event, msg) => {
     if (Number.isFinite(msg.dx) && msg.dx) device.hwheel(msg.dx); // pros lados
   }
   else if (msg.kind === 'key' && typeof msg.code === 'string') device.key(msg.code, Boolean(msg.down));
+}
+
+ipcMain.handle('desktop:receiver-host',(event,value)=>{
+  if(!fromServer(event))throw Error('Origem não autorizada.');
+  return commandReceiver.host(value);
+});
+ipcMain.handle('desktop:receiver-ready',event=>{
+  if(!commandReceiver.trusted(event))throw Error('Origem não autorizada.');
+  return commandReceiver.state();
+});
+ipcMain.handle('desktop:receiver-snapshot',event=>fromServer(event)?commandReceiver.snapshot():[]);
+function inputSource(event){return fromServer(event)||commandReceiver.trusted(event);}
+const lastInputBatch=new WeakMap();
+ipcMain.on('desktop:input-stalled',(event,value)=>{
+  if(!inputSource(event))return;
+  // ACK já produzido não é perda de entrada: a UI pode estar bloqueada enquanto
+  // seu preload aguarda a resposta. Não derrube o receptor independente nesse caso.
+  if(Array.isArray(value?.pending))for(const peer of value.pending.slice(0,16))if(validPeerSession(peer,true))nativeInputBudget.block(peer.from,peer.session);
+  if(Number.isSafeInteger(value?.id)&&(lastInputBatch.get(event.sender)||0)>=value.id)return;
+  if(Array.isArray(value?.peers))for(const peer of value.peers.slice(0,16))if(validPeerSession(peer,true))nativeInputBudget.block(peer.from,peer.session);
+});
+ipcMain.on('desktop:input-batch',(event,batch)=>{
+  if(!inputSource(event))return;
+  if(!commandBatch.validBatch(batch,lastInputBatch.get(event.sender)||0)){
+    for(const [from,grant]of controlSessions)nativeInputBudget.block(from,grant);
+  }else for(const item of batch.items){
+    const value=item?.value;
+    if(!validPeerSession(value,item.type==='input'||item.type==='fault'))continue;
+    const at=item.at??batch.at;
+    if(!commandBatch.fresh(at,Date.now())){nativeInputBudget.block(value.from,value.session);continue;}
+    if(item.type==='fault')nativeInputBudget.block(value.from,value.session);
+    else if(item.type==='input')receiveControl(value);
+    else if(item.type==='pulse')receiveControlPulse(value);
+    else if(item.type==='reset')receiveControlReset(value);
+    else if(item.type==='report'&&commandReceiver.trusted(event))commandReceiver.report(value);
+  }
+  if(Number.isSafeInteger(batch?.id))lastInputBatch.set(event.sender,Math.max(lastInputBatch.get(event.sender)||0,batch.id));
+  if(!event.sender.isDestroyed())event.sender.send('desktop:input-ack',{id:batch?.id});
 });
 
 // ---------- o que a página do servidor pede ----------
@@ -1124,7 +1349,7 @@ if (!app.requestSingleInstanceLock()) {
     settingsPanel = createSettingsPanel({
       readGamepadProfiles, saveGamepadProfile,
       prepareGamepad: () => gamepadSetup.prepare(),
-      getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity,
+      getParent: () => mainWindow, getState: settingsState, save: saveSettings, activity, getShortcuts: shortcutState, shortcutAction,
       // A barra de título própria (janela sem bordas) fica de fora do popup.
       getInset: () => (BORDERLESS_FULLSCREEN && mainWindow && !borderlessFullscreen?.active
         ? 32 * mainWindow.webContents.getZoomFactor() : 0),
@@ -1152,6 +1377,10 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     const ses = session.defaultSession;
+    const removeAssetBridge = installNativeRoomAssets({ session: ses, getServer: () => config.server,
+      getContents: id => BrowserWindow.getAllWindows().find(win => win.webContents.id === id)?.webContents,
+      pages: ['settings.html', 'overlay.html'].map(file => pathToFileURL(path.join(PAGES, file)).href) });
+    app.once('will-quit', removeAssetBridge);
     ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
       callback(PERMISSIONS.has(permission) && isServerUrl(details.requestingUrl || webContents.getURL()));
     });
@@ -1164,7 +1393,8 @@ if (!app.requestSingleInstanceLock()) {
         callback({});
         return;
       }
-      picked = { kind: choice.kind, displayId: choice.displayId };
+      const display = resolveCaptureDisplay(choice, screen.getAllDisplays());
+      picked = { kind: choice.kind, displayId: display ? String(display.id) : choice.displayId || null };
       const streams = { video: choice.source };
       if (choice.audio && SYSTEM_AUDIO) streams.audio = 'loopback';
       // "Só o som deste programa": o app pega o som do programa da janela e a sala troca o
@@ -1176,7 +1406,12 @@ if (!app.requestSingleInstanceLock()) {
 
     screen.on('display-metrics-changed', (event, display) => {
       if (borderlessFullscreen) borderlessFullscreen.position();
-      if (overlay && overlay.displayId === display.id) overlay.setBounds(display.bounds);
+      if (overlay && overlay.displayId === display.id) {
+        const inputDisplay = snapshotInputDisplay(display);
+        if (!inputDisplay) { closeOverlay(); return; }
+        overlay.inputDisplay = inputDisplay;
+        overlay.setBounds(inputDisplay.bounds);
+      }
     });
     screen.on('display-removed', (event, display) => {
       if (borderlessFullscreen) borderlessFullscreen.position();
@@ -1185,15 +1420,22 @@ if (!app.requestSingleInstanceLock()) {
 
     createMainWindow();
     if (!SELF_TEST) updates.start();
-    if (!globalShortcut.register(DRAW_SHORTCUT, toggleDrawMode)) {
-      console.error(`O atalho ${DRAW_SHORTCUT} já é usado por outro programa: o modo desenho fica sem atalho.`);
-    }
   });
 
+  let inputQuitReady = false;
+  app.on('before-quit', event => {
+    nativeVideo.stop();
+    if (process.platform !== 'linux' || !input?.settled || inputQuitReady) return;
+    event.preventDefault();
+    inputQuitting = true;
+    if (controller) setController(null);
+    input.close();
+    input.settled.finally(() => { inputQuitReady = true; app.quit(); });
+  });
   app.on('will-quit', () => {
     restoreSystemCursor();
     windowAudio.stop();
-    globalShortcut.unregisterAll();
+    shortcuts.dispose();
     gamepads.close();
     if (input) input.close();
     if (keyHook) keyHook.stop();

@@ -461,4 +461,10 @@ window.overlayBridge.onEvent((event) => {
   else if (event.type === 'draw-mode') setDrawMode(Boolean(event.on), event.hue, event.color, event.style);
   else if (event.type === 'draw-undo') undo();
   else if (event.type === 'draw-clear') clearOwn();
+  else if (event.type === 'draw-shortcuts') {
+    for (const [action, id] of [['undo', 'drawUndo'], ['clear', 'drawClear'], ['exit', 'drawExit']]) {
+      const hint = document.querySelector(`[data-act="${action}"] kbd`);
+      if (hint) hint.hidden = event.availability?.[id] !== true;
+    }
+  }
 });

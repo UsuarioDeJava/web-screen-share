@@ -2,7 +2,7 @@
 // Windows: user32.dll (SetCursorPos, mouse_event, keybd_event) pela koffi, sem compilar
 // nada. Linux: xdotool, se estiver instalado. Teclas pela posição física (KeyboardEvent
 // .code), então com o mesmo layout dos dois lados (ex.: ABNT2) sai igualzinho.
-const { spawn, spawnSync } = require('child_process');
+const { createXdotoolInput } = require('./xdotool-input');
 
 // KeyboardEvent.code -> [scan code (conjunto 1), tecla estendida (prefixo E0)]
 const SCAN = {
@@ -87,36 +87,12 @@ function windowsInput() {
   };
 }
 
-function xdotoolInput() {
-  const found = spawnSync('xdotool', ['version'], { stdio: 'ignore' });
-  if (found.error || found.status !== 0) return null;
-  const proc = spawn('xdotool', ['-'], { stdio: ['pipe', 'ignore', 'ignore'] });
-  proc.on('error', () => {});
-  proc.stdin.on('error', () => {});
-  const run = (line) => {
-    if (!proc.killed && proc.stdin.writable) proc.stdin.write(`${line}\n`);
-  };
-  return {
-    move: (x, y) => run(`mousemove ${Math.round(x)} ${Math.round(y)}`),
-    button: (button, down) => run(`${down ? 'mousedown' : 'mouseup'} ${[1, 2, 3][button]}`),
-    wheel: (notches) => {
-      for (let i = 0; i < Math.min(10, Math.abs(Math.round(notches))); i += 1) run(`click ${notches > 0 ? 5 : 4}`);
-    },
-    hwheel: (notches) => {
-      for (let i = 0; i < Math.min(10, Math.abs(Math.round(notches))); i += 1) run(`click ${notches > 0 ? 7 : 6}`);
-    },
-    key: (code, down) => run(`${down ? 'keydown' : 'keyup'} ${XKEYS[code]}`),
-    supports: (code) => Boolean(XKEYS[code]),
-    close: () => proc.kill(),
-  };
-}
-
 // Guarda o que está apertado pra soltar tudo quando o controle acaba (sem tecla presa).
-function createInput() {
+function createInput({ onFailure = () => {} } = {}) {
   let backend = null;
   try {
     if (process.platform === 'win32') backend = windowsInput();
-    else if (process.platform === 'linux') backend = xdotoolInput();
+    else if (process.platform === 'linux') backend = createXdotoolInput({ keyNames: XKEYS, onFailure });
   } catch (err) {
     console.error('Controle remoto indisponível:', err.message);
     backend = null;
@@ -125,6 +101,8 @@ function createInput() {
   const keys = new Set();
   const buttons = new Set();
   return {
+    available: () => backend.available ? backend.available() : true,
+    settled: backend.settled || Promise.resolve(true),
     move: (x, y) => backend.move(x, y),
     button(button, down) {
       if (![0, 1, 2].includes(button)) return;
@@ -140,9 +118,18 @@ function createInput() {
       else if (!keys.delete(code)) return;
       backend.key(code, down);
     },
+    releaseDevices(devices) {
+      if (backend.releaseDevices) {
+        backend.releaseDevices(devices);
+        if (devices.keyboard) keys.clear();
+        if (devices.mouse) buttons.clear();
+        return;
+      }
+      if (devices.keyboard) for (const code of [...keys]) this.key(code, false);
+      if (devices.mouse) for (const button of [...buttons]) this.button(button, false);
+    },
     releaseAll() {
-      for (const code of [...keys]) this.key(code, false);
-      for (const button of [...buttons]) this.button(button, false);
+      this.releaseDevices({ keyboard: true, mouse: true });
     },
     revokeKeysDown: backend.revokeKeysDown || null,
     close() {

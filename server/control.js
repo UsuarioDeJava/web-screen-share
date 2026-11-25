@@ -1,10 +1,31 @@
 const { permissions, kindDevice, validState } = require('../desktop/shared/gamepad');
+const { randomUUID, randomBytes } = require('node:crypto');
+const { cleanControl } = require('../public/js/signaling');
+const { cleanPacket, cleanFeedback, MAX_BYTES } = require('../desktop/shared/control-wire');
 
 // Formatos do mouse de quem transmite (nomes de cursor do CSS) que quem controla pode usar.
 const CURSOR_SHAPES = new Set(['default', 'text', 'wait', 'crosshair', 'nwse-resize', 'nesw-resize', 'ew-resize', 'ns-resize', 'move', 'not-allowed', 'pointer', 'progress', 'help', 'none']);
 
 // enabled(): o dono deixou o controle remoto ligado na sala (painel de administração).
-function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now, schedule = true, enabled = () => true }) {
+function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now, schedule = true, enabled = () => true,
+  peerAddress = socket => (socket.handshake?.address || '').replace(/^::ffff:/, '') }) {
+  // Remetente -> proprietários que concederam acesso. O caminho de cada comando
+  // depende das concessões ativas, não da quantidade de pessoas na sala.
+  const recipients = new Map();
+  const receivers = new Map();
+  const destination = (owner, grant) => grant.receiverId || owner.id;
+  function authorizedOwner(socket, target, session) {
+    const owner = users.get(socket.id);
+    if (owner) return owner;
+    const binding = receivers.get(socket.id)?.get(session);
+    return binding && binding.grant.to === target && grants(binding.owner).get(target) === binding.grant ? binding.owner : null;
+  }
+  function* ownersFor(id) {
+    for (const ownerId of recipients.get(id) || []) {
+      const owner = users.get(ownerId);
+      if (owner) yield owner;
+    }
+  }
   const grants = (owner) => owner.controls || (owner.controls = new Map());
   const options = (owner) => owner.controlOptions || (owner.controlOptions = { gamepadPaused: false, maxGamepads: 4 });
   function details(owner) {
@@ -35,6 +56,13 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
     for (const grant of [...grants(owner).values()]) {
       if (to && grant.to !== to) continue;
       grants(owner).delete(grant.to);
+      if (grant.receiverId) {
+        receivers.get(grant.receiverId)?.delete(grant.session);
+        io.to(grant.receiverId).emit('control:revoked', { stream: grant.stream, mine: true, to: grant.to });
+      }
+      const owners = recipients.get(grant.to);
+      owners?.delete(owner.id);
+      if (!owners?.size) recipients.delete(grant.to);
       io.to(grant.to).emit('control:revoked', { stream: grant.stream });
       io.to(owner.id).emit('control:revoked', { stream: grant.stream, mine: true, to: grant.to });
     }
@@ -48,6 +76,28 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
     }
   }
   function attach(socket) {
+    socket.on('control:receiver-bind', (msg, ack) => {
+      const reply = typeof ack === 'function' ? ack : () => {};
+      if (!msg || !allow(socket, 'receiver-bind', 32, 1000)) return reply({ error: 'Receptor inválido.' });
+      const owner = users.get(msg.owner), grant = owner?.controls?.get(msg.peer);
+      if (!grant || grant.protocol !== 1 || grant.session !== msg.session || grant.stream !== msg.stream
+        || typeof msg.token !== 'string' || msg.token.length !== 64 || grant.receiverToken !== msg.token
+        || grant.receiverId && grant.receiverId !== socket.id) return reply({ error: 'Concessão indisponível.' });
+      let bindings = receivers.get(socket.id);
+      if (!bindings) receivers.set(socket.id, bindings = new Map());
+      if (bindings.size >= 16 && !bindings.has(grant.session)) return reply({ error: 'Limite de receptores.' });
+      grant.receiverId = socket.id; bindings.set(grant.session, { owner, grant });
+      reply({ ok: true, session: grant.session, peer: grant.to, stream: grant.stream, devices: grant.devices });
+      if(grant.feedback)io.to(socket.id).emit('control:feedback-capabilities',{from:grant.to,stream:grant.stream,session:grant.session,supported:true});
+    });
+    socket.on('control:receiver-release', msg => {
+      const binding = receivers.get(socket.id)?.get(msg?.session);
+      if (binding) revoke(binding.owner, binding.grant.to);
+    });
+    socket.on('disconnect', () => {
+      const bindings = receivers.get(socket.id); receivers.delete(socket.id);
+      for (const { owner, grant } of bindings?.values() || []) if (owner.controls?.get(grant.to) === grant) revoke(owner, grant.to);
+    });
     socket.on('control:grant', (msg, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {};
       const owner = users.get(socket.id);
@@ -62,11 +112,15 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       // Teclado e mouse são dispositivos únicos do PC; evitam teclas de pessoas diferentes se misturarem.
       if (others.some((g) => (devices.keyboard && g.devices.keyboard) || (devices.mouse && g.devices.mouse))) return reply({ error: 'Teclado ou mouse já está liberado para outra pessoa. Revogue antes de transferir.' });
       revoke(owner, target.id);
-      const grant = { to: target.id, stream: msg.stream, devices };
+      const grant = { to: target.id, stream: msg.stream, devices, session: randomUUID(), protocol: msg.protocol === 1 ? 1 : 0,
+        receiverToken: randomBytes(32).toString('hex') };
       grants(owner).set(target.id, grant);
-      io.to(target.id).emit('control:granted', { stream: msg.stream, from: owner.name, devices });
+      if (!recipients.has(target.id)) recipients.set(target.id, new Set());
+      recipients.get(target.id).add(owner.id);
+      io.to(target.id).emit('control:granted', { stream: msg.stream, from: owner.name, devices, session: grant.session, owner: owner.id, protocol: grant.protocol });
       logEvent(`${owner.name} liberou ${Object.keys(devices).filter((k) => devices[k]).join(', ')} para ${target.name}`);
-      reply({ ok: true, devices });
+      reply({ ok: true, devices, session: grant.session, protocol: grant.protocol,
+        ...(grant.protocol === 1 ? { receiverToken: grant.receiverToken } : {}) });
       publish(owner);
     });
     socket.on('control:details', (ack) => {
@@ -84,7 +138,7 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
     });
     socket.on('control:presence', (msg) => {
       if (!msg || !allow(socket, 'control-presence', 12, 1000)) return;
-      for (const owner of users.values()) {
+      for (const owner of ownersFor(socket.id)) {
         const g = grants(owner).get(socket.id);
         if (!g || g.stream !== msg.stream || !g.devices.gamepad) continue;
         g.physicalConnected = msg.connected === true;
@@ -95,7 +149,7 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       }
     });
     socket.on('control:receiver', (msg) => {
-      const owner = users.get(socket.id);
+      const owner = authorizedOwner(socket, msg?.from, msg?.session);
       const g = msg && owner && grants(owner).get(msg.from);
       if (!g || !g.devices.gamepad || g.stream !== msg.stream || !allow(socket, 'control-receiver', 20, 1000)) return;
       g.receiverConnected = !options(owner).gamepadPaused && msg.connected === true;
@@ -104,6 +158,66 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
       publish(owner);
     });
     socket.on('control:revoke', (msg) => revoke(users.get(socket.id), typeof msg?.to === 'string' ? msg.to : undefined));
+    socket.on('control:signal', (msg) => {
+      if (!msg || !users.has(msg.to) || !allow(socket, 'control-signal', 80, 1000)) return;
+      const owner = authorizedOwner(socket, msg.to, msg.session);
+      const outgoing = owner?.controls?.get(msg.to);
+      const incomingOwner = users.get(msg.to);
+      const incoming = incomingOwner?.controls?.get(socket.id);
+      const grant = outgoing?.session === msg.session ? outgoing : incoming?.session === msg.session ? incoming : null;
+      if (!grant || grant.protocol !== 1 || grant.stream !== msg.stream || !msg.data) return;
+      const out = cleanControl(msg.data);
+      if (!out) return;
+      if (out.type === 'offer' || out.type === 'answer') {
+        // Só o proprietário inicia a negociação; não aceita troca de papel pelo convidado.
+        if ((out.type === 'offer') !== (grant === outgoing)) return;
+      }
+      io.to(grant === outgoing ? msg.to : destination(incomingOwner, grant)).emit('control:signal', {
+        from: grant === outgoing ? owner.id : socket.id, address: peerAddress(socket), stream: grant.stream, session: grant.session, data: out });
+    });
+    socket.on('control:packet', (msg) => {
+      if (!msg || !allow(socket, 'control', 400, 1000)) return;
+      for (const owner of ownersFor(socket.id)) {
+        const g = grants(owner).get(socket.id);
+        if (!g || g.protocol !== 1 || g.stream !== msg.stream) continue;
+        const packet = cleanPacket(msg.packet, g.devices, g.session);
+        if (!packet) continue;
+        // Primeiro limita campos/arrays e descarta extras; não serializa um objeto
+        // bruto do tamanho de um upload só para decidir que ele é inválido.
+        if (JSON.stringify(packet).length > MAX_BYTES) continue;
+        if (options(owner).gamepadPaused && packet.lane === 'analog') continue;
+        if (options(owner).gamepadPaused && packet.held) {
+          packet.held.pad = null;
+          if (packet.input?.kind === 'gamepad') packet.input = null;
+        }
+        if (packet.held?.pad && !options(owner).gamepadPaused) g.lastInputAt = now();
+        io.to(destination(owner, g)).emit('control:packet', { from: socket.id, stream: g.stream, packet });
+      }
+    });
+    socket.on('control:feedback-capabilities', (msg) => {
+      if (!msg || typeof msg.supported !== 'boolean' || !allow(socket, 'control-feedback-capabilities', 10, 1000)) return;
+      for (const owner of ownersFor(socket.id)) {
+        const g = grants(owner).get(socket.id);
+        if (!g || g.protocol !== 1 || !g.devices.gamepad || g.session !== msg.session || g.stream !== msg.stream) continue;
+        g.feedback = msg.supported;
+        io.to(destination(owner, g)).emit('control:feedback-capabilities', { from: socket.id, stream: g.stream, session: g.session, supported: g.feedback });
+      }
+    });
+    socket.on('control:feedback', (msg) => {
+      const owner = authorizedOwner(socket, msg?.to, msg?.packet?.session), g = msg && owner?.controls?.get(msg.to);
+      if (!g || g.protocol !== 1 || !g.devices.gamepad || !g.feedback || g.stream !== msg.stream
+        || options(owner).gamepadPaused || !allow(socket, 'control-feedback', 160, 1000)) return;
+      const packet = cleanFeedback(msg.packet, g.session);
+      if (packet) io.to(msg.to).emit('control:feedback', { from: owner.id, stream: g.stream, packet });
+    });
+    socket.on('control:activity', (msg) => {
+      const owner = authorizedOwner(socket, msg?.from, msg?.session), g = msg && owner?.controls?.get(msg.from);
+      if (!g || g.protocol !== 1 || g.session !== msg.session || g.stream !== msg.stream || !g.devices.gamepad
+        || options(owner).gamepadPaused || !allow(socket, 'control-activity', 20, 1000)) return;
+      const time = now(), resumed = g.lastInputAt == null || time - g.lastInputAt >= 1200;
+      g.lastInputAt = time;
+      if (resumed) publish(owner);
+    });
     // Um mouse só: quem controla (com o mouse liberado) ligou/desligou o modo controle; o
     // app de quem transmite esconde o mouse dele da captura enquanto isso.
     socket.on('control:mode', (msg) => {
@@ -126,14 +240,21 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
     socket.on('control:input', (msg) => {
       const device = kindDevice(msg?.kind);
       if (!device || !allow(socket, 'control', 400, 1000)) return;
-      for (const owner of users.values()) {
+      for (const owner of ownersFor(socket.id)) {
         const grant = grants(owner).get(socket.id);
         if (!grant || grant.stream !== msg.stream || !grant.devices[device]) continue;
         const out = { kind: msg.kind, from: socket.id, stream: msg.stream };
         if (msg.kind === 'gamepad') {
           if (options(owner).gamepadPaused || !validState(msg)) return;
           out.axes = msg.axes.slice(); out.buttons = msg.buttons.slice();
-          grant.lastInputAt = now(); publish(owner);
+          const time = now();
+          const resumed = grant.lastInputAt == null || time - grant.lastInputAt >= 1200;
+          grant.lastInputAt = time;
+          // Só a transição para recebendo muda o painel. O timer cuida da expiração.
+          // Encaminha primeiro para não colocar o painel na frente do comando.
+          io.to(destination(owner, grant)).emit('control:input', out);
+          if (resumed) publish(owner);
+          continue;
         } else if (msg.kind === 'key') {
           if (typeof msg.code !== 'string' || !/^[A-Za-z0-9]{1,24}$/.test(msg.code)) return;
           out.code = msg.code; out.down = msg.down === true;
@@ -149,7 +270,7 @@ function createControl({ io, users, ownsStream, allow, logEvent, now = Date.now,
             if (Number.isFinite(msg.dx) && msg.dx) out.dx = Math.max(-10, Math.min(10, msg.dx));
           } else if (out.x === undefined) return;
         }
-        io.to(owner.id).emit('control:input', out);
+        io.to(destination(owner, grant)).emit('control:input', out);
       }
     });
   }

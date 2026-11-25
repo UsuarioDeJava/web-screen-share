@@ -3,6 +3,14 @@
 Gamepad e permissões individuais de teclado/mouse/controle: veja [GAMEPAD.md](GAMEPAD.md)
 para configurar o aplicativo e os componentes de controle virtual no Windows.
 
+O retorno de vibração do controle virtual pode chegar ao controle de quem está
+jogando, por WebRTC ou pelo fallback do servidor. Exige versões compatíveis nos
+dois lados e um controle com vibração compatível com o navegador. O retorno só
+funciona enquanto o participante está controlando com a janela em foco; parar de
+controlar ou revogar a permissão interrompe os efeitos. A validação atual usa
+atuador simulado no receptor; jogos e controles físicos remotos ainda precisam
+ser testados.
+
 Uma sala de compartilhamento de tela pelo navegador, tipo um mini Discord só pra
 transmissão (sem voz nem câmera): cada pessoa entra com um nick, pode compartilhar a
 própria tela e assistir as telas dos outros, tudo na mesma página. Funciona na rede
@@ -13,8 +21,8 @@ local ou via Tailscale, sem instalar nada além do Node.js (ou via Docker).
 - Um servidor Node.js (Express + Socket.io) serve a interface web e faz a sinalização
   WebRTC. Ele escuta em `0.0.0.0`, então fica acessível por qualquer IP da máquina
   (rede local, Tailscale, etc).
-- Todo mundo abre a mesma página (`/`), escolhe um nick (sem senha, vale só enquanto
-  estiver na sala) e entra na sala.
+- Todo mundo abre a mesma página (`/`), escolhe um nick e entra na sala. Quando o
+  administrador configura uma chave de acesso, ela também é solicitada na entrada.
 - Quem clica em **Compartilhar tela** usa `getDisplayMedia` pra capturar a tela (e, se
   o navegador permitir, o áudio). O vídeo vai direto (peer-to-peer, via WebRTC) do
   navegador de quem transmite pro de cada pessoa que está assistindo; o servidor só
@@ -57,7 +65,44 @@ npm start
 Por padrão o servidor sobe na porta `3000`. Para mudar, defina a variável de ambiente
 `PORT` antes de iniciar (ex.: `PORT=8080 npm start`).
 
+### Chave de acesso opcional
+
+Defina `ROOM_ACCESS_KEY` no ambiente do servidor para exigir uma chave compartilhada
+na entrada. Sem chave compartilhada ou contas configuradas, a sala permanece aberta. Use uma chave
+aleatória de 32 a 256 caracteres ASCII sem espaços; para gerar 32 bytes em hexadecimal:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Para acesso individual, defina somente `ROOM_ACCOUNT_KEYS` no servidor como um objeto JSON que associa cada identificador de conta à sua chave aleatória exclusiva (32 a 256 caracteres ASCII sem espaços). Cada pessoa usa sua chave no campo de acesso existente. Sessões da mesma conta compartilham a cota de emissão de credenciais, inclusive nas publicações OBS individuais. Para remover ou trocar uma chave, atualize a configuração e reinicie o servidor. O reinício encerra as sessões existentes.
+
+Use HTTPS: o cookie da sessão é Secure, HttpOnly e SameSite=Strict por padrão.
+O app não salva a chave no localStorage; mantém uma sessão opaca no cookie.
+`ROOM_SESSION_TTL_SECONDS` define a duração absoluta de 60 a 86400 segundos
+(padrão: 28800, oito horas). Sair ou expirar invalida a sessão no servidor e
+desconecta os sockets associados. Reiniciar o servidor também encerra as sessões.
+Não há renovação automática nem prazo separado por inatividade.
+
+Atrás de proxy HTTPS, preserve o cabeçalho Host público e a mesma origem da página.
+Login/logout e Socket.IO verificam a origem; polling sem Origin exige o cabeçalho
+Fetch Metadata `Sec-Fetch-Site: same-origin`. `ROOM_COOKIE_SECURE=0` serve apenas
+para desenvolvimento HTTP local; mantenha o padrão `1` no uso HTTPS.
+
+A chave protege o acesso à sala, mídia e rotas privadas; não cria contas ou prova
+a identidade individual dos participantes. Para publicar pelo OBS, configure também
+um Bearer individual gerado no botão OBS da sala, sem copiar cookies. O caminho
+legado `/obs/NICK` pode usar um `OBS_PUBLISH_TOKEN` separado, sem vínculo com um PC.
+Essas opções precisam estar presentes na versão do servidor que você executar;
+editar este checkout não atualiza uma imagem já publicada ou uma instalação em uso.
+
 ### Rodando em container (Docker / CasaOS)
+
+Fotos e imagens de cursor/ping usam upload HTTP binário em versões compatíveis,
+separado do Socket.IO de sinalização e fallback de comandos. Se usar proxy reverso,
+permita POST em `/asset-upload`, corpo de até 5 MiB para fotos (2 MiB para imagens
+de estilo) e tempo de upload de até 60 segundos. O app mantém o transporte antigo
+quando o servidor não anuncia suporte; falhas HTTP não reenviam a imagem pelo socket.
 
 Também dá pra rodar o servidor num container, por exemplo num NAS com
 [CasaOS](https://casaos.io/). Nesse caso **o servidor roda numa máquina separada** de
@@ -242,6 +287,37 @@ retransmite entre pessoas da própria sala (não serve de ponte pra sua rede loc
 internet) e usa credenciais temporárias geradas pelo servidor. Quando ele é usado, o
 vídeo passa pelo NAS; o botão **(i)** do quadro mostra "via servidor TURN".
 
+As credenciais do TURN embutido valem **uma hora** por padrão. A variável
+Para testar a escolha coletiva de relay, configure dois a oito hostnames TURN
+distintos (TURN local e/ou `TURN_URLS`) e ative no app **Configurações → Experimental →
+Escolher relay pela latência dos participantes** em todos os participantes. Reinicie
+para aplicar. O servidor escolhe o menor pior RTT medido pelo grupo para novas
+conexões, preservando STUN/direto e conexões em andamento. Sem medições recentes de
+todos, mantém a seleção normal. A opção vem desligada; RTT de eco não mede atraso
+da imagem. Outros computadores/redes precisam de comparação pelo usuário.
+
+`TURN_CREDENTIAL_TTL_SECONDS` aceita de 60 a 86400 segundos; valor inválido impede
+o servidor de iniciar. O app atualiza o cache ICE em até cinco minutos, antes de
+abrir novas conexões, preservando as que já estão funcionando. Credenciais de
+um TURN externo configuradas por usuário/senha continuam sob gestão desse serviço.
+Depois de atualizar o servidor, reabra a sala nos clientes que ainda carregavam
+o JavaScript antigo, cujo cache só era atualizado ao abrir a página.
+
+Consultas ICE e publicação OBS compartilham um limite de emissão: por padrão,
+120 por endereço e 1200 globais por minuto, com rajada inicial desses tamanhos e
+reposição contínua. `TURN_ISSUE_PER_MINUTE` e `TURN_ISSUE_GLOBAL_PER_MINUTE` aceitam
+inteiros de 1 a 60000. Endereços atrás do mesmo NAT/proxy compartilham a cota;
+ajuste os valores se necessário. O app informa quando o limite é atingido e
+respeita o prazo de nova tentativa. Com autenticação, há também uma cota por sessão
+validada, que acompanha o cookie mesmo se o endereço mudar. A publicação OBS com
+Bearer válido usa uma cota compartilhada dessa credencial, sem depender de cookie.
+`TURN_ISSUE_IDENTITY_PER_MINUTE` aceita de 1 a 60000 e, quando ausente, herda
+`TURN_ISSUE_PER_MINUTE` (120 por padrão). Não identifica pessoas: abas do mesmo
+cookie e publicadores com o mesmo token compartilham a respectiva cota. Novos
+logins têm outra sessão, mas os limites de endereço/global e de login continuam.
+Esse limite não atua nos pacotes de vídeo ou
+comandos de uma conexão já estabelecida.
+
 Fora do Docker (`start.sh`/`start.bat`), o projeto usa por padrão um TURN público de
 testes ([OpenRelay](https://www.metered.ca/tools/openrelay/)). Pra algo mais confiável,
 rode seu próprio [coturn](https://github.com/coturn/coturn) e configure:
@@ -264,17 +340,58 @@ todo mundo assiste normalmente (com som e volume próprios).
 No OBS, em **Configurações > Transmissão**:
 
 - **Serviço:** `WHIP`
-- **Servidor:** `https://<endereço-do-servidor>:3000/obs/SEU-NICK` (o final do endereço
-  é o nome com que você aparece na sala)
-- **Bearer Token:** sem contas (o padrão), pode ficar em branco. Com contas
-  (`ACCOUNTS=on`), é a chave da sua conta, que aparece em **Configurações > OBS e
-  overlays** (o botão **OBS** da sala abre direto ali): ela diz que é você, não passe pra
-  ninguém.
+- **Servidor** e **Bearer Token:** entre na sala e clique em **OBS** no topo (abre
+  **Configurações > OBS e overlays**), que mostra os dois prontos pra copiar:
+  - sem contas (o padrão): um endereço e um token individuais, gerados pro seu
+    participante. O token é obrigatório nesse endereço, vale por até 8 horas e é
+    encerrado quando você sai da sala;
+  - com contas (`ACCOUNTS=on`): o endereço `https://<endereço-do-servidor>:3000/obs/SEU-NICK`
+    e a chave da sua conta, que não muda (configure uma vez). Ela diz que é você: não
+    passe pra ninguém.
 
-Depois é só **Iniciar transmissão**. Se você estiver na sala com o mesmo nick, a
+O identificador público da transmissão e o token privado são independentes. O nome
+não prova propriedade: apenas o participante vinculado à credencial pode usar as
+marcações locais e conceder comandos sobre aquela transmissão. Outros participantes
+não recebem o token na lista da sala, nas URLs ou no relatório de métricas.
+
+A credencial vale por até oito horas e é revogada ao sair da sala ou encerrar a
+sessão autenticada. Uma queda de transporte permite retomar por até dois minutos
+com o mesmo segredo e a mesma sessão da sala. A aba usa sessionStorage para conservar
+esse segredo ao recarregar; **Sair** remove a cópia local. Após expiração, fechamento
+sem retomada ou reinício do servidor, copie a nova configuração e atualize o OBS.
+Isso revoga o vínculo/comandos e a autorização de sinalização; não promete encerrar
+instantaneamente uma sessão RTP já estabelecida no MediaMTX.
+
+O endereço legado `/obs/SEU-NICK` continua disponível como publicação sem vínculo
+com um PC: não habilita comandos nem marcações locais por coincidência de nick.
+Para proteger essa publicação legada, configure `OBS_PUBLISH_TOKEN` no ambiente com
+32 a 256 caracteres ASCII sem espaços. Prefira um segredo aleatório; por exemplo,
+gere 32 bytes em hexadecimal com
+`node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
+Use HTTPS e informe o segredo somente no campo Bearer Token, nunca na URL.
+A proteção cobre iniciar, atualizar e encerrar a sessão WHIP. Para autenticar sala e
+espectadores, configure também `ROOM_ACCESS_KEY`; o token OBS não substitui essa chave.
+Sem `OBS_PUBLISH_TOKEN`, o endereço legado não exige Bearer; com a sala protegida,
+também exige cookie, incompatível com o OBS usual. Use o endereço individual gerado
+na sala para publicar com credencial própria, sem copiar cookies. Em sala aberta,
+qualquer participante pode obter sua própria credencial; use `ROOM_ACCESS_KEY` para
+restringir a entrada. Esse vínculo é com a sessão da sala, sem cadastro de contas.
+
+O coturn embutido também limita alocações simultâneas: `TURN_TOTAL_QUOTA` tem padrão
+128 e `TURN_USER_QUOTA`, 16 por credencial, limitado ao total. Uma conexão pode
+consumir mais de uma alocação; esses números não representam jogadores. O limite
+por credencial não impede obter outra credencial pelo endpoint da sala.
+`TURN_MAX_BPS` e `TURN_BPS_CAPACITY` permitem configurar banda por sessão e capacidade
+do servidor, respectivamente, em **bytes por segundo**; ambos ficam desativados
+por padrão (`0`). Ajuste-os após medir o tráfego para evitar prejudicar o vídeo.
+Essas opções afetam novas execuções da imagem compilada deste checkout; não foram
+aplicadas ao servidor em uso. A aplicação das quotas pelo coturn real ainda precisa
+ser validada.
+
+Depois é só **Iniciar transmissão**. Com a credencial individual vinculada à sala, a
 transmissão aparece na sua própria linha da lista (com a etiqueta OBS), sem criar outra
 pessoa. O botão **OBS** no topo da sala abre **Configurações > OBS e overlays**, com
-esse endereço já com o seu nick, pronto pra copiar, e testa se a porta UDP está liberada. Em
+esse endereço e o token prontos pra copiar, e testa se a porta UDP está liberada. Em
 **Configurações > Saída**, um codificador H.264, uns 6000 Kbps e intervalo de
 quadro-chave de 1 s funcionam bem (o intervalo curto faz quem entra no meio começar a
 ver mais rápido).
@@ -283,7 +400,7 @@ Duas coisas precisam estar certas no servidor:
 
 - **Certificado de verdade.** O OBS não aceita o certificado autoassinado; use o do
   Tailscale (veja [Certificado do Tailscale no container](#certificado-do-tailscale-no-container))
-  e o endereço com o nome dele (`https://nas.seu-tailnet.ts.net:3000/obs/...`).
+  e o endereço com o nome dele (`https://nas.seu-tailnet.ts.net:3000/obs-publish/...`).
 - **Porta 3000/UDP publicada** apontando pra porta 3478/UDP do container. O OBS manda o
   vídeo pelo TURN embutido, e ele só sabe usar TURN por UDP. O `docker-compose.yml` e a
   loja já publicam essa porta em instalações novas. **Se o app já estava instalado**
@@ -349,10 +466,71 @@ guardadas pra quando ligar de novo.
 
 ## Uso
 
-1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`) e
-   digita um nick; se ele já estiver em uso, o servidor acrescenta um número (ex.:
-   `Ana (2)`). Com as contas ligadas (`ACCOUNTS=on`), entra com o nick e a senha da
-   sua conta (veja [Contas e painel de administração](#contas-e-painel-de-administração)).
+### Captura direta para jogos
+
+No topo da sala, **Transmissão** abre os perfis **Tela e texto · 30 FPS**,
+**Jogo · até 1080p60** e **Jogo · até 720p60**. Escolha o perfil antes de compartilhar.
+Os limites preservam a proporção da fonte; o FPS e a resolução efetivos dependem
+da fonte, dos PCs e da conexão. O OBS continua usando as próprias configurações.
+
+O modo automático prefere H.264 quando negociável e mantém outros codecs como
+fallback. A preferência pode ser alterada antes de transmitir. O painel informa o
+encoder realmente usado quando o navegador o expõe; uma estimativa de capacidade
+ou a aceleração gráfica habilitada não comprovam hardware em uso.
+
+Durante a transmissão, é possível priorizar **Fluidez** ou **Nitidez do texto**,
+desativar a prévia local e configurar um **limite total de upload**. Com limite
+maior que zero, o teto de vídeo usa 80% do valor, dividido entre os espectadores;
+a margem restante ajuda áudio, comandos e overhead. Isso não mede nem garante a
+velocidade física da conexão. Zero deixa sem teto adicional do app.
+
+O botão **(i)** de cada vídeo mostra decoder, tempo de decodificação e jitter buffer,
+quando disponíveis. RTT da rede, filas e tempo de processamento são métricas
+diferentes e não equivalem ao atraso completo entre apertar um botão e ver a imagem.
+
+Em captura direta com perfil de jogo ou controle remoto ativo, a sala pode renovar
+a conexão de mídia se detectar atraso persistente no buffer após a rede recuperar.
+Isso pode interromper brevemente imagem e áudio; a captura e a conexão dos comandos
+são preservadas. Há intervalo mínimo de 60 segundos entre tentativas. A validação
+atual é local, com mídia sintética; o comportamento entre PCs ainda requer testes.
+
+Se a fonte ficar temporariamente indisponível, a sala informa a pausa e acompanha
+a retomada da mesma captura. Mudanças de tamanho recalculam os limites de envio,
+inclusive com a prévia desligada. Quando a fonte encerra, compartilhe novamente
+para escolher o que transmitir. Um monitor escolhido que desaparece não é
+substituído automaticamente por outro para as marcações e o controle remoto.
+
+### Conflitos de atalhos
+
+Em **Configurações → Atalhos**, o app mostra quais atalhos globais estão ativos,
+indisponíveis ou aguardando o contexto de desenho/controle. Se houver conflito,
+libere a combinação no outro programa e use **Tentar registrar novamente**, sem
+reiniciar o app. Os botões **Ativar/Encerrar desenho** e **Revogar controle remoto**
+funcionam pelo painel; durante o desenho, a barra também mantém seus botões.
+Uma tecla indisponível deixa de aparecer como dica na barra.
+
+Ctrl+Shift+D só fica reservado enquanto há uma transmissão com marcações.
+As teclas de desfazer, limpar e sair só são registradas enquanto você desenha;
+o atalho de revogação, enquanto há controle remoto autorizado. No Windows, a
+leitura local de Ctrl+Shift+X continua como alternativa de emergência.
+
+### Desempenho visual
+
+No aplicativo, **Configurações → Aplicativo → Desempenho visual** oferece os modos
+**Completo**, **Econômico** e **Automático**. O econômico reduz partículas,
+brilhos e desfoques na sala e nas marcações locais. O automático faz essa redução
+quando detecta atrasos repetidos da interface e restaura os efeitos após um período
+saudável. A escolha é salva e aplicada sem reiniciar. Vídeo, áudio, ponteiros e
+comandos continuam ativos; esse detector não mede congestionamento de rede ou carga
+da GPU. O padrão permanece Completo.
+
+### Entrar, transmitir e assistir
+
+1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`),
+   digita um nick e clica em **Entrar**. Se o nick já estiver em uso, o servidor
+   acrescenta um número (ex.: `Ana (2)`). Com as contas ligadas (`ACCOUNTS=on`), entra
+   com o nick e a senha da sua conta (veja
+   [Contas e painel de administração](#contas-e-painel-de-administração)).
 2. Pra transmitir, clique em **Compartilhar tela** no topo e escolha a tela/janela no
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO**, o tempo no ar e
    um contador de quantas pessoas estão assistindo (passe o mouse nele pra ver quem).
@@ -531,11 +709,44 @@ que o navegador não faz:
   **Mouse e efeitos** (o mesmo editor do perfil, com imagem própria), **Ponteiro e
   controle** (ver o mouse de quem assiste, sons, quem pode controlar), **Aplicativo** (modo de tela cheia, aceleração de hardware, marcações na
   tela, registro de atividade, versões e **Verificar atualização**), **Conexão e
-  testes** (endereço do servidor e o teste de conexão), **OBS e overlays** (endereço
+  testes** (endereço do servidor e o teste de conexão), **Experimental** (opções de
+  comandos e vídeo para comparar entre PCs), **OBS e overlays** (endereço
   do OBS e o monitor das marcações), **Log em tempo real** (quem entrou e saiu,
   transmissões, conexões e erros, com busca, filtros e exportação em JSON; nada de
   conteúdo do chat ou da mídia) e **Atalhos**. A sala continua conectada enquanto
   você mexe; servidor, tela cheia e aceleração valem depois de **Reiniciar e aplicar**.
+- **Motor nativo experimental** (Configurações → Experimental): no app Windows x64,
+  permite compartilhar uma janela em H.264/720p, com proporção preservada, um
+  espectador e sem áudio do sistema. A opção fica desligada por padrão; salve
+  antes de iniciar a transmissão. Requer app/servidor atualizados e navegador
+  receptor compatível. Fechar ou redimensionar a janela encerra a captura.
+  Reduções de bitrate são preservadas na recuperação, que mantém a captura e
+  usa tentativas limitadas. Perdas ainda podem causar pausas e menor qualidade.
+  Admissão, pacing, cópias de IPC e recuperação foram verificados localmente; detalhes e
+  limitações estão em [DEVELOPMENT.md](DEVELOPMENT.md).
+- **Vídeo experimental** (Configurações → Experimental): a adaptação de bitrate
+  mais rápida pode ser ligada no PC que transmite pelo app, com a adaptação
+  automática habilitada. Ela reduz o envio sob congestionamento grave mesmo sem
+  estimativa de banda e recupera o bitrate gradualmente. Quem assiste pode solicitar um alvo de buffer de 50 ms
+  para áudio/vídeo das transmissões, incluindo OBS. As duas opções vêm desligadas,
+  são salvas por servidor neste PC e valem após **Reiniciar e aplicar**. Teste uma
+  por vez e compare as métricas: o alvo não garante atraso de 50 ms e pode aumentar
+  o buffer onde o automático já era menor. Em redes instáveis, pode haver cortes
+  ou perda de qualidade. App e servidor precisam estar atualizados.
+- **Limite de GPU experimental**: no transmissor, **Ajustar envio à carga medida da
+  GPU** reduz resolução/FPS sob pressão sustentada do encoder ou da VRAM e recupera
+  gradualmente. Exige adaptação automática e reinício para aplicar; vem desligado.
+  Usa telemetria NVIDIA quando disponível ou evidência recente de sobrecarga do
+  encoder por hardware. Dados ausentes não indicam capacidade livre. O diagnóstico
+  mostra sessões do driver e VRAM globais, incluindo outros apps; não informa um
+  máximo de sessões presumido. Não se aplica ao OBS ou motor nativo experimental.
+- **Recuperação de vídeo experimental**: quem assiste pode ativar a renovação da
+  mídia quando o atraso persiste após congestionamento. Vem desligada, aplica após
+  reiniciar e pode pausar áudio/vídeo sem melhorar o atraso; comandos preservam seu
+  transporte. Vale para perfis de jogo/controle, sem OBS. Compare ligado/desligado
+  entre PCs e confira `latencyRecoveries` nas métricas. Com adaptação responsiva no
+  transmissor, renovar a mídia preserva o limite reduzido de bitrate; subir a
+  qualidade exige novas evidências de rede saudável.
 - **Tela cheia "sem bordas"** (Configurações → Aplicativo, no Windows): em vez da tela
   cheia nativa, a janela cobre o monitor inteiro sem moldura (Esc/F11 voltam ao
   tamanho de antes). Pra quem sentir o vídeo ou o mouse engasgando na tela cheia
@@ -548,7 +759,7 @@ que o navegador não faz:
   pega cliques e fica de fora da captura, então quem assiste não vê nada duplicado. O
   seu quadro na sala ganha a etiqueta **na sua tela** enquanto isso está ligado.
   Compartilhando só uma janela, as marcações aparecem só pra quem assiste.
-- **Também transmitindo pelo OBS**: com o app aberto na sala com o mesmo nick do OBS,
+- **Também transmitindo pelo OBS**: com o app aberto na sala e usando o endereço/token individuais gerados nela,
   quando a sua transmissão do OBS entra no ar o app abre essa camada sozinho, no
   monitor principal. (A sua própria transmissão do OBS não abre sozinha na sala, pra
   não gastar internet à toa; pra ver como ela está chegando, clique em **Assistir** ao
@@ -623,6 +834,12 @@ que o navegador não faz:
   **Ctrl+Shift+H** (esse atalho fica com quem controla, não vai pra lá). Pra mostrar de
   novo: **Ctrl+Shift+H** ou o botão do olho na barra de baixo do quadro; parar de
   controlar também mostra.
+  Com app e servidor atualizados, a recepção dos comandos roda em um processo
+  separado da janela da sala, inclusive quando usa o servidor como fallback.
+  Assim, travar a interface da sala não interrompe essa recepção. Se o receptor
+  falhar ou exceder sua fila, o app neutraliza e revoga a concessão afetada;
+  para retomar, conceda o controle novamente. Servidores antigos continuam
+  usando o caminho anterior, ligado à interface.
 - **Seletor próprio de tela/janela**, com miniaturas atualizando, e a opção
   **Compartilhar o som do PC** (o som do Windows inteiro, inclusive compartilhando a
   tela toda). Quem estiver na voz: use fone, senão quem assiste ouve o próprio eco.
@@ -632,6 +849,7 @@ que o navegador não faz:
   Se o Windows não deixar, aparece um aviso e vai o som do PC, como sempre.
 - A transmissão e a voz continuam firmes com o app minimizado, e a barra de tarefas
   pisca quando chega mensagem no chat com o app em segundo plano.
+- Ao compartilhar uma janela no Windows, mantenha a janela capturada restaurada. No ensaio com quatro espectadores, minimizar a fonte reduziu a captura para 1 FPS; restaurá-la recuperou cerca de 60 FPS na mesma transmissão.
 - **Aviso de versão nova**: o app procura atualização ao abrir e a cada 6 horas. Na
   versão instalada (Setup), o aviso no topo da sala tem o botão **Atualizar**: ele
   baixa a versão nova (com o progresso no aviso e na barra de tarefas), instala e abre
@@ -699,3 +917,14 @@ install && npm start`.
 - Ideias pro futuro: veja [IDEIAS.md](IDEIAS.md).
 - Desenvolvimento do app (rodar do código, testes, opções de diagnóstico): veja
   [DEVELOPMENT.md](DEVELOPMENT.md).
+- Para registrar uma partida, use **Configurações → Conexão → Copiar métricas da
+  sessão** no app. No navegador, use **Copiar métricas** no rodapé da sala. Copia JSON
+  com FPS, codec, encoder/decoder quando informados, filas, rota e RTT dos comandos;
+  sem nomes, endereços ou comandos pressionados. É uma fotografia das estatísticas
+  locais, não uma medição do botão até a imagem. Não inicia transmissão ou testes
+  de rede adicionais. Requer servidor atualizado com essa opção.
+- **Configurações → Conexão → Testar conexão** também mostra as rotas de vídeo
+  existentes e o transporte dos comandos, sem nomes ou endereços dos jogadores.
+  A consulta dessas rotas é passiva; as sondas de conexão existentes continuam
+  separadas. P2P WebRTC e indício de VPN não comprovam conexão direta do Tailscale
+  nem ausência de DERP entre PCs.

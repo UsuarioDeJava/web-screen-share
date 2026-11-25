@@ -126,6 +126,12 @@ computador e no celular, mantendo o visual:
   desfoque e escurecer) e o tema entra por último, antes de a página aparecer. Ainda
   sem tela pra escolher; dá pra testar pelo console (`WssTheme.set(...)`). Tudo
   explicado em [THEMES.md](THEMES.md).
+## 1.9.0 — Melhorias de transmissão e controle
+
+- A sala ganhou diagnóstico de rota e estatísticas por transmissão, perfis de captura e ajustes experimentais de vídeo.
+- O controle remoto usa canais WebRTC para comandos. Sob congestionamento, o app espaça os envios de eixos e gatilhos e mantém as transições de botões no canal confiável.
+- O servidor oferece autenticação individual opcional, credenciais por publicação do OBS e limites para uso do relay.
+- No Windows x64, a captura nativa experimental transmite uma janela em H.264 para um espectador. O áudio do sistema continua disponível pela captura padrão.
 
 ## 1.8.1 — 2026-11-19
 

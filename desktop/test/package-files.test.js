@@ -16,6 +16,8 @@ test('pacote: todo arquivo que o app carrega está na lista do instalador', () =
     const file = queue.shift();
     if (seen.has(file)) continue;
     seen.add(file);
+    // Só código: o executável nativo (native/bin) é compilado no beforePack, no Windows.
+    if (!/\.c?js$/.test(file)) continue;
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     const refs = [...source.matchAll(/(?:require\(|utilityProcess\.fork\(path\.join\(__dirname, )'\.?\/?([^'"]+?)'/g)].map((m) => m[1]);
     for (const ref of refs) {

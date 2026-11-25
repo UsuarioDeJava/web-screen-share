@@ -42,6 +42,10 @@
     },
     onLog: () => {},
     subscribeLog: async () => null,
+    // Atalhos globais (do sistema) só existem no app; os da sala a página já lista.
+    onShortcuts: () => {},
+    readShortcuts: async () => null,
+    shortcutAction: onlyInApp,
     save: onlyInApp,
     restart: onlyInApp,
     clearLog: onlyInApp,

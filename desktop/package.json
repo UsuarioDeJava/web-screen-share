@@ -13,7 +13,8 @@
   "scripts": {
     "start": "electron .",
     "dist:win": "electron-builder --win --publish never",
-    "dist:linux": "electron-builder --linux --publish never"
+    "dist:linux": "electron-builder --linux --publish never",
+    "prestart": "node build-native.cjs"
   },
   "devDependencies": {
     "electron": "45.3.2",
@@ -28,7 +29,11 @@
     },
     "files": [
       "main.js",
+      "control-receiver.js",
       "borderless-fullscreen.js",
+      "capture-display.js",
+      "gpu-telemetry.js",
+      "shortcuts.js",
       "preferences.js",
       "config-store.js",
       "shared/**",
@@ -40,6 +45,7 @@
       "system-cursor.js",
       "window-audio.js",
       "window-audio-worker.js",
+      "xdotool-input.js",
       "keyhook.js",
       "updates.js",
       "preload.js",
@@ -47,7 +53,10 @@
       "overlay-preload.js",
       "pages/**",
       "gamepad.js",
-      "gamepad-setup.js"
+      "gamepad-setup.js",
+      "native-video.js",
+      "native-video-host.cjs",
+      "native/bin/native-video-worker.exe"
     ],
     "publish": [
       {
@@ -80,10 +89,17 @@
       "icon": "build/icon.png",
       "category": "Network",
       "artifactName": "Web-Screen-Share-${version}.${ext}"
-    }
+    },
+    "beforePack": "./build-native.cjs",
+    "asarUnpack": [
+      "native/bin/**",
+      "node_modules/node-datachannel/build/**",
+      "node_modules/@node-datachannel/**/*.node"
+    ]
   },
   "dependencies": {
     "electron-updater": "6.8.12",
-    "koffi": "3.3.6"
+    "koffi": "3.3.6",
+    "node-datachannel": "0.33.6"
   }
 }
