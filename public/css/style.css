@@ -1772,3 +1772,9 @@ kbd {
   /* Não é movimento que se veja: precisa continuar (senão o mouse trava em tela cheia). */
   .tile:fullscreen .keep-hz { animation: keep-hz 1s linear infinite alternate !important; }
 }
+.capture-dialog { width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; }
+.capture-dialog form { display: grid; gap: 12px; }
+.capture-dialog label { display: grid; gap: 6px; }
+.capture-dialog label.capture-check { display: flex; align-items: center; gap: 8px; }
+.capture-dialog select, .capture-dialog input[type="number"] { width: 100%; min-width: 0; padding: 9px; color: inherit; background: var(--panel, #182034); border: 1px solid var(--border, #34405a); border-radius: 8px; }
+.capture-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; padding: 12px; border-radius: 8px; background: var(--main); line-height: 1.5; }

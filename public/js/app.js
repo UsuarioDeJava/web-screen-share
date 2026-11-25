@@ -1,6 +1,13 @@
 (() => {
   const PRESETS = window.QUALITY_PRESETS;
   const DEFAULT_QUALITY = window.DEFAULT_QUALITY;
+  const Video = window.WssVideoPolicy;
+  const gpuCapacity = Video.createCapacityController();
+  let gpuHardwarePending = null, gpuHardwareAt = -Infinity;
+  const transportExperiments = window.WssExperiments.create(localStorage);
+  const peerStats = Video.createStatsReader();
+  const codecProbe = Video.createCapabilityProbe({ mediaCapabilities: navigator.mediaCapabilities,
+    rtpCapabilities: direction => (direction === 'encode' ? window.RTCRtpSender : window.RTCRtpReceiver)?.getCapabilities('video') });
   const TILE_BAR_HEIGHT = 48; // precisa bater com .tile-bar no CSS
   const TILE_BORDER = 1; // borda do .tile no CSS
   const TILE_GAP = 12;
@@ -84,6 +91,14 @@
   const obsUrlInput = $('obs-url');
   const obsCopyBtn = $('obs-copy');
   const obsNickEl = $('obs-nick');
+  let obsCredentials = null, obsCredentialRequest = null, obsCredentialOwner = null, obsIdentitySupported = false, obsCredentialGeneration = 0;
+  try {
+    const raw = sessionStorage.getItem('wss-obs-publication');
+    const saved = raw && raw.length < 512 ? JSON.parse(raw) : null;
+    if (saved && /^pub_[a-f0-9]{32}$/.test(saved.path) && /^[a-f0-9]{64}$/.test(saved.token) && Number.isFinite(saved.expiresAt))
+      obsCredentials = { path: saved.path, token: saved.token, expiresAt: saved.expiresAt,
+        url: new URL('/obs-publish/' + saved.path.slice(4), location.origin).href, individual: true };
+  } catch {}
   const obsCheckEl = $('obs-check');
   const obsCertEl = $('obs-cert');
   const proxyBanner = $('proxy-banner');
@@ -111,13 +126,14 @@
   const btnVoiceLeave = $('btn-voice-leave');
   const sounds = window.RoomSounds;
 
-  const socket = io();
+  const socket = io({ autoConnect: false });
+  let stopRelayProbe = null;
+  let roomAuth = null, authReady;
   // Identifica esta aba entre reconexões do socket, pro servidor derrubar o
   // socket antigo ("fantasma") em vez de duplicar a pessoa na sala.
   const clientId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const iceServersPromise = fetch('/ice-servers')
-    .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.statusText))))
-    .catch(() => [{ urls: 'stun:stun.l.google.com:19302' }]);
+  const getIceServers = window.createIceServers({ fetch: window.fetch.bind(window),
+    onRateLimit: seconds => showToast(`O servidor limitou as consultas de conexão. Aguarde ${seconds} s antes de tentar novamente.`) });
   const canShare = Boolean(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
   // iOS ignora video.volume (é sempre 1); lá só o botão de mutar funciona.
   const canSetVolume = (() => {
@@ -130,11 +146,34 @@
   let me = null; // { id, name } enquanto estiver na sala
   const users = new Map(); // id -> { id, name, sharing }
   let localStream = null;
+  let localNative = null;
+  let nativeSnapshot = null;
+  window.wssDesktop?.onNativeVideo?.(event => {
+    if(!localNative || event.token!==localNative.token)return;
+    if(event.type==='error'){showToast(event.error);stopSharing();return;}
+    const o=outgoing.get(event.viewer);if(!o?.native)return;
+    if(event.type==='offer'){o.sid=event.sid;sidCounter=Math.max(sidCounter,event.sid);send(event.viewer,{stream:me.id,type:'offer',sid:event.sid,sdp:event.sdp,nativeVideo:true});}
+    else if(event.type==='state'){o.pc.connectionState=event.state;renderSelfTile();}
+    else if(event.type==='recovering'){o.pc.connectionState='connecting';renderSelfTile();}
+  });
+  let capturePending = false, captureAttempt = 0, activeCapture = null;
+  let captureMonitor = null, captureState = null;
+  let captureHardware = null, captureCodecEstimates = null, captureProbePending = false;
+  let captureOptions;
+  try { captureOptions = Video.normalize(JSON.parse(localStorage.getItem('wss-capture-options') || '{}')); }
+  catch { captureOptions = Video.normalize(); }
+  const captureDialog = $('capture-dialog');
+  const captureFields = { profile: $('capture-profile'), priority: $('capture-priority'), codec: $('capture-codec'),
+    uploadMbps: $('capture-upload'), adaptive: $('capture-adaptive'), preview: $('capture-preview') };
   let selfTile = null;
+  let uptimeTicker;
   const outgoing = new Map(); // viewerId -> { pc, sid, quality, pending }
   const streams = new Map(); // broadcasterId -> estado do tile de quem está transmitindo
   let sidCounter = 0;
-  let signalQueue = Promise.resolve();
+  const signalQueue = WssSignaling.createQueue({
+    handle: ({ from, data, address }) => handleSignal(from, data, address),
+    onError: error => console.warn('Erro de sinalização', error),
+  });
   let toastTimer = null;
   let pageVersion = null; // versão do servidor quando esta página foi carregada
   let serverStatus = {};
@@ -358,10 +397,17 @@
     }
   }
 
-  fetch('/status', { cache: 'no-store' })
-    .then((res) => res.json())
+  let serverStatusRequest = null;
+  function loadServerStatus() {
+    if (serverStatusRequest) return serverStatusRequest;
+    serverStatusRequest = fetch('/status', { cache: 'no-store' })
+    .then((res) => res.ok ? res.json() : null)
     .then((status) => {
+      if (!status) return;
       serverStatus = status;
+      $('obs-token-hint').textContent = obsIdentitySupported ? 'Use o endereço e o token individual gerados para seu participante nesta sala.' : status.obsAuthRequired
+        ? 'Preencha o Bearer Token do OBS com o token de publicação fornecido pelo administrador.'
+        : 'Este servidor não exige Bearer Token de publicação. O campo pode ficar em branco.';
       setPageVersion(status.version);
       showCertificateWarning(status.certificate);
       btnObs.hidden = !status.obs;
@@ -370,7 +416,9 @@
         proxyBanner.hidden = false;
       }
     })
-    .catch(() => {});
+    .catch(() => {}).finally(() => { serverStatusRequest = null; });
+    return serverStatusRequest;
+  }
 
   // Aberta por um proxy reverso (ex.: Caddy numa porta "+30000") sem PUBLIC_PORT: o
   // TURN do servidor não atravessa o proxy.
@@ -399,20 +447,54 @@
     renderAll();
   }
 
-  loginForm.addEventListener('submit', (event) => {
+  function renderRoomAccess() {
+    $('room-access-key').hidden = !roomAuth?.required || roomAuth.authenticated;
+    $('room-access-hint').textContent = roomAuth?.required
+      ? 'Use a chave fornecida pelo administrador. O app não salva a chave.'
+      : 'O nick só vale enquanto você estiver na sala.';
+  }
+  async function refreshRoomAccess(connect = true) {
+    const response = await fetch('/auth/status', { cache: 'no-store' });
+    const state = response.status === 404 ? { required: false, authenticated: true } : response.ok ? await response.json() : null;
+    if (!state || typeof state.required !== 'boolean' || typeof state.authenticated !== 'boolean') throw Error('Não foi possível verificar o acesso à sala.');
+    roomAuth = state; renderRoomAccess();
+    if (state.authenticated && connect) { socket.connect(); loadServerStatus(); }
+    return state;
+  }
+  function lockRoom(message) {
+    obsCredentials = null;
+    try { sessionStorage.removeItem('wss-obs-publication'); } catch {}
+    wantedName = null; stopSharing(); leaveVoice(); socket.disconnect();
+    if (me) leaveRoomLocally();
+    if (roomAuth) roomAuth.authenticated = false;
+    $('room-access-key').value = ''; renderRoomAccess(); showLogin(message);
+  }
+  loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const name = nickInput.value.replace(/\s+/g, ' ').trim();
     if (!name) {
       loginError.textContent = 'Digite um nick.';
       return;
     }
-    wantedName = name;
-    try { localStorage.setItem('wss-nick', name); } catch {}
     sounds.unlock(); // o navegador só libera som depois de um clique
     loginBtn.disabled = true;
     loginBtn.textContent = socket.connected ? 'Entrando…' : 'Conectando ao servidor…';
     loginError.textContent = '';
-    if (socket.connected) join();
+    try {
+      await authReady;
+      if (!roomAuth) await refreshRoomAccess(false);
+      if (roomAuth.required && !roomAuth.authenticated) {
+        const key = $('room-access-key').value; $('room-access-key').value = '';
+        const response = await fetch('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) });
+        if (!response.ok) { const result = await response.json(); throw Error(result.error || 'Não foi possível autenticar.'); }
+        await refreshRoomAccess(false);
+        if (!roomAuth.authenticated) throw Error('A sessão não foi recebida. Confira HTTPS e a configuração do cookie no servidor.');
+      }
+      $('room-access-key').value = '';
+      wantedName = name;
+      try { localStorage.setItem('wss-nick', name); } catch {}
+      if (socket.connected) join(); else socket.connect();
+    } catch (error) { renderRoomAccess(); showLogin(error.message || 'Não foi possível entrar.'); }
   });
 
   function join() {
@@ -424,6 +506,10 @@
         return;
       }
       me = { id: res.me.id, name: res.me.name };
+      stopRelayProbe?.();
+      if (transportExperiments.snapshot().active.relaySelection && window.WssRelayProbe)
+        stopRelayProbe = window.WssRelayProbe.start(socket);
+      assetUploadHttp = res.assetUpload === 1;
       // Permissões de controle não sobrevivem a uma queda (o servidor já cancelou): o
       // aviso do app some junto.
       if (window.wssDesktop && window.wssDesktop.controlState) window.wssDesktop.controlState({ on: false });
@@ -433,6 +519,8 @@
       if (joinedBefore) quietUntil = Date.now() + 8000;
       joinedBefore = true;
       setPageVersion(res.version);
+      obsIdentitySupported = res.obsPublication === 1;
+      loadServerStatus();
       // O container reinicia ao atualizar e o socket reconecta sozinho, mas esta
       // página continua com o código antigo até ser recarregada.
       updateBanner.hidden = !res.version || res.version === pageVersion;
@@ -467,6 +555,7 @@
       }
       renderUsers(); // agora com os quadros criados (botões de assistir/ir pra tela)
       restoreProfilePhoto();
+      if (obsCredentials && obsIdentitySupported) getObsPublication().catch(() => {});
     });
   }
 
@@ -495,6 +584,11 @@
   }
 
   function leaveRoomLocally() {
+    stopRelayProbe?.(); stopRelayProbe = null;
+    obsCredentialGeneration++; obsCredentialOwner = null;
+    obsUrlInput.value = ''; $('obs-token').value = ''; $('obs-token-field').hidden = true;
+    if (obsDialog.open) obsDialog.close();
+    signalQueue.reset();
     me = null;
     resetControl();
     // Continua "na voz": ao reconectar, as conexões de voz são refeitas.
@@ -505,7 +599,9 @@
     renderAll();
   }
 
-  btnLeave.addEventListener('click', () => {
+  btnLeave.addEventListener('click', async () => {
+    obsCredentials = null; obsCredentialOwner = null;
+    try { sessionStorage.removeItem('wss-obs-publication'); } catch {}
     leaveVoice();
     streamPrefs.clear();
     pinnedKey = null;
@@ -516,6 +612,13 @@
     wantedName = null;
     leaveRoomLocally();
     showLogin();
+    if (roomAuth?.required) {
+      socket.disconnect(); roomAuth.authenticated = false; renderRoomAccess();
+      try {
+        const response = await fetch('/auth/logout', { method: 'POST' });
+        if (!response.ok) throw Error('logout');
+      } catch { showLogin('Você saiu deste app, mas não foi possível encerrar a sessão no servidor. Tente novamente quando a conexão voltar.'); }
+    }
   });
 
   function setConnection(ok) {
@@ -530,9 +633,15 @@
     if (wantedName) join();
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     setConnection(false);
     if (me) leaveRoomLocally();
+    if (reason === 'io server disconnect' && roomAuth?.required) lockRoom('Sessão encerrada ou expirada. Entre novamente.');
+  });
+  socket.on('connect_error', () => {
+    refreshRoomAccess(false).then(state => {
+      if (state.required && !state.authenticated) lockRoom('Informe a chave de acesso para entrar.');
+    }).catch(() => {});
   });
 
   socket.on('user:joined', (user) => {
@@ -549,6 +658,15 @@
     if (!me) return;
     const before = users.get(user.id);
     users.set(user.id, user);
+    const existing = streams.get(user.id);
+    if (user.kind === 'obs' && existing && before?.ownerId !== user.ownerId) {
+      // Só o participante que ganha/perde a propriedade muda seus controles
+      // locais. Os demais mantêm a mesma conexão WHEP e a imagem em reprodução.
+      if (existing.mine !== Boolean(me && user.ownerId === me.id)) {
+        removeStreamTile(user.id);
+        if (user.sharing) addStreamTile(user);
+      }
+    }
     if (user.sharing && !(before && before.sharing)) {
       addStreamTile(user);
       announceLive(user.name, '');
@@ -563,6 +681,7 @@
 
   socket.on('user:left', ({ id }) => {
     if (!me || id === me.id) return;
+    signalQueue.remove(id);
     const gone = users.get(id);
     if (gone && gone.kind !== 'obs') announceLeave(gone.name);
     closeVoicePeer(id);
@@ -582,21 +701,21 @@
     layoutGrid();
   }
 
-  // Uma linha por pessoa. A transmissão do OBS de quem está na sala (mesmo nick) entra
+  // Uma linha por pessoa. A transmissão OBS vinculada ao ID do participante entra
   // na linha dessa pessoa; a de quem só está no OBS, sem a página aberta, fica sozinha.
   function roomEntries() {
     const myId = me && me.id;
     const entries = [];
-    const byName = new Map();
+    const byId = new Map();
     for (const u of users.values()) {
       if (u.kind === 'obs') continue;
       const entry = { user: u, live: Boolean(u.sharing), obs: false, streamIds: u.sharing && u.id !== myId ? [u.id] : [] };
       entries.push(entry);
-      if (!byName.has(u.name)) byName.set(u.name, entry);
+      byId.set(u.id, entry);
     }
     for (const u of users.values()) {
       if (u.kind !== 'obs') continue;
-      const entry = byName.get(u.name);
+      const entry = byId.get(u.ownerId);
       if (entry) {
         entry.live = true;
         entry.obs = true;
@@ -622,7 +741,7 @@
       li.append(face, el('span', 'user-name', u.name));
       if (u.voice) li.append(voiceIndicator(u));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
-      if (entry.obs) li.append(el('span', 'tag tag-obs', 'OBS'));
+      if (entry.obs) li.append(el('span', 'tag tag-obs', u.kind === 'obs' && !u.ownerId ? 'OBS · sem vínculo' : 'OBS'));
       const grant = controlGrantButton(u);
       if (grant) li.append(grant);
       const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
@@ -685,7 +804,9 @@
     btnShare.title = label;
     btnShare.setAttribute('aria-label', label);
     btnShare.className = localStream ? 'btn btn-danger' : 'btn btn-primary';
-    btnShare.disabled = !me;
+    btnShare.disabled = !me || capturePending || captureProbePending;
+    $('btn-capture-settings').disabled = !me;
+    renderCaptureSettings();
   }
 
   function focusTile(id) {
@@ -720,6 +841,7 @@
   const tileWidthFor = (h) => (h - TILE_BAR_HEIGHT - TILE_BORDER * 2) * (16 / 9) + TILE_BORDER * 2;
 
   function layoutGrid() {
+    uptimeTicker?.sync();
     let pinned = null;
     for (const s of streams.values()) {
       const on = s.key === pinnedKey;
@@ -826,7 +948,6 @@
       const base = createTile(me ? me.name : wantedName, 'Você');
       base.tile.classList.add('tile-self');
       base.video.muted = true;
-      base.video.srcObject = localStream;
       const meta = el('div', 'tile-meta');
       const viewers = el('span', 'tile-viewers');
       meta.append(viewers);
@@ -837,11 +958,20 @@
       meta.prepend(overlayTag);
       base.bar.append(meta);
       selfTile = { ...base, viewers, overlayTag };
+      base.video.addEventListener('resize', () => captureMonitor?.refresh());
       // Quem transmite também pode apontar na própria tela, pra quem está assistindo.
       enableMarkup(base, () => me && me.id);
       gridInner.prepend(base.tile);
       layoutGrid();
       renderUptimes();
+    }
+    if (captureOptions.preview && !localNative) {
+      if (selfTile.video.srcObject !== localStream) { selfTile.video.srcObject = localStream; selfTile.video.play().catch(() => {}); }
+      selfTile.video.hidden = false;
+      setStatus(selfTile, captureState?.muted ? 'Captura temporariamente pausada; aguardando a fonte.' : '');
+    } else {
+      selfTile.video.pause(); selfTile.video.srcObject = null; selfTile.video.hidden = true;
+      setStatus(selfTile, localNative ? 'Motor nativo ativo · janela em 720p · sem prévia local.' : 'Prévia desativada; a transmissão continua.');
     }
     const names = [...outgoing.entries()]
       .filter(([, o]) => o.pc.connectionState === 'connected')
@@ -855,16 +985,120 @@
 
   // ---------- transmitir ----------
 
+  function captureSnapshot() {
+    const settings = localNative ? {width:1280,height:720,frameRate:nativeSnapshot?.session?.rate?.target<500000?30:60} : localStream?.getVideoTracks()[0]?.getSettings() || {};
+    return { active: Boolean(localStream), pending: capturePending, options: { ...captureOptions },
+      native: localNative ? {enabled:true,...nativeSnapshot} : null,
+      capacity: { enabled: transportExperiments.snapshot().active.gpuBudget && captureOptions.adaptive && !localNative, ...gpuCapacity.snapshot() },
+      actual: { width: settings.width, height: settings.height, frameRate: settings.frameRate }, sourceState: captureState && { ...captureState }, hardware: captureHardware,
+      senders: [...outgoing.entries()].map(([id, o]) => ({ id, name: users.get(id)?.name || 'Participante',
+        state: o.pc.connectionState, quality: o.quality, codecPreference: o.codecPreference || 'auto', encoderCapabilities: o.encoderCapabilities || null,
+        policy: o.policy || null, metrics: o.metrics || null,
+        native: o.native===true,
+        adaptation: o.native ? {strategy:'native-feedback',bitrateCeiling:nativeSnapshot?.session?.rate?.target??null} : { factor: o.rate.factor, bitrateCeiling: o.rate.maxBitrate ?? null, intervalMs: o.rate.intervalMs || 2000, strategy: o.rate.strategy || 'legacy' },
+        error: o.qualityError || null })) };
+  }
+  function renderCaptureSettings(syncFields = true) {
+    if (syncFields) {
+      for (const [key, field] of Object.entries(captureFields)) {
+        if (field !== document.activeElement) {
+          if (field.type === 'checkbox') field.checked = captureOptions[key]; else field.value = captureOptions[key];
+        }
+      }
+      captureFields.profile.disabled = captureFields.codec.disabled = Boolean(localStream || capturePending || captureProbePending);
+      for(const key of ['priority','uploadMbps','adaptive','preview'])captureFields[key].disabled=!!localNative;
+      $('capture-probe').disabled = Boolean(localStream || capturePending || captureProbePending);
+    }
+    if (!captureDialog.open) return;
+    const state = captureSnapshot(), lines = [];
+    if(localNative)lines.push('Motor nativo: saída 1280×720, seleção até 60 FPS (30 em baixa taxa), uma janela e um receptor. Perfil e limite de upload do Chromium não se aplicam a este modo.', '');
+    if (captureHardware) {
+      lines.push(`Recursos gráficos do app: encode ${captureHardware.features?.video_encode || 'não informado'}; decode ${captureHardware.features?.video_decode || 'não informado'}.`);
+      lines.push('Disponibilidade gráfica não comprova uso do encoder por hardware nesta transmissão.', '');
+      for (const device of captureHardware.telemetry?.devices || []) {
+        lines.push(`GPU${device.active ? ' ativa' : ''}: ${device.encoderSessions ?? '?'} sessões de encoder no driver (todos os apps); uso do encoder ${device.encoderUtilization ?? '?'}%; VRAM livre ${device.memoryFreeMiB ?? '?'} / ${device.memoryTotalMiB ?? '?'} MiB.`);
+      }
+      lines.push('Limite máximo de sessões do driver: desconhecido; sessões não são unidades físicas de encoder.');
+    }
+    if (captureCodecEstimates) {
+      lines.push('Estimativas de capacidade (não comprovam aceleração em uso):');
+      for (const [codec, capability] of Object.entries(captureCodecEstimates)) {
+        lines.push(`${codec.toUpperCase()}: ${capability.supported ? 'suportado' : 'não indicado'}; eficiente ${capability.powerEfficient === true ? 'sim' : capability.powerEfficient === false ? 'não' : 'desconhecido'}`);
+      }
+      lines.push('');
+    }
+    if (state.active) {
+      lines.push(`Captura: ${state.actual.width || '?'}×${state.actual.height || '?'} · ${state.actual.frameRate?.toFixed(1) || '?'} FPS`);
+      if (state.sourceState?.muted) lines.push('Fonte temporariamente indisponível; aguardando a retomada da mesma captura.');
+      const ceiling = state.senders.reduce((total, o) => total + (o.policy?.maxBitrate || 0), 0);
+      lines.push(`${state.senders.length} conexão(ões) de vídeo · teto somado ${(ceiling / 1e6).toFixed(1)} Mbps, sem overhead`);
+      lines.push('Conexões não comprovam quantas sessões físicas de encoder a GPU utiliza.');
+      if (state.capacity.enabled) {
+        const reason = { unknown: 'aguardando medições válidas', 'driver-pressure': 'pressão medida na GPU',
+          'encoder-pressure': 'encoder sobrecarregado', healthy: 'carga normal' }[state.capacity.reason];
+        lines.push(`Limite experimental de GPU: nível ${state.capacity.level}/3 (${reason}).`);
+      }
+      for (const sender of state.senders) {
+        lines.push('', `${sender.name}: ${sender.state}`);
+        lines.push(`Preferência de codec: ${sender.codecPreference.toUpperCase()} (capacidades estimadas; confirme o codec efetivo abaixo)`);
+        if(sender.native)lines.push(`H.264 nativo · alvo ${((nativeSnapshot?.session?.rate?.target||4000000)/1e6).toFixed(2)} Mbps · ${nativeSnapshot?.recoveries||0} recuperações.`, 'Admissão: até 8 quadros/64 KiB sem recibo; fila interna do binding não observável.');
+        else if (sender.metrics) lines.push(...videoMetricLines(sender.metrics, true));
+        else lines.push('Aguardando estatísticas do encoder.');
+        if (sender.error) lines.push(sender.error);
+      }
+    } else lines.push(capturePending ? 'Aguardando escolha da fonte…' : 'Nenhuma transmissão ativa. O OBS usa as configurações do próprio OBS.');
+    $('capture-status').textContent = lines.join('\n');
+  }
+  function saveCaptureSettings() {
+    const next = Video.normalize({ profile: captureFields.profile.value, priority: captureFields.priority.value,
+      codec: captureFields.codec.value, uploadMbps: Number(captureFields.uploadMbps.value),
+      adaptive: captureFields.adaptive.checked, preview: captureFields.preview.checked });
+    if (localStream || capturePending) { next.profile = captureOptions.profile; next.codec = captureOptions.codec; }
+    if (next.profile !== captureOptions.profile) captureCodecEstimates = null;
+    captureOptions = next;
+    if (!next.adaptive) gpuCapacity.reset();
+    try { localStorage.setItem('wss-capture-options', JSON.stringify(next)); } catch {}
+    const track = localStream?.getVideoTracks()[0];
+    if (track) track.contentHint = next.priority === 'auto' ? Video.profiles[next.profile].hint : next.priority;
+    for (const o of outgoing.values()) { if (!o.native && !next.adaptive) o.rate.reset(); applyQuality(o); }
+    renderSelfTile(); renderCaptureSettings();
+  }
+  for (const field of Object.values(captureFields)) field.addEventListener('change', saveCaptureSettings);
+  $('capture-probe').addEventListener('click', async () => {
+    if (localStream || capturePending || captureProbePending) return;
+    captureProbePending = true; renderShareButton();
+    try { captureCodecEstimates = await codecProbe.probe('encode', Video.profiles[captureOptions.profile]); }
+    finally { captureProbePending = false; renderShareButton(); }
+  });
+  $('btn-capture-settings').addEventListener('click', () => {
+    captureDialog.showModal(); renderCaptureSettings();
+    if(localNative){const token=localNative.token;window.wssDesktop.nativeVideoCommand({token,type:'snapshot'}).then(value=>{if(localNative?.token===token){nativeSnapshot=value;renderCaptureSettings(false);}}).catch(()=>{});}
+    desktop?.mediaCapabilities?.().then(info => { captureHardware = info; renderCaptureSettings(); }).catch(() => {});
+  });
+  captureDialog.addEventListener('click', event => { if (event.target === captureDialog) captureDialog.close(); });
+
   btnShare.addEventListener('click', () => {
     if (localStream) stopSharing();
     else startSharing();
   });
 
   async function startSharing() {
-    let stream;
+    if (capturePending || captureProbePending || localStream || !me) return;
+    capturePending = true;
+    const attempt = ++captureAttempt, owner = me.id;
+    const options = { ...captureOptions };
+    renderShareButton();
+    let stream, preparedNative;
     try {
+      const nativeCaps=await window.wssDesktop?.nativeVideoCaps?.();
+      if(nativeCaps?.enabled){
+        if(!nativeCaps.available)throw Error('Motor nativo indisponível neste app.');
+        preparedNative=await window.wssDesktop.nativeVideoPrepare();
+        if(!preparedNative)throw new DOMException('Seleção cancelada.','AbortError');
+        stream=new MediaStream();
+      }else{
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 30 } },
+        video: Video.captureConstraints(options, true),
         // Sem isso, o áudio do sistema leva junto a voz dos outros e o som das outras
         // transmissões que tocam nesta página (eco pra quem assiste). Navegador antigo
         // ignora.
@@ -872,21 +1106,56 @@
         systemAudio: 'include',
         selfBrowserSurface: 'exclude',
       });
+      const track = stream.getVideoTracks()[0];
+      if (!track) throw new Error('A fonte escolhida não forneceu vídeo.');
+      track.contentHint = options.priority === 'auto' ? Video.profiles[options.profile].hint : options.priority;
+      // Restrições max/exact não são permitidas na chamada inicial getDisplayMedia.
+      // Depois da escolha, tenta limitar a captura; o sender também aplica os tetos.
+      try { await track.applyConstraints(Video.captureConstraints(options)); }
+      catch { showToast('A fonte não aceitou todos os limites de captura; o envio será limitado pelo app.'); }
+      if (track.readyState !== 'live') throw new Error('A fonte foi encerrada antes de iniciar a transmissão. Escolha novamente.');
+      }
     } catch (err) {
+      stream?.getTracks().forEach(t => t.stop());
       // Cancelar a escolha não é erro (no app de desktop, o cancelamento chega assim).
       const cancelled = err.name === 'NotAllowedError' || err.name === 'AbortError'
         || (window.wssDesktop && /invalid capture constraints/i.test(err.message));
       if (!cancelled) showToast(`Não foi possível compartilhar a tela: ${err.message}`);
+      capturePending = false; renderShareButton();
       return;
     }
-    if (!me || localStream) {
+    capturePending = false;
+    if (!me || me.id !== owner || localStream || attempt !== captureAttempt) {
+      if(preparedNative)window.wssDesktop.nativeVideoCommand({token:preparedNative.token,type:'stop'}).catch(()=>{});
       stream.getTracks().forEach((t) => t.stop());
+      renderShareButton();
       return;
     }
     localStream = stream;
+    localNative = preparedNative || null;
+    activeCapture = options;
     shareStartedAt = Date.now();
-    // Botão nativo "Parar de compartilhar" do navegador.
-    stream.getVideoTracks()[0].addEventListener('ended', stopSharing);
+    // Eventos pertencem a esta captura; uma track antiga nunca encerra a nova.
+    try {
+      if(localNative){captureState={width:1280,height:720,frameRate:60,displaySurface:'window',readyState:'live',muted:false};}
+      else {
+      captureMonitor = Video.observeCapture(stream.getVideoTracks()[0], {
+        onChange(state, before) {
+          if (localStream !== stream) return;
+          captureState = state;
+          if (state.width !== before.width || state.height !== before.height || (before.muted && !state.muted)) {
+            for (const sender of outgoing.values()) applyQuality(sender);
+          }
+          if (state.muted !== before.muted) renderSelfTile();
+          renderCaptureSettings(false);
+        },
+        onEnded() { if (localStream === stream) stopSharing(); },
+      });
+      captureState = captureMonitor.read();
+      }
+    } catch {
+      stopSharing(); showToast('A fonte foi encerrada antes de iniciar a transmissão. Escolha novamente.'); return;
+    }
     users.get(me.id).sharing = true;
     socket.emit('share', true, shareStartedAt + serverOffset);
     renderSelfTile();
@@ -895,6 +1164,9 @@
   }
 
   function stopSharing() {
+    gpuCapacity.reset();
+    captureAttempt++;
+    captureMonitor?.close(); captureMonitor = null; captureState = null;
     if (!localStream) return;
     if (me) {
       socket.emit('share', false);
@@ -902,7 +1174,11 @@
     }
     for (const id of [...outgoing.keys()]) closeOutgoing(id);
     localStream.getTracks().forEach((t) => t.stop());
+    if(localNative)window.wssDesktop.nativeVideoCommand({token:localNative.token,type:'stop'}).catch(()=>{});
+    localNative=null;
+    nativeSnapshot=null;
     localStream = null;
+    activeCapture = null;
     shareStartedAt = null;
     stopDesktopOverlay();
     renderSelfTile();
@@ -913,26 +1189,63 @@
     socket.emit('signal', { to, data });
   }
 
-  async function startOutgoing(viewerId, quality) {
+  async function startOutgoing(viewerId, quality, decoderCapabilities, nativeSupported=false) {
+    const previousSource = localStream;
+    let previousRate = captureOptions.adaptive && transportExperiments.videoOptions.realtime ? outgoing.get(viewerId)?.rate : null;
     closeOutgoing(viewerId);
-    const iceServers = await iceServersPromise;
+    const iceServers = await getIceServers();
     if (!localStream || !users.has(viewerId)) return;
+    if (localStream !== previousSource) previousRate = null;
+    previousRate?.restartSampling();
+    if(localNative){
+      const token=localNative.token,sid=++sidCounter;
+      const pc={connectionState:'connecting',close(){window.wssDesktop.nativeVideoCommand({token,type:'close-peer',viewer:viewerId}).catch(()=>{});}};
+      const o={native:true,pc,sid,pending:[],policyRevision:0};outgoing.set(viewerId,o);
+      try{await window.wssDesktop.nativeVideoCommand({token,type:'offer',viewer:viewerId,sid,iceServers,supported:nativeSupported});}
+      catch(error){if(outgoing.get(viewerId)===o){outgoing.delete(viewerId);renderSelfTile();}send(viewerId,{stream:me.id,sid,type:'native-unavailable',reason:!nativeSupported?'unsupported':[...outgoing.values()].some(x=>x.native)?'busy':'failed'});showToast(error.message);}
+      return;
+    }
+    const source = localStream;
+    const encoderCapabilities = codecProbe.rtp('encode');
+    if (localStream !== source || !users.has(viewerId)) return;
+    const codecPreference = Video.selectCodec(activeCapture?.codec || 'auto', encoderCapabilities, decoderCapabilities);
     const pc = new RTCPeerConnection({ iceServers });
-    const o = { pc, sid: ++sidCounter, quality: PRESETS[quality] ? quality : DEFAULT_QUALITY, pending: [] };
+    const o = { pc, sid: ++sidCounter, quality: Object.hasOwn(PRESETS, quality) ? quality : DEFAULT_QUALITY, pending: [],
+      sampler: Video.createMetrics('outbound'), rate: previousRate || Video.createRateController({ realtime: transportExperiments.videoOptions.realtime }), policyRevision: 0, codecPreference, encoderCapabilities };
     outgoing.set(viewerId, o);
-    for (const track of localStream.getTracks()) pc.addTrack(track, localStream);
+    for (const track of localStream.getTracks()) {
+      const initial = track.kind === 'video' ? Video.encodePolicy({ options: captureOptions, quality: PRESETS[o.quality],
+        source: track.getSettings(), peers: outgoing.size,
+        factor: captureOptions.adaptive ? o.rate.factor : 1, adaptiveBitrate: captureOptions.adaptive ? o.rate.maxBitrate : null,
+        capacityLevel: captureOptions.adaptive && transportExperiments.snapshot().active.gpuBudget ? gpuCapacity.snapshot().level : 0 }) : null;
+      const sender = initial ? pc.addTransceiver(track, { direction: 'sendonly', streams: [localStream], sendEncodings: [{
+        maxBitrate: initial.maxBitrate, maxFramerate: initial.maxFramerate, scaleResolutionDownBy: initial.scaleResolutionDownBy,
+      }] }).sender : pc.addTrack(track, localStream);
+      if (track.kind === 'video') {
+        o.sender = sender;
+        o.policy = initial;
+        const transceiver = pc.getTransceivers().find(t => t.sender === sender);
+        if (transceiver?.setCodecPreferences && codecPreference !== 'auto') {
+          try { transceiver.setCodecPreferences(Video.preferCodecs(RTCRtpSender.getCapabilities('video').codecs, codecPreference)); }
+          catch { o.qualityError = 'Preferência de codec indisponível; usando negociação automática.'; }
+        }
+      }
+    }
+    for (const other of outgoing.values()) applyQuality(other);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) send(viewerId, { stream: me.id, sid: o.sid, type: 'candidate', candidate: e.candidate });
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' && outgoing.get(viewerId) === o) closeOutgoing(viewerId);
+      if (pc.connectionState === 'connected') startOutgoingHealth(o);
       renderSelfTile();
     };
 
     const offer = await pc.createOffer();
     if (outgoing.get(viewerId) !== o) return;
     await pc.setLocalDescription(offer);
+    if (outgoing.get(viewerId) !== o || !me) return;
     send(viewerId, { stream: me.id, sid: o.sid, type: 'offer', sdp: pc.localDescription });
   }
 
@@ -940,21 +1253,91 @@
     const o = outgoing.get(viewerId);
     if (!o) return;
     outgoing.delete(viewerId);
+    o.pending.length = 0;
+    o.closed = true; clearTimeout(o.healthTimer); peerStats.clear(o.pc);
     o.pc.close();
+    for (const other of outgoing.values()) applyQuality(other);
     renderSelfTile();
   }
 
   function applyQuality(o) {
-    if (!o.pc.remoteDescription) return;
-    const preset = PRESETS[o.quality];
-    const sender = o.pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-    if (!sender) return;
-    const params = sender.getParameters();
-    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-    params.encodings[0].scaleResolutionDownBy = preset.scaleResolutionDownBy;
-    params.encodings[0].maxBitrate = preset.maxBitrate;
-    params.encodings[0].maxFramerate = preset.maxFramerate;
-    sender.setParameters(params).catch((err) => console.warn('setParameters falhou', err));
+    o.policyRevision++;
+    if (o.closed || !o.pc.remoteDescription || !o.sender) return Promise.resolve();
+    if (o.applyingPolicy) return o.applyingPolicy;
+    o.applyingPolicy = (async () => {
+      let revision;
+      do {
+        revision = o.policyRevision;
+        if (o.closed || !localStream) break;
+        const policy = Video.encodePolicy({ options: { ...captureOptions, profile: activeCapture?.profile || captureOptions.profile },
+          quality: PRESETS[o.quality], source: o.sender.track.getSettings(), peers: outgoing.size,
+          factor: captureOptions.adaptive ? o.rate.factor : 1, adaptiveBitrate: captureOptions.adaptive ? o.rate.maxBitrate : null,
+          capacityLevel: captureOptions.adaptive && transportExperiments.snapshot().active.gpuBudget ? gpuCapacity.snapshot().level : 0 });
+        const key = JSON.stringify(policy);
+        if (key !== o.appliedPolicy) {
+          try {
+            const params = o.sender.getParameters();
+            if (!params.encodings?.length) params.encodings = [{}];
+            Object.assign(params.encodings[0], { maxBitrate: policy.maxBitrate, maxFramerate: policy.maxFramerate, scaleResolutionDownBy: policy.scaleResolutionDownBy });
+            if (!o.preferenceUnsupported) params.degradationPreference = policy.degradationPreference;
+            else delete params.degradationPreference;
+            try { await o.sender.setParameters(params); }
+            catch (error) {
+              if (o.preferenceUnsupported || o.closed) throw error;
+              const fallback = o.sender.getParameters();
+              if (!fallback.encodings?.length) fallback.encodings = [{}];
+              Object.assign(fallback.encodings[0], { maxBitrate: policy.maxBitrate, maxFramerate: policy.maxFramerate, scaleResolutionDownBy: policy.scaleResolutionDownBy });
+              delete fallback.degradationPreference;
+              await o.sender.setParameters(fallback); o.preferenceUnsupported = true;
+            }
+            o.policy = policy; o.appliedPolicy = key; o.qualityError = null;
+          } catch (error) {
+            o.qualityError = `O navegador não aplicou o perfil de envio: ${error.name || 'erro'}.`;
+          }
+        }
+      } while (revision !== o.policyRevision && !o.closed);
+    })().finally(() => { o.applyingPolicy = null; renderCaptureSettings(false); });
+    return o.applyingPolicy;
+  }
+  async function updateGpuCapacity() {
+    if (!captureOptions.adaptive || !transportExperiments.snapshot().active.gpuBudget || localNative) return;
+    const source = localStream;
+    if (performance.now() - gpuHardwareAt >= 5000 && !gpuHardwarePending) {
+      gpuHardwareAt = performance.now();
+      gpuHardwarePending = Promise.resolve().then(() => desktop?.mediaCapabilities?.()).then(value => {
+        captureHardware = value || null;
+      }).catch(() => { captureHardware = null; }).finally(() => { gpuHardwarePending = null; });
+    }
+    await gpuHardwarePending;
+    if (source !== localStream || !captureOptions.adaptive) return;
+    const before = gpuCapacity.snapshot().level;
+    const level = gpuCapacity.sample(captureHardware, [...outgoing.values()].filter(o => !o.native), performance.now());
+    if (level !== before) for (const sender of outgoing.values()) applyQuality(sender);
+  }
+  function startOutgoingHealth(o) {
+    if (o.healthStarted) return;
+    o.healthStarted = true;
+    const tick = async () => {
+      if (o.closed) return;
+      try {
+        if (o.pc.connectionState === 'connected') {
+          captureMonitor?.refresh();
+          o.metrics = o.sampler.sample(await peerStats.read(o.pc));
+          if (o.closed) return;
+          await updateGpuCapacity();
+          if (o.closed) return;
+          if (captureOptions.adaptive && o.sender) {
+            const ceiling = o.rate.requiresCeiling ? Video.encodePolicy({
+              options: { ...captureOptions, profile: activeCapture?.profile || captureOptions.profile },
+              quality: PRESETS[o.quality], source: o.sender.track.getSettings(), peers: outgoing.size }).maxBitrate : undefined;
+            o.rate.sample(o.metrics, performance.now(), ceiling);
+          }
+          await applyQuality(o);
+        }
+      } catch {}
+      finally { if (!o.closed) o.healthTimer = setTimeout(tick, captureOptions.adaptive ? o.rate.intervalMs || 2000 : 2000); }
+    };
+    tick();
   }
 
   // Sem permissão de câmera/microfone o navegador troca o IP local por um nome .local
@@ -969,15 +1352,17 @@
   }
 
   async function addCandidate(entry, candidate, address) {
-    if (!candidate) return;
-    if (!entry.pc.remoteDescription) {
-      entry.pending.push({ candidate, address });
+    const pc = entry.pc;
+    if (!candidate || !pc || pc.signalingState === 'closed') return;
+    if (!pc.remoteDescription) {
+      if (entry.pending.length < 64) entry.pending.push({ candidate, address });
       return;
     }
     for (const c of [candidate, withPeerAddress(candidate, address)]) {
+      if (entry.pc !== pc || pc.signalingState === 'closed') return;
       if (!c) continue;
       try {
-        await entry.pc.addIceCandidate(c);
+        await pc.addIceCandidate(c);
       } catch (err) {
         console.warn('Falha ao adicionar ICE candidate', err);
       }
@@ -985,7 +1370,11 @@
   }
 
   async function flushPending(entry) {
-    for (const { candidate, address } of entry.pending.splice(0)) await addCandidate(entry, candidate, address);
+    const pc = entry.pc;
+    for (const { candidate, address } of entry.pending.splice(0)) {
+      if (entry.pc !== pc) return;
+      await addCandidate(entry, candidate, address);
+    }
   }
 
   // ---------- sinalização ----------
@@ -993,9 +1382,8 @@
   // Processa em ordem: um candidate não pode ser aplicado antes do offer/answer
   // da mesma conexão terminar de ser processado.
   socket.on('signal', ({ from, address, data }) => {
-    signalQueue = signalQueue
-      .then(() => handleSignal(from, data, address))
-      .catch((err) => console.warn('Erro de sinalização', err));
+    const clean = WssSignaling.clean(data);
+    if (clean) signalQueue.enqueue(from, { from, address: typeof address === 'string' && address.length <= 64 ? address : null, data: clean });
   });
 
   async function handleSignal(from, data, address) {
@@ -1010,7 +1398,7 @@
 
   async function handleAsBroadcaster(viewerId, data, address) {
     if (data.type === 'watch') {
-      if (localStream) await startOutgoing(viewerId, data.quality);
+      if (localStream) await startOutgoing(viewerId, data.quality, Video.cleanCapabilities(data.decoderCapabilities),data.nativeVideo===true);
       return;
     }
     if (data.type === 'unwatch') {
@@ -1019,11 +1407,15 @@
     }
     const o = outgoing.get(viewerId);
     if (!o) return;
-    if (data.type === 'quality' && PRESETS[data.quality]) {
+    if (data.type === 'quality' && Object.hasOwn(PRESETS, data.quality)) {
       o.quality = data.quality;
       applyQuality(o);
     }
     if (data.sid !== o.sid) return;
+    if(o.native){
+      if(data.type==='answer'||data.type==='candidate')await window.wssDesktop.nativeVideoCommand({token:localNative.token,viewer:viewerId,sid:o.sid,type:data.type,sdp:data.sdp?.sdp,candidate:data.candidate});
+      return;
+    }
     if (data.type === 'answer') {
       await o.pc.setRemoteDescription(data.sdp);
       await flushPending(o);
@@ -1036,17 +1428,23 @@
   async function handleAsViewer(broadcasterId, data, address) {
     const s = streams.get(broadcasterId);
     if (!s || !s.watching) return;
+    if(data.type==='native-unavailable'){closeIncoming(s);setStatus(s,data.reason==='busy'?'O motor nativo aceita um espectador por vez.':data.reason==='unsupported'?'Este navegador não suporta a recepção do motor nativo.':'Não foi possível iniciar o vídeo nativo.');return;}
     if (data.type === 'offer') {
       closeIncoming(s);
-      const iceServers = await iceServersPromise;
+      const iceServers = await getIceServers();
       if (!s.watching || streams.get(broadcasterId) !== s) return;
       const pc = new RTCPeerConnection({ iceServers });
       s.pc = pc;
       s.sid = data.sid;
+      if(data.nativeVideo===true){
+        s.nativeReceiver=window.WssNativeVideo.attach(pc);
+        if(s.qualitySelect){s.nativeQualityOption=new Option('Nativo · 720p até 60 FPS','native720',true,true);s.qualitySelect.append(s.nativeQualityOption);s.qualitySelect.disabled=true;}
+      }
 
       pc.ontrack = (e) => {
         if (s.pc !== pc) return;
-        const stream = e.streams[0];
+        configureReceiverBuffer(s, e.receiver);
+        const stream = e.streams[0] || new MediaStream([e.track]);
         s.hasAudio = stream.getAudioTracks().length > 0;
         renderAudio(s);
         if (s.video.srcObject !== stream) {
@@ -1062,9 +1460,13 @@
       pc.onconnectionstatechange = () => onIncomingState(s, pc);
 
       await pc.setRemoteDescription(data.sdp);
+      if (s.pc !== pc || !s.watching) return;
       await flushPending(s);
+      if (s.pc !== pc || !s.watching) return;
       const answer = await pc.createAnswer();
+      if (s.pc !== pc || !s.watching) return;
       await pc.setLocalDescription(answer);
+      if (s.pc !== pc || !s.watching) return;
       send(broadcasterId, { stream: broadcasterId, sid: data.sid, type: 'answer', sdp: pc.localDescription });
     } else if (data.type === 'candidate' && s.pc && data.sid === s.sid) {
       await addCandidate(s, data.candidate, address);
@@ -1093,16 +1495,29 @@
       if (s.pc !== pc || !s.watching || s.video.paused || document.hidden || pc.connectionState !== 'connected') { health.reset(); return; }
       busy = true;
       try {
-        const stats = await pc.getStats();
+        const stats = await peerStats.read(pc);
         if (s.pc !== pc) return;
-        const video = [...stats.values()].find((r) => r.type === 'inbound-rtp' && r.kind === 'video');
+        const video = [...stats.values()].filter((r) => r.type === 'inbound-rtp' && r.kind === 'video' && Number.isFinite(r.framesDecoded))
+          .sort((a, b) => (b.bytesReceived || 0) - (a.bytesReceived || 0))[0];
         if (!video) return;
-        s.healthStats = health.sample(video, performance.now());
-        if (s.healthStats.stalled && Date.now() - (s.lastHealthRecovery || 0) > 60000) {
+        s.videoSampler ||= Video.createMetrics('inbound');
+        s.videoMetrics = s.videoSampler.sample(stats);
+        const recoveryAllowed = Date.now() - (s.lastHealthRecovery || 0) > 60000;
+        s.healthStats = health.sample(video, performance.now(), { metrics: s.videoMetrics,
+          lowLatency: transportExperiments.videoOptions.recoverDelayedVideo && recoveryAllowed && s.kind !== 'obs'
+            && (controlling === s.id || s.quality === 'jogo720' || s.quality === 'jogo1080') });
+        if ((s.healthStats.stalled || s.healthStats.latencyRecovery) && recoveryAllowed) {
           s.lastHealthRecovery = Date.now();
-          console.warn('Vídeo recebe dados sem decodificar novos quadros; reconectando a transmissão.');
-          setStatus(s, 'Vídeo sem novos quadros. Reconectando…', true);
-          scheduleRetry(s, 1000);
+          if (s.healthStats.latencyRecovery) {
+            s.latencyRecoveries = (s.latencyRecoveries || 0) + 1;
+            console.info('Rede recuperada com atraso persistente no vídeo de jogo; renovando somente a conexão de mídia.');
+            setStatus(s, 'Atualizando a conexão para reduzir o atraso…', true);
+            scheduleRetry(s, 0);
+          } else {
+            console.warn('Vídeo recebe dados sem decodificar novos quadros; reconectando a transmissão.');
+            setStatus(s, 'Vídeo sem novos quadros. Reconectando…', true);
+            scheduleRetry(s, 1000);
+          }
         }
       } catch { health.reset(); }
       finally { busy = false; }
@@ -1131,10 +1546,15 @@
     });
   }
 
+  function configureReceiverBuffer(s, receiver) {
+    const target = Video.applyReceiverBuffer(receiver, transportExperiments.videoOptions.receiverBufferTargetMs ?? (s.nativeReceiver ? 0 : null));
+    if (target) (s.receiverTargets ||= {})[target.kind] = target;
+  }
+
   async function startWhep(s) {
     const attempt = s.attempt;
     const current = () => s.attempt === attempt && s.watching && streams.get(s.id) === s;
-    const iceServers = await iceServersPromise;
+    const iceServers = await getIceServers();
     if (!current()) return;
     const pc = new RTCPeerConnection({ iceServers });
     s.pc = pc;
@@ -1143,6 +1563,7 @@
     const media = new MediaStream();
     pc.ontrack = (e) => {
       if (s.pc !== pc) return;
+      configureReceiverBuffer(s, e.receiver);
       media.addTrack(e.track);
       if (s.video.srcObject !== media) {
         s.video.srcObject = media;
@@ -1192,14 +1613,48 @@
   btnObs.replaceChildren(icon('broadcast'), el('span', 'btn-label', 'OBS'));
   btnObs.setAttribute('aria-label', 'Transmitir pelo OBS');
 
-  btnObs.addEventListener('click', () => {
+  async function getObsPublication() {
+    if (!me) throw Error('Entre na sala para configurar o OBS.');
+    if (!obsIdentitySupported) return { url: `${location.origin}/obs/${encodeURIComponent(me.name)}`, token: null, individual: false };
+    const owner = me.id, generation = obsCredentialGeneration;
+    if (obsCredentialOwner === owner && obsCredentials?.expiresAt > Date.now() + serverOffset + 1000) return obsCredentials;
+    if (obsCredentialRequest?.owner === owner && obsCredentialRequest.generation === generation) return obsCredentialRequest.promise;
+    const promise = new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => { settled = true; reject(Error('O servidor não respondeu à configuração OBS.')); }, 5000);
+      socket.emit('obs:credentials', obsCredentials ? { path: obsCredentials.path, token: obsCredentials.token } : null, result => {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        if (!me || me.id !== owner || !socket.connected || generation !== obsCredentialGeneration) return reject(Error('A conexão com a sala mudou.'));
+        if (!result || result.error || !/^pub_[a-f0-9]{32}$/.test(result.path) || !/^[a-f0-9]{64}$/.test(result.token)
+          || result.url !== '/obs-publish/' + result.path.slice(4)) return reject(Error(result?.error || 'Credencial OBS inválida.'));
+        obsCredentials = { ...result, url: new URL(result.url, location.origin).href, individual: true };
+        try { sessionStorage.setItem('wss-obs-publication', JSON.stringify({ path: result.path, token: result.token, expiresAt: result.expiresAt })); } catch {}
+        obsCredentialOwner = owner; resolve(obsCredentials);
+      });
+    });
+    obsCredentialRequest = { owner, generation, promise };
+    try { return await promise; } finally { if (obsCredentialRequest?.promise === promise) obsCredentialRequest = null; }
+  }
+
+  btnObs.addEventListener('click', async () => {
     if (!me) return;
-    obsUrlInput.value = `${window.location.origin}/obs/${encodeURIComponent(me.name)}`;
+    obsUrlInput.value = ''; $('obs-token').value = ''; $('obs-token-field').hidden = true; obsCopyBtn.disabled = true;
     obsNickEl.textContent = me.name;
     obsCopyBtn.textContent = 'Copiar';
     // O OBS confere o certificado e recusa o autoassinado.
     obsCertEl.hidden = window.location.protocol !== 'https:' || Boolean(serverStatus.certificate);
     obsDialog.showModal();
+    try {
+      const publication = await getObsPublication();
+      if (!obsDialog.open) return;
+      obsUrlInput.value = publication.url; $('obs-token').value = publication.token || '';
+      $('obs-token-field').hidden = !publication.individual;
+      $('obs-token-hint').textContent = publication.individual
+        ? 'Cole o token abaixo no campo Bearer Token do OBS. Ele vincula esta transmissão ao seu participante; mantenha-o privado. Vale por até 8 horas e é encerrado ao sair da sala.'
+        : serverStatus.obsAuthRequired ? 'Use o token de publicação fornecido pelo administrador.' : 'O campo Bearer Token pode ficar em branco.';
+      obsCopyBtn.disabled = false;
+    } catch (error) { $('obs-token-hint').textContent = error.message; }
     checkObsPort();
     renderObsOverlaySetting();
   });
@@ -1213,6 +1668,10 @@
     }
     obsCopyBtn.textContent = 'Copiado!';
   });
+  $('obs-copy-token').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('obs-token').value); showToast('Token OBS copiado.'); }
+    catch { showToast('Não foi possível copiar o token.'); }
+  });
 
   obsDialog.addEventListener('click', (e) => {
     if (e.target === obsDialog) obsDialog.close(); // clique fora do cartão
@@ -1221,7 +1680,7 @@
   // O OBS manda o vídeo pelo TURN em UDP (não sabe usar TURN por TCP). Testa daqui se
   // essa porta está publicada, que é o passo que mais fica pra trás no CasaOS.
   async function checkObsPort() {
-    const servers = await iceServersPromise;
+    const servers = await getIceServers();
     let server = null;
     let url = null;
     for (const candidate of servers) {
@@ -1412,6 +1871,26 @@
 
   let diagRunning = false;
 
+  async function printCurrentRoutes(print) {
+    const peers = [...outgoing.values()].map(o => ({ owner: o, pc: o.pc, label: 'Vídeo enviado' }))
+      .concat([...streams.values()].filter(s => s.watching).map(s => ({ owner: s, pc: s.pc, label: 'Vídeo recebido' })));
+    const routes = await Promise.all(peers.slice(0, 16).map(async entry => {
+      const observed = await window.WssNetworkHealth.inspectRoute(entry.pc, { readStats: pc => peerStats.read(pc) });
+      return { ...entry, route: entry.owner.pc === entry.pc ? observed : window.WssNetworkHealth.route() };
+    }));
+    print('Rotas da sessão (consulta passiva, sem endereços dos jogadores):');
+    routes.forEach((entry, index) => print(`${entry.label} ${index + 1}: ${entry.route.label}${entry.route.result === 'timeout' ? ' (consulta expirou)' : ''}.`));
+    const controls = [...controlTransport.snapshot(),...await desktop?.receiverSnapshot?.()||[]];
+    controls.slice(0, 16).forEach((s, index) => {
+      const kind = s.route === 'turn' ? 'TURN' : s.route === 'p2p' ? 'P2P WebRTC' : 'desconhecida';
+      print(`Comandos ${index + 1}: ${s.transport === 'webrtc' ? `${kind} (última rota observada)` : 'Socket.IO via servidor'}.`);
+    });
+    if (!peers.length && !controls.length) print('Nenhuma conexão de vídeo ou comandos ativa.');
+    if (peers.length > 16 || controls.length > 16) print('Exibição limitada a 16 conexões de cada tipo.');
+    print('P2P WebRTC não confirma LAN nem conexão direta da VPN; DERP entre PCs continua não verificado.');
+    print('');
+  }
+
   async function runDiagnostics() {
     if (diagRunning) return;
     diagRunning = true;
@@ -1426,7 +1905,22 @@
       print(`Web Screen Share, ${pageVersion ? `versão ${pageVersion}` : 'versão desconhecida'}`);
       print(`Navegador: ${navigator.userAgent}`);
       print(`Endereço: ${window.location.origin}${serverStatus.proxy ? ` (aberto por proxy SEM PUBLIC_PORT: TURN indo pra porta ${serverStatus.proxy.port})` : ''}`);
-      const servers = await iceServersPromise;
+      await printCurrentRoutes(print);
+      if (desktop?.networkDiagnostics) {
+        print('Verificando a rota Tailscale até o servidor configurado…');
+        const vpn = await desktop.networkDiagnostics();
+        if (vpn.available && vpn.samples?.length) {
+          const label = vpn.route === 'direct' ? 'direta' : vpn.route === 'derp' ? `via DERP (${vpn.relay})` : 'não identificada';
+          print(`Tailscale até o servidor: última rota ${label}; ${vpn.samples.length} resposta(s).`);
+          print(`RTT Tailscale p50/p95: ${vpn.latency.p50.toFixed(1)} / ${vpn.latency.p95.toFixed(1)} ms. Este teste não mede o caminho de vídeo entre jogadores.`);
+        } else print(`Tailscale: ${vpn.reason || 'rota não verificada'}`);
+        if (vpn.localNat) {
+          const indicator = value => value === true ? 'sim' : value === false ? 'não' : '?';
+          print(`Neste PC: UDP disponível ${indicator(vpn.localNat.UDP)}, mapeamento varia por destino ${indicator(vpn.localNat.MappingVariesByDestIP)}.`);
+          print(`Protocolos anunciados pelo roteador: UPnP ${indicator(vpn.localNat.UPnP)}, NAT-PMP ${indicator(vpn.localNat.PMP)}, PCP ${indicator(vpn.localNat.PCP)}.`);
+        }
+      }
+      const servers = await getIceServers();
       const turns = turnServers(servers);
       print(`TURN: ${turns.map((t) => t.url).join(', ') || 'nenhum'}`);
       print('');
@@ -1465,6 +1959,46 @@
     runDiagnostics();
   });
   $('diag-again').addEventListener('click', runDiagnostics);
+  let performanceReportPending = null;
+  function performanceReport() {
+    if (performanceReportPending) return performanceReportPending;
+    performanceReportPending = (async () => {
+      if(localNative){const token=localNative.token;const value=await desktop.nativeVideoCommand({token,type:'snapshot'}).catch(()=>null);if(localNative?.token===token)nativeSnapshot=value;}
+      const capture = captureSnapshot(), controls = [...controlTransport.snapshot(),...await desktop?.receiverSnapshot?.()||[]];
+      const hardwareTask = Promise.resolve(desktop?.mediaCapabilities?.()).catch(() => null);
+      const incoming = [...streams.values()].map(s => ({ state: s.pc?.connectionState, watching: s.watching, metrics: s.videoMetrics, pc: s.pc,
+        latencyRecoveries: s.latencyRecoveries || 0, receiverTargets: Object.values(s.receiverTargets || {}) }));
+      const peers = [...outgoing.values()].map((o, index) => ({ pc: o.pc, target: capture.senders[index], direction: 'outbound' }))
+        .concat(incoming.map(s => ({ pc: s.pc, target: s, direction: 'inbound' })));
+      await Promise.allSettled(peers.slice(0, 128).map(async ({ pc, target, direction }) => {
+        if (!pc || !target || typeof pc.getStats!=='function') return;
+        let timer;
+        try {
+          const report = await Promise.race([peerStats.read(pc), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Stats timeout')), 2000); })]);
+          // Primeira consulta pode preceder o monitor periódico. Aproveita os
+          // campos já expostos pelo RTC; taxas sem baseline continuam null.
+          const age = Date.now() - target.metrics?.sampledAt;
+          if (!target.metrics || !Number.isFinite(age) || age < 0 || age > 10000) {
+            target.metrics = Video.createMetrics(direction).sample(report);
+          }
+          target.state = pc.connectionState;
+          target.route = pc.connectionState === 'connected' ? window.WssNetworkHealth.routeFromStats(report) : window.WssNetworkHealth.route();
+        } finally { clearTimeout(timer); }
+      }));
+      const hardware = await hardwareTask || capture.hardware;
+      return window.WssPerformanceReport.build({ at: Date.now(), version: pageVersion, platform: navigator.platform, capture, controls, streams: incoming, hardware, experiments: transportExperiments.snapshot() });
+    })().finally(() => { performanceReportPending = null; });
+    return performanceReportPending;
+  }
+  async function copySessionMetrics(event) {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try { await navigator.clipboard.writeText(JSON.stringify(await performanceReport(), null, 2)); showToast('Métricas da sessão copiadas.'); }
+    catch { showToast('Não foi possível copiar as métricas.'); }
+    finally { button.disabled = false; }
+  }
+  $('diag-metrics').addEventListener('click', copySessionMetrics);
+  $('btn-metrics').addEventListener('click', copySessionMetrics);
   $('diag-copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(diagOutput.textContent);
@@ -1487,7 +2021,7 @@
   function addStreamTile(user) {
     if (streams.has(user.id)) return;
     const isObs = user.kind === 'obs';
-    const isMine = isObs && me && user.name === me.name;
+    const isMine = isObs && me && user.ownerId === me.id;
     const base = createTile(user.name, isMine ? 'Você' : user.name, user.kind);
     const key = streamKey(user);
     // Toda transmissão nova começa tocando sem som (inclusive a sua do OBS, cujo som
@@ -1510,7 +2044,7 @@
       sid: null,
       pending: [],
       watching: prefs.watching,
-      quality: PRESETS[prefs.quality] ? prefs.quality : DEFAULT_QUALITY,
+      quality: Object.hasOwn(PRESETS, prefs.quality) ? prefs.quality : DEFAULT_QUALITY,
       volume: prefs.volume,
       muted: prefs.muted,
       hasAudio: true,
@@ -1680,6 +2214,8 @@
     if (!s) return;
     if (ended) s.prefs.endedAt = Date.now();
     if (activeStream === id) deactivateCursor();
+    s.cursorShare?.close();
+    s.controlPointerReset?.();
     streams.delete(id);
     if (controlling === id) stopControlling();
     leavePip(s);
@@ -1695,8 +2231,10 @@
     s.watching = true;
     s.prefs.watching = true;
     setStatus(s, 'Conectando…', true);
+    const attempt = s.attempt;
     if (s.kind === 'obs') startWhep(s);
-    else send(s.id, { stream: s.id, type: 'watch', quality: s.quality });
+    s.decoderCapabilities = codecProbe.rtp('decode');
+    if (s.attempt === attempt && s.kind !== 'obs') send(s.id, { stream: s.id, type: 'watch', quality: s.quality, decoderCapabilities: s.decoderCapabilities, nativeVideo: window.WssNativeVideo?.supported()===true });
   }
 
   // Parar de assistir tira o quadro da tela (pra sobrar espaço pras outras
@@ -1729,9 +2267,13 @@
   }
 
   function closeIncoming(s) {
+    s.nativeReceiver?.close();s.nativeReceiver=null;
+    s.nativeQualityOption?.remove();s.nativeQualityOption=null;if(s.qualitySelect){s.qualitySelect.disabled=false;s.qualitySelect.value=s.quality;}
     clearInterval(s.healthTimer);
     s.healthTimer = null;
     s.healthStats = null;
+    s.videoSampler = null; s.videoMetrics = null;
+    s.receiverTargets = null;
     clearTimeout(s.retryTimer);
     s.retryTimer = null;
     s.attempt += 1;
@@ -1740,6 +2282,7 @@
       s.whepUrl = null;
     }
     if (s.pc) {
+      peerStats.clear(s.pc);
       s.pc.close();
       s.pc = null;
     }
@@ -1969,32 +2512,52 @@
   // ---------- estatísticas ----------
 
   function toggleStats(s) {
-    if (s.statsTimer) {
+    if (s.statsOpen) {
       stopStats(s);
       return;
     }
     s.stats.hidden = false;
+    s.statsOpen = true;
+    const generation = s.statsGeneration = (s.statsGeneration || 0) + 1;
     s.btnStats.classList.add('active');
     s.lastBytes = null;
     s.lastObs = null;
+    let busy = false;
     const tick = async () => {
-      s.stats.textContent = await describeStats(s).catch(() => 'Estatísticas indisponíveis.');
+      if (busy || document.hidden || !s.statsOpen || s.statsGeneration !== generation) return;
+      busy = true;
+      try {
+        const text = await describeStats(s).catch(() => 'Estatísticas indisponíveis.');
+        if (document.hidden || !s.statsOpen || s.statsGeneration !== generation) return;
+        s.stats.textContent = text;
+      } finally { busy = false; }
     };
+    s.statsTicker = window.createVisibleTicker({ document, interval: 1000,
+      active: () => s.statsOpen && s.statsGeneration === generation, run: tick });
     tick();
-    s.statsTimer = setInterval(tick, 1000);
   }
 
   function stopStats(s) {
-    clearInterval(s.statsTimer);
+    s.statsTicker?.close(); s.statsTicker = null;
+    clearTimeout(s.statsTimer);
     s.statsTimer = null;
+    s.statsOpen = false; s.statsGeneration = (s.statsGeneration || 0) + 1;
     s.stats.hidden = true;
     s.btnStats.classList.remove('active');
   }
 
-  async function describeStats(s) {
+  function describeStats(s) {
+    if (s.statsDescription) return s.statsDescription;
+    const pending = collectStatsDescription(s).finally(() => {
+      if (s.statsDescription === pending) s.statsDescription = null;
+    });
+    s.statsDescription = pending; return pending;
+  }
+  async function collectStatsDescription(s) {
     const pc = s.pc;
     if (!pc) return 'Sem conexão.';
-    const report = await pc.getStats();
+    const report = await peerStats.read(pc);
+    if (s.pc !== pc) return 'A conexão mudou; aguardando novas estatísticas.';
     let video = null;
     let pair = null;
     report.forEach((r) => {
@@ -2008,14 +2571,7 @@
     }
     const local = pair && report.get(pair.localCandidateId);
     const remote = pair && report.get(pair.remoteCandidateId);
-    let route = '—';
-    if (local) {
-      if (local.candidateType === 'relay') route = 'via servidor TURN (relay)';
-      else if (local.candidateType === 'host') route = 'direta (rede local)';
-      else route = 'direta (P2P)';
-      const remoteAddress = remote && (remote.address || remote.ip);
-      if (remoteAddress) route += `, ${remoteAddress}`;
-    }
+    const route = window.WssNetworkHealth.route(local, remote).label;
     const lines = [
       `Conexão: ${CONNECTION_LABELS[pc.connectionState] || pc.connectionState}`,
       `Rota: ${route}`,
@@ -2026,7 +2582,7 @@
       if (video.frameWidth) lines.push(`Resolução: ${video.frameWidth}×${video.frameHeight}`);
       if (video.framesPerSecond != null) lines.push(`Quadros: ${Math.round(video.framesPerSecond)} fps`);
       if (video.framesDecoded != null) lines.push(`Decodificados: ${video.framesDecoded}`);
-      if (video.framesDropped != null) lines.push(`Descartados: ${video.framesDropped}`);
+      if (video.framesDropped != null) lines.push(`Descartados (total): ${video.framesDropped}`);
       if (video.freezeCount != null) lines.push(`Congelamentos: ${video.freezeCount}`);
       if (video.framesDecoded && video.totalDecodeTime != null) lines.push(`Decodificação: ${(video.totalDecodeTime * 1000 / video.framesDecoded).toFixed(1)} ms/quadro`);
       if (s.lastBytes && video.bytesReceived >= s.lastBytes.bytes && video.timestamp > s.lastBytes.ts) {
@@ -2035,11 +2591,52 @@
       }
       s.lastBytes = { bytes: video.bytesReceived, ts: video.timestamp };
     }
+    s.videoSampler ||= Video.createMetrics('inbound');
+    s.videoMetrics = s.videoSampler.sample(report);
+    if (s.videoMetrics) lines.push(...videoMetricLines(s.videoMetrics, false));
+    const codecKey = s.videoMetrics?.codec?.split('/')[1]?.toLowerCase();
+    const decodeCapability = s.decoderCapabilities?.[codecKey];
+    if (decodeCapability) lines.push(`Capacidade estimada de decodificação eficiente: ${decodeCapability.powerEfficient === true ? 'sim' : decodeCapability.powerEfficient === false ? 'não' : 'não informada'} (não comprova o decoder em uso)`);
     if (pair && pair.currentRoundTripTime != null) {
-      lines.push(`Latência: ${Math.round(pair.currentRoundTripTime * 1000)} ms`);
+      lines.push(`RTT da conexão de mídia: ${Math.round(pair.currentRoundTripTime * 1000)} ms (não mede atraso da imagem)`);
+    }
+    const controls = controlTransport.snapshot().find(c => c.role === 'guest' && c.stream === s.id);
+    if (controls) {
+      lines.push(`Comandos: ${controls.transport === 'webrtc' ? 'WebRTC' : 'via servidor (fallback)'}`);
+      if (controls.transport === 'webrtc') {
+        if (controls.routeLabel) lines.push(`Rota dos comandos: ${controls.routeLabel}`);
+        if (controls.commandLatency) {
+          const p = controls.commandLatency;
+          lines.push(`RTT do DataChannel: p50 ${p.p50.toFixed(1)} / p95 ${p.p95.toFixed(1)} / p99 ${p.p99.toFixed(1)} ms (${p.count} amostras; sem execução nativa)`);
+        }
+        if (controls.commandProbeTimeouts) lines.push(`Diagnósticos de comandos sem resposta em 5 s: ${controls.commandProbeTimeouts}`);
+      } else if (controls.reason) lines.push(controls.reason);
     }
     if (s.kind === 'obs') lines.push(...(await describeObsSource(s)));
+    if (s.pc !== pc) return 'A conexão mudou; aguardando novas estatísticas.';
     return lines.join('\n');
+  }
+
+  function videoMetricLines(metrics, outbound) {
+    const lines = [];
+    const name = outbound ? 'Encoder' : 'Decoder';
+    if (metrics.codec) lines.push(`Codec: ${metrics.codec.replace(/^video\//, '')}`);
+    lines.push(`${name}: ${metrics.implementation || 'implementação não informada'}`);
+    lines.push(`Aceleração por hardware: ${metrics.powerEfficient === true ? 'indicada pelo navegador' : metrics.powerEfficient === false ? 'não indicada pelo navegador' : 'não informada'}`);
+    if (metrics.width && metrics.height) lines.push(`Vídeo: ${metrics.width}×${metrics.height}${metrics.fps != null ? ` · ${metrics.fps.toFixed(1)} FPS` : ''}`);
+    if (outbound && metrics.sourceFps != null) lines.push(`Entrada no encoder: ${metrics.sourceFps.toFixed(1)} FPS`);
+    if (metrics.bitrate != null) lines.push(`${outbound ? 'Enviando' : 'Recebendo'}: ${(metrics.bitrate / 1e6).toFixed(2)} Mbps`);
+    const values = outbound ? [['Codificação', metrics.encodeMs], ['Fila de envio por pacote', metrics.sendQueueMs]]
+      : [['Decodificação', metrics.decodeMs], ['Jitter buffer por quadro', metrics.jitterBufferMs], ['Alvo informado pelo navegador', metrics.jitterTargetMs],
+        ['Mínimo estimado pela rede', metrics.jitterMinimumMs], ['Processamento de recepção', metrics.processingMs]];
+    for (const [label, value] of values) if (value != null) lines.push(`${label}: ${value.toFixed(2)} ms (intervalo recente)`);
+    if (!outbound) {
+      if (metrics.framesDropped != null) lines.push(`Quadros descartados: ${metrics.framesDropped} (intervalo recente)`);
+      if (metrics.freezes != null) lines.push(`Congelamentos registrados: ${metrics.freezes} (intervalo recente)`);
+      if (metrics.freezeMs != null) lines.push(`Tempo em congelamentos registrados: ${(metrics.freezeMs / 1000).toFixed(2)} s (intervalo recente)`);
+    }
+    if (metrics.qualityLimitation) lines.push(`Limitação informada: ${metrics.qualityLimitation}`);
+    return lines;
   }
 
   // Trecho do OBS até o servidor. Pacote perdido ali vira imagem "derretida" pra todo
@@ -2087,6 +2684,8 @@
   }
 
   function renderUptimes() {
+    uptimeTicker?.sync();
+    if (document.hidden) return;
     const now = Date.now();
     if (selfTile && shareStartedAt) selfTile.uptime.textContent = formatUptime(now - shareStartedAt);
     for (const s of streams.values()) {
@@ -2094,7 +2693,11 @@
     }
   }
 
-  setInterval(renderUptimes, 1000);
+  uptimeTicker = createVisibleTicker({ document, interval: 1000, run: renderUptimes, active: () => {
+    if (selfTile && shareStartedAt) return true;
+    for (const s of streams.values()) if (!s.tile.hidden) return true;
+    return false;
+  } });
 
   // ---------- reações, "olha aqui", print e picture-in-picture ----------
 
@@ -3032,6 +3635,7 @@
     const peer = voicePeers.get(id);
     if (!peer) return;
     voicePeers.delete(id);
+    peer.pending.length = 0;
     clearTimeout(peer.retryTimer);
     peer.pc.close();
     if (peer.audio) {
@@ -3074,7 +3678,7 @@
 
   async function connectVoice(id) {
     closeVoicePeer(id);
-    const iceServers = await iceServersPromise;
+    const iceServers = await getIceServers();
     if (!voice.joined || !me || !users.has(id) || voicePeers.has(id)) return;
     const peer = createVoicePeer(id, ++sidCounter, iceServers);
     const track = micTrack();
@@ -3083,23 +3687,27 @@
     const offer = await peer.pc.createOffer();
     if (voicePeers.get(id) !== peer) return;
     await peer.pc.setLocalDescription(offer);
+    if (voicePeers.get(id) !== peer || !voice.joined) return;
     send(id, { voice: true, sid: peer.sid, type: 'offer', sdp: peer.pc.localDescription });
   }
 
   async function handleVoiceSignal(from, data, address) {
     if (!voice.joined) return;
     if (data.type === 'offer') {
-      const iceServers = await iceServersPromise;
-      if (!voice.joined) return;
+      const iceServers = await getIceServers();
+      if (!voice.joined || !users.has(from)) return;
       closeVoicePeer(from);
       const peer = createVoicePeer(from, data.sid, iceServers);
       await peer.pc.setRemoteDescription(data.sdp);
+      if (voicePeers.get(from) !== peer || !voice.joined) return;
       const track = micTrack();
       if (track) peer.pc.addTrack(track, voice.stream);
       await flushPending(peer);
+      if (voicePeers.get(from) !== peer || !voice.joined) return;
       const answer = await peer.pc.createAnswer();
       if (voicePeers.get(from) !== peer) return;
       await peer.pc.setLocalDescription(answer);
+      if (voicePeers.get(from) !== peer || !voice.joined) return;
       send(from, { voice: true, sid: data.sid, type: 'answer', sdp: peer.pc.localDescription });
       return;
     }
@@ -3161,8 +3769,10 @@
   // Cada navegador conta o horário dessas medições de um jeito: aceita os dois.
   const freshSource = (src) => Math.min(Math.abs(Date.now() - src.timestamp), Math.abs(performance.now() - src.timestamp)) < 1000;
   const SPEAKING_HOLD_MS = 400;
+  let speakingPainted = false;
 
   function pollSpeaking() {
+    if (document.hidden || (!voice.joined && !speakingPainted)) return;
     const now = performance.now();
     const speaking = new Set();
     if (voice.joined && me) {
@@ -3181,9 +3791,14 @@
     for (const node of document.querySelectorAll('[data-voice-id]')) {
       node.classList.toggle('speaking', speaking.has(node.dataset.voiceId));
     }
+    speakingPainted = speaking.size > 0;
   }
 
-  setInterval(pollSpeaking, 120);
+  const speakingTicker = createVisibleTicker({ document, interval: 120, run: pollSpeaking,
+    active: () => voice.joined || speakingPainted });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { renderUptimes(); pollSpeaking(); speakingTicker.sync(); }
+  });
 
   // ---- tela
 
@@ -3291,7 +3906,8 @@
     voicePeople.replaceChildren(...faces);
     voicePeople.title = members.length ? `Na voz: ${members.map((u) => u.name).join(', ')}` : '';
     voicePeople.setAttribute('aria-label', voicePeople.title || 'Ninguém na voz');
-
+    if (!voice.joined && speakingPainted) pollSpeaking();
+    speakingTicker.sync();
   }
 
   btnVoice.addEventListener('click', joinVoice);
@@ -3315,7 +3931,7 @@
     if (mine) desktop.overlay(event);
   }
 
-  // Transmitindo pelo OBS (com o mesmo nick daqui), as marcações também aparecem na sua
+  // Transmitindo pelo OBS com credencial vinculada, as marcações também aparecem na sua
   // tela: o app abre a camada no monitor que o OBS captura (escolhido na janela do OBS).
   let obsOverlayWanted = false;
   let obsOverlay = false;
@@ -3324,7 +3940,7 @@
   function myObsStreamId() {
     if (!me) return null;
     for (const u of users.values()) {
-      if (u.kind === 'obs' && u.name === me.name) return u.id;
+      if (u.kind === 'obs' && u.ownerId === me.id) return u.id;
     }
     return null;
   }
@@ -3689,17 +4305,43 @@
     return blob;
   }
 
+  let assetUploadHttp = false;
+  async function sendImageAsset(kind, blob) {
+    if (!me || !socket.connected) return { error: 'Entre na sala primeiro.' };
+    const owner = me;
+    if (blob && assetUploadHttp) {
+      const permit = await new Promise(resolve => {
+        const timer = setTimeout(() => resolve({ error: 'Não foi possível autorizar o upload.' }), 10000);
+        socket.emit('asset:permit', kind, reply => { clearTimeout(timer); resolve(reply || {}); });
+      });
+      if (permit.error) return permit;
+      if (owner !== me || !socket.connected) return { error: 'A sessão mudou durante o upload.' };
+      if (permit.url !== '/asset-upload' || !/^[a-f0-9]{64}$/.test(permit.token || '')) return { error: 'Autorização de upload inválida.' };
+      const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 60000);
+      try {
+        const response = await fetch(permit.url, { method: 'POST', cache: 'no-store', signal: controller.signal,
+          headers: { 'Content-Type': 'application/octet-stream', Authorization: 'Bearer ' + permit.token }, body: blob });
+        const result = await response.json();
+        if (owner !== me || !socket.connected) return { error: 'A sessão mudou durante o upload.' };
+        return response.ok ? result : { error: result.error || 'Não foi possível enviar a imagem.' };
+      } catch { return { error: 'Não foi possível enviar a imagem. Tente novamente.' }; }
+      finally { clearTimeout(timer); }
+    }
+    // Servidor antigo: caminho anterior. Remoções pequenas também ficam no socket.
+    const data = blob ? await blob.arrayBuffer() : null;
+    if (owner !== me || !socket.connected) return { error: 'A sessão mudou durante o upload.' };
+    return new Promise(resolve => {
+      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 60000);
+      const reply = value => { clearTimeout(timer); resolve(owner === me ? value || { error: 'Não foi possível enviar a imagem.' } : { error: 'A sessão mudou durante o upload.' }); };
+      if (kind === 'avatar') socket.emit('avatar', data, reply);
+      else socket.emit('fx:image', { kind, data }, reply);
+    });
+  }
+
   // Manda a foto (ou null pra tirar) pro servidor.
   async function sendPhoto(blob) {
     if (!me) return { error: 'Entre na sala primeiro.' };
-    const data = blob ? await blob.arrayBuffer() : null;
-    const res = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 60000);
-      socket.emit('avatar', data, (reply) => {
-        clearTimeout(timer);
-        resolve(reply || { error: 'Não deu pra mandar a foto.' });
-      });
-    });
+    const res = await sendImageAsset('avatar', blob);
     if (res.ok && me && users.has(me.id)) {
       const self = users.get(me.id);
       if (res.avatar) self.avatar = res.avatar;
@@ -3729,14 +4371,7 @@
   // endereço que o servidor deu.
   async function sendFxImage(kind, blob) {
     if (!me) return { error: 'Entre na sala primeiro.' };
-    const data = blob ? await blob.arrayBuffer() : null;
-    const res = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve({ error: 'O servidor não respondeu (ele já foi atualizado?).' }), 30000);
-      socket.emit('fx:image', { kind, data }, (reply) => {
-        clearTimeout(timer);
-        resolve(reply || { error: 'Não deu pra mandar a imagem.' });
-      });
-    });
+    const res = await sendImageAsset(kind, blob);
     if (res.ok) {
       myImages[kind] = AVATAR_PATH.test(res.url || '') ? res.url : null;
       if (me && users.has(me.id)) {
@@ -4319,47 +4954,36 @@
   // Passando o mouse por cima da transmissão ativa: a posição vai (no máximo ~20 vezes
   // por segundo) pra quem transmite, que vê uma setinha na sua cor, na tela dela.
   function enableCursorShare(s) {
-    let last = 0;
-    let pending = null;
-    let timer = null;
     let inside = false;
-    const flush = () => {
-      timer = null;
-      if (!pending || !me) return;
-      last = performance.now();
-      socket.emit('cursor', { stream: s.id, ...pending });
-      pending = null;
-    };
-    const queue = (msg) => {
-      pending = msg;
-      const wait = 50 - (performance.now() - last);
-      if (wait <= 0) flush();
-      else if (!timer) timer = setTimeout(flush, wait);
-    };
+    const live = () => Boolean(me && socket.connected && streams.get(s.id) === s && cursorLive(s));
+    const positions = window.WssInputPacing.createLatest({ interval: 50, canSend: live,
+      deliver(e) {
+        const point = videoPoint(s.video, e.clientX, e.clientY);
+        if (point) { inside = true; socket.emit('cursor', { stream: s.id, x: round4(point.x), y: round4(point.y) }); }
+        else if (inside) { inside = false; socket.emit('cursor', { stream: s.id, gone: true }); }
+      } });
+    // O cursor nativo continua imediato. Só o enfeite visual acompanha o último
+    // evento do frame; não depende dele o envio de posição/clique ou controle.
+    const visuals = window.WssInputPacing.createFrameLatest({ canSend: live,
+      deliver(e) {
+        const point = videoPoint(s.video, e.clientX, e.clientY);
+        mirrorCursor(s, point && !e.target.closest(TILE_CONTROLS) ? e : null);
+      } });
     const hide = () => {
+      positions.clear(); visuals.clear();
       mirrorCursor(s, null);
       if (!inside) return;
       inside = false;
-      queue({ gone: true });
+      if (me && socket.connected) socket.emit('cursor', { stream: s.id, gone: true });
     };
-    const update = (e) => {
-      const live = cursorLive(s) && e.pointerType !== 'touch';
-      const point = live ? videoPoint(s.video, e.clientX, e.clientY) : null;
-      // Os outros veem o seu mouse como uma setinha com a sua foto: aqui ele fica igual.
-      // Em cima dos botões do quadro, volta o mouse normal.
-      const mirror = point && !e.target.closest(TILE_CONTROLS);
-      mirrorCursor(s, mirror ? e : null);
-      if (point) {
-        inside = true;
-        queue({ x: round4(point.x), y: round4(point.y) });
-      } else if (inside) {
-        inside = false;
-        queue({ gone: true }); // saiu da imagem, ficou inativa ou desligou: some pros outros
-      }
+    const update = (e, immediate = true) => {
+      if (!live() || e.pointerType === 'touch') { hide(); return; }
+      positions.offer(e); visuals.offer(e);
+      if (immediate) visuals.flush(); // Ativação por clique mantém o cursor imediato.
     };
-    s.cursorShare = { update, hide };
+    s.cursorShare = { update, hide, close() { positions.clear(); visuals.clear(); } };
     s.media.addEventListener('pointermove', (e) => {
-      update(e);
+      update(e, false);
       if (e.pointerType !== 'touch' && !e.target.closest(TILE_CONTROLS)) showCursorHint(s);
     });
     s.media.addEventListener('pointerleave', () => {
@@ -4367,12 +4991,15 @@
       hideCursorHint(s);
       hide();
     });
+    s.media.addEventListener('pointercancel', hide);
     // Clique e rolagem viram a animaçãozinha no seu mouse, pros outros (e no seu, aqui).
     const sendClick = (e, click) => {
       if (!cursorLive(s) || e.pointerType === 'touch' || !me) return;
       if (e.target.closest(TILE_CONTROLS)) return;
       const point = videoPoint(s.video, e.clientX, e.clientY);
       if (!point) return;
+      positions.clear(); visuals.clear(); // Movimento anterior não reaparece após o clique.
+      mirrorCursor(s, e);
       socket.emit('cursor', { stream: s.id, x: round4(point.x), y: round4(point.y), click });
       if (s.mirrorOn) showMyClick(s, e, click);
     };
@@ -4483,7 +5110,7 @@
     clearTimeout(myCursor.timer);
     myCursor.timer = null;
     const frames = myCursor.frames;
-    if (!frames || frames.length < 2 || ![...streams.values()].some((s) => s.mirrorOn)) return;
+    if (document.hidden || !frames || frames.length < 2 || ![...streams.values()].some((s) => s.mirrorOn)) return;
     myCursor.timer = setTimeout(() => {
       myCursor.frame = (myCursor.frame + 1) % frames.length;
       setMyCursorCss(frames[myCursor.frame].css);
@@ -4496,6 +5123,7 @@
     myCursor.timer = null;
     myCursor.frames = null;
   }
+  document.addEventListener('visibilitychange', tickCursorFrames);
 
   // A bolinha com a foto (ou a letrinha), que segue o mouse.
   function myBadgeNode(s) {
@@ -4622,6 +5250,36 @@
   // ---- quem transmite: dar e tirar o controle
 
   const controlGrants = new Map(); // participante -> dispositivos autorizados
+  const controlActivityAt = new Map();
+  function acceptHostInput(msg) {
+    const grant = controlGrants.get(msg?.from);
+    if (!grant || (msg.session && msg.session !== grant.session)) return;
+    const devices = { ...grant.devices, gamepad: grant.devices.gamepad && !sharingState.options.gamepadPaused };
+    const input = window.WssControlWire.cleanInput(msg, devices);
+    if (input) desktop?.control?.({ ...input, from: msg.from, session: grant.session });
+  }
+  let gamepadClient = null;
+  const controlTransport = window.WssControlTransport.create({ socket, iceServers: getIceServers,
+    ...transportExperiments.options,
+    onFeedback: value => { if (controlling === value.stream) gamepadClient?.feedback(value); },
+    onFeedbackStop: value => { if (controlling === value.stream) gamepadClient?.stopFeedback(); },
+    onInput: acceptHostInput,
+    onReset: (msg) => desktop?.controlReset?.(msg),
+    onActivity: (msg) => {
+      const time = performance.now();
+      const last = controlActivityAt.get(msg.from) || { native: -Infinity, server: -Infinity };
+      if (time - last.native >= 100) { last.native = time; desktop?.controlPulse?.(msg); }
+      if (msg.gamepad && time - last.server >= 400) {
+        last.server = time; socket.emit('control:activity', msg);
+      }
+      controlActivityAt.set(msg.from, last);
+    },
+  });
+  desktop?.onGamepadFeedback?.(value => {
+    const grant = controlGrants.get(value?.from);
+    if (grant?.devices.gamepad && grant.session === value.session && !sharingState.options.gamepadPaused) controlTransport.feedback(value.from, value);
+  });
+  window.addEventListener('pagehide', () => controlTransport.destroy(), { once: true });
   let desktopCaps = null;
   const sharingDialog = $('sharing-dialog');
   let sharingState = { options: { gamepadPaused: false, maxGamepads: 4 }, people: [], counts: { connected: 0, receiving: 0, allowed: 0, physical: 0 } };
@@ -4629,6 +5287,7 @@
   let sharingPeopleKey = '';
   let sharingOptionsDirty = false;
   const sharingNodes = new Map();
+  let sharingRequest = null, sharingRevision = 0;
 
   function sharingStatus(person) {
     if (!person?.devices.gamepad) return 'Sem permissão de gamepad';
@@ -4690,14 +5349,22 @@
   }
   function acceptSharingDetails(state) {
     if (!state?.options || !Array.isArray(state.people) || !state.counts) return;
+    sharingRevision++;
     const pausedChanged = sharingState.options.gamepadPaused !== state.options.gamepadPaused;
     sharingState = state;
+    if (pausedChanged && state.options.gamepadPaused) {
+      for (const grant of controlGrants.values()) if (grant.devices.gamepad) controlTransport.feedback(grant.to, { strong: 0, weak: 0, duration: 0 });
+    }
     if (pausedChanged) syncHostControl();
     renderSharingDetails();
   }
   function refreshSharingDetails() {
-    if (!me || !socket.connected) return;
+    if (!me || !socket.connected || sharingRequest) return;
+    const request = { revision: sharingRevision }; sharingRequest = request;
     socket.timeout(2500).emit('control:details', (error, state) => {
+      if (sharingRequest !== request) return;
+      sharingRequest = null;
+      if (request.revision !== sharingRevision) return;
       if (error) { if (sharingDialog.open) $('sharing-feedback').textContent = 'Não foi possível consultar os detalhes. Verifique a conexão e atualize o servidor.'; return; }
       acceptSharingDetails(state);
     });
@@ -4707,6 +5374,7 @@
     if (desktop?.caps) desktopCaps = await desktop.caps().catch(() => desktopCaps);
     if (!sharingDialog.open) sharingDialog.showModal();
     $('sharing-feedback').textContent = ''; sharingPeopleKey = ''; renderSharingDetails(); refreshSharingDetails();
+    sharingTicker.sync();
   });
   $('sharing-close').addEventListener('click', () => sharingDialog.close());
   sharingDialog.addEventListener('click', (event) => { if (event.target === sharingDialog) sharingDialog.close(); });
@@ -4727,7 +5395,9 @@
     });
   });
   $('sharing-revoke-all').addEventListener('click', () => { sharingDrafts.clear(); revokeControl(); });
-  setInterval(() => { if (sharingDialog.open) refreshSharingDetails(); }, 2000);
+  const sharingTicker = createVisibleTicker({ document, interval: 2000, run: refreshSharingDetails,
+    active: () => sharingDialog.open });
+  sharingDialog.addEventListener('close', () => sharingTicker.sync());
   desktop?.onGamepadState?.((state) => {
     const grant = controlGrants.get(state?.id);
     if (grant) socket.emit('control:receiver', { from: state.id, stream: grant.stream, connected: state.connected === true, failed: state.failed === true });
@@ -4742,7 +5412,7 @@
   }
 
   async function openControlPanel() {
-    if (desktop && !desktopCaps && typeof desktop.caps === 'function') desktopCaps = await desktop.caps().catch(() => null);
+    if (typeof desktop?.caps === 'function') desktopCaps = await desktop.caps().catch(() => desktopCaps);
     renderControlPanel();
     if (!controlDialog.open) controlDialog.showModal();
   }
@@ -4828,14 +5498,23 @@
   function grantControl(user, done = () => {}, devices = { keyboard: true, mouse: true, gamepad: false }) {
     const stream = myControlStream();
     if (!stream) return done({ error: 'Não há transmissão disponível para controle.' });
-    socket.emit('control:grant', { stream, to: user.id, devices }, (res) => {
+    const protocol = desktop?.controlReset && desktop?.controlPulse ? 1 : 0;
+    socket.emit('control:grant', { stream, to: user.id, devices, protocol }, (res) => {
       if (!res || res.error) {
         showToast((res && res.error) || 'Não deu pra dar o controle.');
         done({ error: res?.error || 'Não deu pra dar o controle.' });
         return;
       }
-      controlGrants.set(user.id, { to: user.id, name: user.name, stream, devices: res.devices || devices });
+      controlGrants.set(user.id, { to: user.id, name: user.name, stream, devices: res.devices || devices, session: res.session });
       syncHostControl();
+      if (res.protocol === 1 && res.receiverToken && desktop?.hostControl) {
+        const grant=controlGrants.get(user.id);grant.nativeReceiver=true;
+        desktop.hostControl({owner:me.id,peer:user.id,session:res.session,stream,token:res.receiverToken,
+          options:transportExperiments.options}).catch(error=>{
+          if(controlGrants.get(user.id)?.session!==res.session)return;
+          revokeControl(user.id);showToast(error.message||'Receptor de comandos indisponível.');
+        });
+      } else if (res.protocol === 1) controlTransport.host({ session: res.session, peer: user.id, stream, devices: res.devices || devices });
       chatNote(`${user.name} recebeu as permissões selecionadas (Ctrl+Shift+X revoga tudo)`);
       renderUsers(); // acende o 🎮 na lista (e atualiza o painel, se estiver aberto)
       done({ ok: true });
@@ -4845,23 +5524,33 @@
   function syncHostControl() {
     const people = [...controlGrants.values()];
     desktop?.controlState?.({ on: people.length > 0, name: people.map((p) => p.name).join(', '), hue: 200,
-      people: people.map((p) => ({ id: p.to, devices: { ...p.devices, gamepad: p.devices.gamepad && !sharingState.options.gamepadPaused } })) });
+      people: people.map((p) => ({ id: p.to, session: p.session, devices: { ...p.devices, gamepad: p.devices.gamepad && !sharingState.options.gamepadPaused } })) });
   }
   function revokeControl(to) {
+    controlTransport.revoke(typeof to === 'string' ? to : undefined);
+    if (typeof to === 'string') controlActivityAt.delete(to); else controlActivityAt.clear();
     if (typeof to === 'string') controlGrants.delete(to); else controlGrants.clear();
     syncHostControl(); renderUsers();
     socket.emit('control:revoke', typeof to === 'string' ? { to } : {});
   }
   desktop?.onGamepadError?.((reason) => showToast(reason || 'Falha no gamepad virtual.'));
+  desktop?.onInputError?.((reason) => {
+    if (desktopCaps) desktopCaps = { ...desktopCaps, control: false };
+    showToast(reason || 'Falha no teclado/mouse remoto.'); checkControlTargets();
+  });
 
   if (desktop && typeof desktop.onControlRevoke === 'function') desktop.onControlRevoke(revokeControl);
+  desktop?.onControlBlocked?.(value => {
+    const grant = controlGrants.get(value?.from);
+    if (!grant || (grant.session || '') !== value.session) return;
+    revokeControl(value.from);
+    showToast('Controle revogado por excesso de comandos. Confira o participante antes de liberar novamente.');
+  });
 
   // O que quem você deixou controlar fez em cima da sua transmissão (o servidor só manda
   // de quem tem a permissão): vira mouse e teclado de verdade, no app.
   socket.on('control:input', (msg) => {
-    if (desktop && msg && controlGrants.has(msg.from) && typeof desktop.control === 'function') {
-      desktop.control(msg);
-    }
+    if (msg && controlTransport.legacyAllowed(msg.from)) acceptHostInput(msg);
   });
 
   // ---- quem assiste: controlar o PC de quem deixou
@@ -4877,6 +5566,7 @@
   // Caiu a conexão: o servidor cancela as permissões dos dois lados.
   function resetControl() {
     stopControlling();
+    controlTransport.revoke(); controlActivityAt.clear();
     controlAllowed.clear();
     controlGrants.clear();
     sharingState = { options: { gamepadPaused: false, maxGamepads: 4 }, people: [], counts: { connected: 0, receiving: 0, allowed: 0, physical: 0 } };
@@ -4911,16 +5601,19 @@
     && !['AltLeft', 'AltRight'].some((k) => controlKeys.has(k));
 
   function sendControl(msg) {
-    if (controlling && controlAllowed.get(controlling)?.devices[window.WssGamepad.kindDevice(msg.kind)]) socket.emit('control:input', { stream: controlling, ...msg });
+    if (!controlling || !controlAllowed.get(controlling)?.devices[window.WssGamepad.kindDevice(msg.kind)]) return;
+    if (!controlTransport.send(controlling, msg) && socket.connected) socket.emit('control:input', { stream: controlling, ...msg });
   }
 
   // Solta tudo que estava apertado do lado de lá (nada fica preso).
   function releaseControl() {
+    if (controlling) streams.get(controlling)?.controlPointerReset?.();
     sendControl({ kind: 'gamepad', ...window.WssGamepad.neutral() });
     for (const code of controlKeys) sendControl({ kind: 'key', code, down: false });
     for (const button of controlButtons) sendControl({ kind: 'button', button, down: false });
     controlKeys.clear();
     controlButtons.clear();
+    if (controlling) controlTransport.stop(controlling);
   }
 
   function stopControlling() {
@@ -4989,33 +5682,30 @@
       if (data && typeof data.code === 'string') forwardKey(data.code, Boolean(data.down));
     });
   }
-  document.addEventListener('fullscreenchange', () => syncKeyCapture());
+  document.addEventListener('fullscreenchange', () => {
+    if (controlling) streams.get(controlling)?.controlPointerReset?.();
+    syncKeyCapture();
+  });
   window.addEventListener('focus', () => syncKeyCapture());
 
   function enableControl(s) {
     const { media, video } = s;
-    let lastMove = 0;
-    let moveTimer = null;
-    let pendingMove = null;
     const point = (e) => {
       const p = videoPoint(video, e.clientX, e.clientY, true);
       return { x: round4(p.x), y: round4(p.y) };
     };
     const active = () => controlling === s.id;
     const mouseActive = () => active() && controlAllowed.get(s.id)?.devices.mouse;
-    const flushMove = () => {
-      moveTimer = null;
-      if (!pendingMove || !mouseActive()) return;
-      lastMove = performance.now();
-      sendControl({ kind: 'move', ...pendingMove });
-      pendingMove = null;
-    };
+    const moves = window.WssInputPacing.createLatest({ canSend: mouseActive,
+      deliver: e => sendControl({ kind: 'move', ...point(e) }) });
+    s.controlPointerReset = () => moves.clear();
     media.addEventListener('pointerenter', () => {
       if (!active()) return;
       controlHover = true;
       syncKeyCapture();
     });
     media.addEventListener('pointerleave', () => {
+      moves.clear();
       if (!active()) return;
       controlHover = false;
       syncKeyCapture();
@@ -5029,13 +5719,13 @@
         syncKeyCapture();
       }
       if (!mouseActive()) return;
-      pendingMove = point(e);
-      const wait = 16 - (performance.now() - lastMove);
-      if (wait <= 0) flushMove();
-      else if (!moveTimer) moveTimer = setTimeout(flushMove, wait);
+      // Só calcula geometria quando vai enviar; eventos de alta frequência
+      // substituem a posição pendente sem forçar layout a cada callback.
+      moves.offer({ clientX: e.clientX, clientY: e.clientY });
     });
     media.addEventListener('pointerdown', (e) => {
       if (!mouseActive() || e.target.closest('.tile-tools')) return;
+      moves.clear();
       e.preventDefault();
       try { media.setPointerCapture(e.pointerId); } catch {}
       const button = e.button === 1 ? 1 : e.button === 2 ? 2 : 0;
@@ -5043,13 +5733,21 @@
       sendControl({ kind: 'button', button, down: true, ...point(e) });
     });
     media.addEventListener('pointerup', (e) => {
+      moves.clear();
       if (!active()) return;
       const button = e.button === 1 ? 1 : e.button === 2 ? 2 : 0;
       if (!controlButtons.delete(button)) return;
       sendControl({ kind: 'button', button, down: false, ...point(e) });
     });
+    media.addEventListener('pointercancel', () => {
+      moves.clear();
+      if (!active()) return;
+      for (const button of controlButtons) sendControl({ kind: 'button', button, down: false });
+      controlButtons.clear();
+    });
     media.addEventListener('wheel', (e) => {
       if (!mouseActive()) return;
+      moves.clear();
       e.preventDefault();
       // dx: rolagem pros lados (Shift + rodinha vira deltaX no navegador; touchpad).
       const notches = (d) => Math.round((e.deltaMode === 1 ? d / 3 : e.deltaMode === 2 ? d * 3 : d / 100) * 100) / 100;
@@ -5091,9 +5789,10 @@
     syncKeyCapture();
   });
 
-  socket.on('control:granted', ({ stream, from, devices }) => {
+  socket.on('control:granted', ({ stream, from, devices, session, owner, protocol }) => {
     if (controlling === stream) stopControlling();
     controlAllowed.set(stream, { from, devices: devices ? window.WssGamepad.permissions(devices) : { keyboard: true, mouse: true, gamepad: false } });
+    if (protocol === 1 && session && owner) controlTransport.guest({ session, peer: owner, stream, devices });
     const s = streams.get(stream);
     if (s) renderControlButton(s);
     chatNote(`${from} liberou dispositivos para você na transmissão`);
@@ -5116,11 +5815,11 @@
   });
 
   window.WssGamepadClient.start({
-    canSend: () => Boolean(controlling && document.hasFocus() && !document.hidden && !controlDialog.open && !sharingDialog.open && controlAllowed.get(controlling)?.devices.gamepad),
+    canSend: () => Boolean(controlling && document.hasFocus() && !document.hidden && !controlDialog.open && !sharingDialog.open && !captureDialog.open && controlAllowed.get(controlling)?.devices.gamepad),
     send: (state) => sendControl({ kind: 'gamepad', ...state }),
     panel: $('gamepad-config'),
     onStatus: (status) => { for (const [stream, grant] of controlAllowed) if (grant.devices.gamepad) socket.emit('control:presence', { stream, ...status, sending: status.sending && controlling === stream }); },
-  });
+  }).then(client => { gamepadClient = client; });
 
   // Contrato usado pelo app local. O adaptador de DOM fica apenas como compatibilidade
   // com servidores antigos; estas operações trabalham sobre o estado real da sala.
@@ -5129,11 +5828,14 @@
     async read(section) {
       if (!me) return { available: false, reason: 'Entre na sala para acessar estas configurações.' };
       if (section === 'diagnostics') return { available: true, diagnostics: diagOutput.textContent, running: diagRunning };
-      if (section === 'media') return { available: true, overlay: { share: desktopOverlay, obs: obsOverlay }, streams: [...streams.values()].map((s) => ({ id: s.id, watching: s.watching, state: s.pc?.connectionState, health: s.healthStats })) };
+      if (section === 'media') return { available: true, capture: captureSnapshot(), overlay: { share: desktopOverlay, obs: obsOverlay }, controls: [...controlTransport.snapshot(),...await desktop?.receiverSnapshot?.()||[]], streams: [...streams.values()].map((s) => ({ id: s.id, watching: s.watching, state: s.pc?.connectionState, health: s.healthStats, metrics: s.videoMetrics || null, receiverTargets: Object.values(s.receiverTargets || {}), latencyRecoveries: s.latencyRecoveries || 0 })) };
       if (section === 'obs') {
         const info = await desktop?.displays?.();
+        const publication = serverStatus.obs ? await getObsPublication() : null;
         return { available: true, supported: Boolean(serverStatus.obs), name: me.name,
-          url: `${location.origin}/obs/${encodeURIComponent(me.name)}`,
+          authRequired: Boolean(publication?.individual || serverStatus.obsAuthRequired),
+          individual: Boolean(publication?.individual), token: publication?.token || null,
+          url: publication?.url || '',
           certificateWarning: location.protocol === 'https:' && !serverStatus.certificate,
           overlaySupported: Boolean(info?.overlay), displays: info?.displays || [], obsDisplay: info?.obsDisplay || 'off' };
       }
@@ -5145,6 +5847,7 @@
         autoFill: `hsl(${autoHue(me.name)} 45% 42%)`, markColor: markFill(toneOf(me.name)), recent: recentColors(),
         // shareCursor: o padrão das transmissões (o seu mouse agora liga em cada uma).
         shareCursor: cursorDefault, cursorPerStream: true, showCursors, sounds: sounds.enabled, presets: [...COLOR_PRESETS], controlsAvailable: true,
+        experiments: transportExperiments.snapshot(),
         gamepad: desktopCaps?.gamepad, controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
           .map((u) => ({ name: u.name, active: controlGrants.has(u.id), devices: controlGrants.get(u.id)?.devices || { keyboard: false, mouse: false, gamepad: false }, disabled: Boolean(problem) })),
         diagnostics: diagOutput.textContent, serverVersion: sidebarVersionEl.textContent,
@@ -5153,6 +5856,7 @@
     },
     async action(command) {
       if (!me) throw new Error('Entre na sala para usar esta configuração.');
+      if (command.type === 'experiment') return { ok: true, experiments: transportExperiments.set(command.key, command.enabled) };
       if (command.type === 'color') {
         if (command.color) pickerFrom(command.color);
         setMyColor(command.color, command.commit ? 'now' : undefined);
@@ -5181,7 +5885,8 @@
         if (response.error) throw new Error(response.error);
         if (!(await photoStore.set(blob))) showToast('A foto foi aplicada, mas não foi possível salvá-la neste PC.');
         renderProfileDialog();
-      } else if (command.type === 'diagnostics') { runDiagnostics(); }
+      } else if (command.type === 'performance-report') return { ok: true, report: await performanceReport() };
+      else if (command.type === 'diagnostics') { runDiagnostics(); }
       else if (command.type === 'check-updates') return { ok: true, message: await checkUpdatesNow() };
       else if (command.type === 'obs-display') {
         const info = await desktop?.displays?.();
@@ -5191,6 +5896,7 @@
         obsOverlay = obsOverlayWanted && Boolean(result.overlay); renderObsOverlayTag(); checkControlTargets();
       } else if (command.type === 'control') {
         if (!command.grant) { const target = [...users.values()].find((u) => u.name === command.name); if (target) revokeControl(target.id); return { ok: true }; }
+        if (typeof desktop?.caps === 'function') desktopCaps = await desktop.caps().catch(() => desktopCaps);
         const user = [...users.values()].find((u) => u.name === command.name && u.id !== me.id && u.kind !== 'obs');
         if (!user || !desktopCaps?.control || !myControlStream()) throw new Error('Controle remoto indisponível para essa pessoa.');
         const result = await new Promise((resolve) => grantControl(user, resolve, command.devices));
@@ -5201,4 +5907,5 @@
   });
 
   renderShareButton();
+  authReady = refreshRoomAccess().catch(() => { showLogin('Não foi possível verificar o acesso à sala. Tente entrar novamente.'); });
 })();

@@ -5,6 +5,13 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 1.9.0 — Melhorias de transmissão e controle
+
+- A sala ganhou diagnóstico de rota e estatísticas por transmissão, perfis de captura e ajustes experimentais de vídeo.
+- O controle remoto usa canais WebRTC para comandos. Sob congestionamento, o app espaça os envios de eixos e gatilhos e mantém as transições de botões no canal confiável.
+- O servidor oferece autenticação individual opcional, credenciais por publicação do OBS e limites para uso do relay.
+- No Windows x64, a captura nativa experimental transmite uma janela em H.264 para um espectador. O áudio do sistema continua disponível pela captura padrão.
+
 ## 1.8.1 — 2026-11-19
 
 - **Rolagem pros lados nas animações**: Shift + rodinha (e a rolagem lateral do touchpad)

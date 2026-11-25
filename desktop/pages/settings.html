@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="../shared/fx.css">
   <link rel="stylesheet" href="settings.css">
   <link rel="stylesheet" href="../shared/gamepad.css">
+  <link rel="stylesheet" href="../shared/visual-policy.css">
 </head>
 <body>
   <header><div><p class="eyebrow">WEB SCREEN SHARE</p><h1>Configurações</h1><p class="hint">Seu perfil, a sala e o aplicativo em um só lugar.</p></div><span class="tag" id="version"></span></header>
@@ -18,6 +19,7 @@
     <button id="tab-pointer" type="button" role="tab" aria-selected="false" aria-controls="panel-pointer" tabindex="-1">Ponteiro e controle</button>
     <button id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1">Aplicativo</button>
     <button id="tab-connection" type="button" role="tab" aria-selected="false" aria-controls="panel-connection" tabindex="-1">Conexão e testes</button>
+    <button id="tab-experimental" type="button" role="tab" aria-selected="false" aria-controls="panel-experimental" tabindex="-1">Experimental</button>
     <button id="tab-obs" type="button" role="tab" aria-selected="false" aria-controls="panel-obs" tabindex="-1">OBS e overlays</button>
     <button id="tab-log" type="button" role="tab" aria-selected="false" aria-controls="panel-log" tabindex="-1">Log em tempo real <span id="log-count">0</span></button>
     <button id="tab-shortcuts" type="button" role="tab" aria-selected="false" aria-controls="panel-shortcuts" tabindex="-1">Atalhos</button>
@@ -69,6 +71,7 @@
     </section>
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
       <form id="settings-form">
+        <section class="card"><h2>Desempenho visual</h2><label for="visual-mode">Efeitos da interface</label><select id="visual-mode"><option value="normal">Completo</option><option value="economy">Econômico</option><option value="auto">Automático</option></select><p class="hint">O modo econômico reduz partículas, brilhos e desfoques. O automático reduz esses efeitos quando a interface fica sobrecarregada. Vídeo, áudio, ponteiros e comandos continuam ativos. Aplicado ao salvar, sem reiniciar.</p></section>
         <section class="card"><h2>Vídeo e tela cheia</h2><label for="fullscreen">Modo de tela cheia</label><select id="fullscreen"><option value="borderless">Sem bordas — ocupa o monitor inteiro</option><option value="native">Nativa do Electron</option><option value="windowed">Vídeo ampliado dentro da janela</option></select><label class="check"><input id="hardware" type="checkbox"> Usar aceleração de hardware</label><p class="hint">Modo de tela cheia e aceleração são aplicados ao reiniciar. No Windows, o modo sem bordas mantém o caminho de renderização em janela.</p><label class="check"><input id="overlay" type="checkbox"> Mostrar marcações na minha tela ao transmitir</label><p class="hint">Qualidade, volume, microfone e dispositivos de voz continuam nos controles da sala e de cada transmissão.</p></section>
         <section class="card"><h2>Registro de atividade</h2><label class="check"><input id="logging" type="checkbox"> Registrar eventos neste aplicativo</label><label for="log-limit">Máximo de eventos na memória</label><select id="log-limit"><option>500</option><option>1000</option><option>2000</option><option>5000</option></select><p class="hint">Pessoas, transmissões, conexões e erros observados por este app. O log começa nesta execução e pode ser exportado. Eventos anteriores à conexão não são recuperados.</p></section>
         <div class="actions"><button class="btn btn-primary" type="submit">Salvar configurações</button></div><p class="hint">Reiniciar encerra a conexão e a transmissão atuais.</p>
@@ -77,11 +80,49 @@
     </section>
     <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection" hidden>
       <section class="card"><h2>Servidor da sala</h2><label for="server">Endereço</label><input id="server" form="settings-form" type="url" required placeholder="https://meu-servidor:3100"><p class="hint">Alterar o servidor exige reiniciar o app. A sala atual continua aberta até você reiniciar.</p><button type="submit" form="settings-form" class="btn">Salvar servidor</button></section>
-      <section class="card"><h2>Teste de conexão</h2><p class="hint">Verifica TURN por UDP e TCP, conexão pelo relay, codecs e a transmissão OBS quando disponível. O teste usa a conexão desta sala, sem interromper quem está assistindo.</p><div class="actions"><button id="run-diagnostics" type="button" class="btn btn-primary room-control">Executar teste</button><button id="copy-diagnostics" type="button" class="btn">Copiar resultado</button></div><pre id="diagnostic-output" class="diagnostic-output">Nenhum teste executado nesta sessão.</pre></section>
+      <section class="card"><h2>Teste de conexão</h2><p class="hint">Verifica TURN por UDP e TCP, conexão pelo relay, codecs e a transmissão OBS quando disponível. O teste usa a conexão desta sala, sem interromper quem está assistindo.</p><div class="actions"><button id="run-diagnostics" type="button" class="btn btn-primary room-control">Executar teste</button><button id="copy-diagnostics" type="button" class="btn">Copiar resultado</button><button id="copy-session-metrics" type="button" class="btn room-control">Copiar métricas da sessão</button></div><pre id="diagnostic-output" class="diagnostic-output">Nenhum teste executado nesta sessão.</pre></section>
+    </section>
+    <section id="panel-experimental" role="tabpanel" aria-labelledby="tab-experimental" hidden>
+      <p class="room-unavailable hint" hidden></p>
+      <p class="hint">Opções salvas por servidor neste PC. Mudanças entram em vigor ao reiniciar o app, o que encerra a sessão atual. Teste uma opção por vez, repita a mesma sessão entre os PCs e copie as métricas em Conexão e testes.</p>
+      <p id="experimental-status" class="hint" role="status"></p>
+      <section class="card"><h2>Transporte dos comandos</h2>
+        <label class="check"><input id="experiment-binaryFast" type="checkbox" disabled> Movimentos e analógicos em formato binário</label><p class="hint">Ativado por padrão. Reduz o tamanho dos comandos quando os dois PCs suportam o formato; caso contrário, usa JSON. Desative para comparar compatibilidade.</p>
+        <label class="check"><input id="experiment-smallFastQueue" type="checkbox" disabled> Fila menor para movimentos e analógicos</label><p class="hint">Desativado por padrão. Reduz o limite observado de 16 KiB para 2 KiB e descarta novas posições enquanto o canal está ocupado. Pode causar movimentos menos suaves; não altera teclas e botões.</p>
+        <label class="check"><input id="experiment-expireFastPackets" type="checkbox" disabled> Expirar movimentos após 100 ms no canal WebRTC</label><p class="hint">Desativado por padrão. Usa expiração por tempo no lugar de zero retransmissões. Pode retransmitir dentro desse prazo; não garante entrega em 100 ms. Teclas e botões continuam no canal confiável.</p>
+      </section>
+      <section class="card"><h2>Vídeo experimental</h2>
+        <label class="check"><input id="experiment-gpuBudget" type="checkbox" disabled> Ajustar envio à carga medida da GPU</label><p class="hint">Desativado por padrão. Ative no transmissor, com adaptação automática, e reinicie para aplicar. Sob pressão sustentada do encoder ou da VRAM, reduz resolução e FPS dos envios; recupera gradualmente. Usa dados do driver quando disponíveis ou evidência de sobrecarga do encoder por hardware. Dados ausentes não indicam capacidade livre. Não se aplica ao motor nativo experimental ou OBS. Compare qualidade e fluidez entre PCs.</p>
+        <label class="check"><input id="experiment-relaySelection" type="checkbox" disabled> Escolher relay pela latência dos participantes</label><p class="hint">Desativado por padrão. Ative em todos os participantes e reinicie para aplicar. Com dois a oito relays configurados, mede a conexão por cada um e escolhe o menor pior RTT do grupo para novas conexões. Medições ausentes, vencidas ou falhas mantêm a seleção normal. Conexões em andamento são preservadas. Compare entre PCs; RTT não mede o atraso da imagem.</p>
+        <label class="check"><input id="experiment-responsiveVideo" type="checkbox" disabled> Adaptação de bitrate mais rápida ao transmitir</label><p class="hint">Desativado por padrão. Usa a estimativa de banda do navegador, quando disponível, e verifica a transmissão a cada segundo quando a adaptação automática está ligada. Pode reduzir a qualidade para aliviar congestionamento; o ganho de latência entre PCs ainda precisa de comparação. Ative no PC que transmite pelo app.</p>
+        <label class="check"><input id="experiment-shortVideoBuffer" type="checkbox" disabled> Solicitar buffer de 50 ms ao assistir</label><p class="hint">Desativado por padrão. Solicita esse alvo para áudio e vídeo das transmissões, incluindo OBS. Pode aumentar cortes e congelamentos em redes instáveis. O navegador pode usar um buffer maior; 50 ms não é a latência total. Suporte e aceitação aparecem nas métricas da sessão.</p>
+      </section>
+      <section class="card"><h2>Recuperação de vídeo</h2>
+        <label class="check"><input id="experiment-recoverDelayedVideo" type="checkbox" disabled> Renovar mídia com atraso persistente após congestionamento</label><p class="hint">Desativado por padrão. Ative no PC que assiste a um perfil de jogo ou controla outro PC. Após a rede se recuperar, pode reabrir somente a conexão de mídia, com intervalo mínimo de 60 s entre tentativas. Causa uma pausa no vídeo e áudio da transmissão e pode não reduzir o atraso. Não altera os comandos nem se aplica ao OBS. Compare ligado e desligado entre PCs; o total de renovações aparece nas métricas.</p>
+      </section>
+      <section class="card"><h2>Comparar rede e apresentação</h2>
+        <p class="hint">No PC que assiste, mantenha a mesma cena, perfil e duração. Para comparar Ethernet e Wi-Fi, alterne a conexão e confirme a rota nas métricas. Para comparar VRR, mantenha a mesma rede e frequência de tela, alterne o VRR no sistema ou driver e observe a fluidez no monitor.</p>
+        <label for="trial-condition">Condição verificada por você</label>
+        <select id="trial-condition"><option>Ethernet</option><option>Wi-Fi</option><option>VRR desligado</option><option>VRR ligado</option><option>G-SYNC desligado</option><option>G-SYNC ligado</option><option>FreeSync desligado</option><option>FreeSync ligado</option></select>
+        <button id="copy-trial-metrics" type="button" class="btn room-control">Copiar amostra desta condição</button>
+        <p id="trial-result" class="hint" role="status"></p>
+      </section>
+      <form class="card" id="camera-measurement">
+        <h2>Medir botão até imagem por filmagem</h2>
+        <p class="hint">Filme o botão e o monitor receptor juntos. Use a taxa de aquisição original da câmera e uma filmagem com cadência constante.</p>
+        <label for="camera-fps">Taxa de aquisição (FPS)</label>
+        <input id="camera-fps" name="fps" type="number" min="0.001" step="any" required>
+        <label for="camera-frames">Quadros do botão e da primeira resposta visível</label>
+        <p id="camera-format" class="hint">Uma tentativa por linha, em ordem. Por exemplo, 100 106. Use 200 - se o botão foi acionado no quadro 200 e a imagem não respondeu.</p>
+        <textarea id="camera-frames" name="frames" rows="3" maxlength="32000" required aria-describedby="camera-format"></textarea>
+        <button class="btn" type="submit">Calcular latência</button>
+        <p id="camera-result" class="hint" role="status"></p>
+      </form>
+      <section class="card"><h2>Novo motor de captura</h2><label class="check"><input id="native-video" type="checkbox"> Usar motor nativo experimental</label><p class="hint">Windows x64: uma janela, vídeo H.264 em 720p, sem áudio do sistema e um espectador por vez. Requer navegador com suporte à transformação de vídeo. Ative e salve antes de iniciar a transmissão. Redimensionar ou fechar a janela encerra a captura.</p><button id="native-video-save" type="button" class="btn">Salvar configuração do motor</button></section>
     </section>
     <section id="panel-obs" role="tabpanel" aria-labelledby="tab-obs" hidden>
       <p id="obs-status" class="hint" role="status"></p>
-      <section class="card"><h2>Transmitir pelo OBS Studio</h2><p class="hint">No OBS, abra Configurações → Transmissão e selecione o serviço WHIP.</p><label for="obs-url">Endereço do servidor para o OBS</label><input id="obs-url" readonly><div class="actions"><button id="copy-obs-url" type="button" class="btn btn-primary" disabled>Copiar endereço</button></div><p class="hint">Deixe o Bearer Token em branco. Ao iniciar a transmissão no OBS, ela aparecerá na sala com seu nome e a etiqueta OBS.</p><p id="obs-certificate" class="hint" hidden>O servidor usa um certificado não reconhecido pelo OBS. Configure um certificado válido no servidor para conectar.</p></section>
+      <section class="card"><h2>Transmitir pelo OBS Studio</h2><p class="hint">No OBS, abra Configurações → Transmissão e selecione o serviço WHIP.</p><label for="obs-url">Endereço do servidor para o OBS</label><input id="obs-url" readonly><div class="actions"><button id="copy-obs-url" type="button" class="btn btn-primary" disabled>Copiar endereço</button></div><p id="obs-token-hint" class="hint">Se o servidor exigir Bearer Token, use o token de publicação fornecido pelo administrador.</p><div id="obs-token-field" hidden><label for="obs-token">Bearer Token privado</label><input id="obs-token" type="password" readonly autocomplete="off"><div class="actions"><button id="copy-obs-token" type="button" class="btn">Copiar token</button></div></div><p id="obs-certificate" class="hint" hidden>O servidor usa um certificado não reconhecido pelo OBS. Configure um certificado válido no servidor para conectar.</p></section>
       <section class="card"><h2>Monitor das marcações do OBS</h2><label for="obs-monitor">Mostrar overlays neste monitor</label><select id="obs-monitor" disabled><option value="off">Desligado</option></select><p class="hint">Escolha o monitor capturado pelo OBS para que ponteiros, desenhos e reações apareçam no lugar certo. A escolha é salva e aplicada imediatamente. Use Desligado para ocultar as marcações do OBS.</p><p class="hint">No compartilhamento pelo próprio app, as marcações seguem a tela escolhida na captura. A opção geral de marcações fica em Aplicativo.</p></section>
     </section>
     <section id="panel-log" role="tabpanel" aria-labelledby="tab-log" hidden>
@@ -91,14 +132,26 @@
       <p id="log-status" class="hint" role="status"></p>
       <div class="log-wrap" id="log-wrap"><table><thead><tr><th>Horário</th><th>Direção</th><th>Categoria</th><th>Nível</th><th>Evento</th></tr></thead><tbody id="log-rows"></tbody></table><p id="log-empty" class="empty">Nenhum evento para este filtro.</p></div>
     </section>
-    <section id="panel-shortcuts" role="tabpanel" aria-labelledby="tab-shortcuts" hidden><section class="card"><h2>Atalhos do aplicativo</h2><dl class="shortcut-list"><dt>Ctrl+,</dt><dd>Abrir configurações</dd><dt>F11 / Esc</dt><dd>Alternar / sair da tela cheia</dd><dt>F12</dt><dd>Abrir ferramentas de desenvolvedor</dd><dt>Ctrl+Shift+D</dt><dd>Alternar desenho na tela</dd><dt>Ctrl+Shift+X</dt><dd>Revogar controle remoto</dd></dl></section><section class="card"><h2>Atalhos da sala</h2><dl id="room-shortcuts" class="shortcut-list"></dl></section></section>
+    <section id="panel-shortcuts" role="tabpanel" aria-labelledby="tab-shortcuts" hidden>
+      <section class="card"><h2>Atalhos do aplicativo</h2><dl class="shortcut-list"><dt>Ctrl+,</dt><dd>Abrir configurações</dd><dt>F11 / Esc</dt><dd>Alternar / sair da tela cheia</dd><dt>F12</dt><dd>Abrir ferramentas de desenvolvedor</dd></dl></section>
+      <section class="card"><h2>Atalhos globais</h2><p class="hint">Valem fora da janela do app. Se houver conflito, libere a combinação no outro programa e tente novamente. Os botões abaixo e a barra de desenho continuam disponíveis.</p>
+        <dl id="global-shortcuts" class="shortcut-list"></dl>
+        <p id="shortcut-status" class="hint" role="status" aria-live="polite"></p>
+        <div class="actions"><button id="shortcut-retry" class="btn" type="button">Tentar registrar novamente</button><button id="shortcut-draw" class="btn" type="button" disabled>Ativar desenho</button><button id="shortcut-revoke" class="btn" type="button" disabled>Revogar controle remoto</button></div>
+      </section>
+      <section class="card"><h2>Atalhos da sala</h2><dl id="room-shortcuts" class="shortcut-list"></dl></section>
+    </section>
     <button class="btn btn-primary" id="restart" type="button" hidden>Reiniciar e aplicar</button><p id="status" role="status" aria-live="polite"></p>
   </main>
   <script src="../shared/color.js"></script>
   <script src="../shared/gamepad.js"></script>
+  <script src="../shared/input-pacing.js"></script>
   <script src="../shared/gamepad-view.js"></script>
   <script src="../shared/gamepad-client.js"></script>
+  <script src="../shared/gamepad-feedback.js"></script>
   <script src="../shared/fx.js"></script>
+  <script src="../shared/visual-policy.js"></script>
+  <script src="camera-measurement.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

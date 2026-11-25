@@ -5,15 +5,18 @@ let paused = false;
 let initialized = false;
 let pendingRestart = false;
 let dirty = false;
-const tabs = ['profile', 'fx', 'pointer', 'settings', 'connection', 'obs', 'log', 'shortcuts'];
+const tabs = ['profile', 'fx', 'pointer', 'settings', 'connection', 'experimental', 'obs', 'log', 'shortcuts'];
 let activeTab = 'profile';
 let diagnosticTimer;
 let diagnosticsRunning = false;
+let diagnosticRead = null;
+let diagnosticGeneration = 0;
 let roomState = { available: false };
 const categories = { people: 'Pessoas', stream: 'Transmissões', connection: 'Conexões', error: 'Erros', system: 'Aplicativo' };
 const directions = { in: 'Recebido', out: 'Enviado', local: 'Local' };
 const levels = { info: 'Info', warn: 'Aviso', error: 'Erro' };
 function status(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
+function updateRestartButton() { $('restart').hidden = !(pendingRestart || roomState.experiments?.pendingReload); }
 
 const logNodes = new Map();
 function renderLog(reset = false) {
@@ -46,6 +49,7 @@ function renderLog(reset = false) {
 function selectTab(name, focus = false) {
   if (!tabs.includes(name)) name = 'profile';
   activeTab = name;
+  diagnosticGeneration++;
   clearTimeout(diagnosticTimer);
   for (const id of tabs) {
     const active = id === name;
@@ -54,7 +58,8 @@ function selectTab(name, focus = false) {
     $(`panel-${id}`).hidden = !active;
   }
   if (name === 'log') renderLog();
-  if (['profile', 'fx', 'pointer', 'shortcuts'].includes(name)) refreshRoom();
+  if (['profile', 'fx', 'pointer', 'shortcuts', 'experimental'].includes(name)) refreshRoom();
+  if (name === 'shortcuts') api.readShortcuts().then(renderShortcuts).catch(error => status(error.message, true));
   if (name === 'connection') pollDiagnostics();
   if (name === 'obs') refreshObs();
   updateLogSubscription();
@@ -94,12 +99,16 @@ api.onLog((value) => {
 
 async function load() {
   const value = await api.read();
+  renderShortcuts(value.shortcuts);
   $('gamepad-client-path').textContent = `Componente para receber gamepads: ${value.gamepadClientPath || 'indisponível'}. Reinicie o aplicativo após configurar o driver e a DLL.`;
   if (!initialized || !dirty) {
     $('server').value = value.server || '';
     $('fullscreen').value = value.preferences.fullscreen;
     $('hardware').checked = value.preferences.hardwareAcceleration;
     $('overlay').checked = value.preferences.overlay;
+    $('visual-mode').value = value.preferences.visualMode || 'normal';
+    $('native-video').checked = value.preferences.nativeVideo === true;
+    $('native-video').disabled = !value.nativeVideo?.available;
     $('logging').checked = value.preferences.logging;
     $('log-limit').value = value.preferences.logLimit;
   }
@@ -108,7 +117,7 @@ async function load() {
   $('gamepad-install').hidden = value.environment.platform !== 'win32 x64';
   for (const option of $('fullscreen').options) option.hidden = option.disabled = !windows && option.value !== 'native';
   pendingRestart = value.restartRequired;
-  $('restart').hidden = !pendingRestart;
+  updateRestartButton();
   $('version').textContent = `App ${value.environment.app}`;
   $('environment').textContent = `Electron ${value.environment.electron} · Chromium ${value.environment.chrome}\n${value.environment.platform}\nModo ativo: ${value.active.fullscreen} · aceleração ${value.active.hardwareAcceleration ? 'habilitada' : 'desabilitada'}\nServidor ativo: ${value.activeServer || 'não configurado'}\n${value.environment.displays.join('\n')}`;
   snapshot = value.log;
@@ -116,7 +125,46 @@ async function load() {
   if (activeTab === 'log') renderLog(true);
   initialized = true;
 }
+let shortcutRevision = -1;
+function renderShortcuts(value) {
+  if (!value || !Number.isFinite(value.revision) || value.revision < shortcutRevision) return;
+  shortcutRevision = value.revision;
+  const fragment = document.createDocumentFragment();
+  let conflicts = 0;
+  for (const entry of value.entries || []) {
+    const key = document.createElement('dt'); key.textContent = entry.keys;
+    const description = document.createElement('dd'); description.dataset.shortcutId = entry.id; description.dataset.status = entry.status;
+    const state = entry.status === 'registered' ? 'Ativo'
+      : entry.status === 'release-failed' ? 'Não foi possível liberar; tente novamente'
+        : entry.status === 'unavailable' ? 'Indisponível; verifique conflitos com outros programas'
+          : entry.context === 'draw' ? 'Ativado somente durante o desenho'
+            : entry.context === 'control' ? 'Ativado somente durante o controle remoto'
+              : value.overlaySupported ? 'Ativado durante transmissão com marcações' : 'Marcações indisponíveis nesta plataforma';
+    description.textContent = `${entry.label} — ${state}${entry.id === 'revoke' && entry.status === 'unavailable' && value.emergencyPolling ? '. Verificação local de emergência disponível no Windows' : ''}.`;
+    if (['unavailable', 'release-failed'].includes(entry.status)) { conflicts++; description.classList.add('error'); }
+    fragment.append(key, description);
+  }
+  $('global-shortcuts').replaceChildren(fragment);
+  $('shortcut-status').textContent = conflicts ? `${conflicts} atalho(s) precisam de atenção. Você pode usar os botões sem o atalho global.` : 'Nenhum conflito nos atalhos do contexto ativo.';
+  $('shortcut-draw').disabled = !value.drawAvailable;
+  $('shortcut-draw').textContent = value.drawing ? 'Encerrar desenho' : 'Ativar desenho';
+  $('shortcut-revoke').disabled = !value.controlling;
+}
+api.onShortcuts(renderShortcuts);
+for (const [id, action] of [['shortcut-retry', 'retry'], ['shortcut-draw', 'draw-toggle'], ['shortcut-revoke', 'revoke']]) {
+  $(id).addEventListener('click', async () => {
+    $(id).disabled = true;
+    try { renderShortcuts(await api.shortcutAction(action)); }
+    catch (error) { status(error.message, true); }
+    finally {
+      if (id === 'shortcut-retry') $(id).disabled = false;
+      else try { renderShortcuts(await api.readShortcuts()); } catch {}
+    }
+  });
+}
 $('settings-form').addEventListener('input', () => { dirty = true; });
+$('native-video').addEventListener('input', () => { dirty = true; });
+$('native-video-save').addEventListener('click', () => $('settings-form').requestSubmit());
 $('server').addEventListener('input', () => { dirty = true; });
 $('settings-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -124,6 +172,8 @@ $('settings-form').addEventListener('submit', async (event) => {
     const result = await api.save({ server: $('server').value, preferences: {
       fullscreen: $('fullscreen').value, hardwareAcceleration: $('hardware').checked,
       overlay: $('overlay').checked, logging: $('logging').checked, logLimit: Number($('log-limit').value),
+      visualMode: $('visual-mode').value,
+      nativeVideo: $('native-video').checked,
     } });
     if (!result.ok) throw new Error(result.error);
     dirty = false;
@@ -165,14 +215,20 @@ $('check-update').addEventListener('click', async () => {
   try { const value = await api.checkUpdate(); $('update-status').textContent = value.message; }
   catch (error) { status(error.message, true); }
 });
+let roomReadGeneration = 0;
 async function refreshRoom() {
-  try { roomState = await api.readRoom(); }
-  catch (error) { roomState = { available: false, reason: error.message }; }
+  const request = ++roomReadGeneration;
+  let value;
+  try { value = await api.readRoom(); }
+  catch (error) { value = { available: false, reason: error.message }; }
+  if (request !== roomReadGeneration) return;
+  roomState = value;
   for (const node of document.querySelectorAll('.room-unavailable')) {
     node.hidden = roomState.available;
     node.textContent = roomState.reason || 'Entre na sala para acessar estas configurações.';
   }
   for (const node of document.querySelectorAll('.room-control')) node.disabled = !roomState.available;
+  renderExperiments();
   renderFx();
   if (!roomState.available) return;
   $('profile-name').textContent = roomState.name;
@@ -228,6 +284,32 @@ async function roomAction(command) {
 }
 $('show-cursors').addEventListener('change', () => roomAction({ type: 'cursor', field: 'show', enabled: $('show-cursors').checked }));
 $('room-sounds').addEventListener('change', () => roomAction({ type: 'sounds', enabled: $('room-sounds').checked }));
+function renderExperiments() {
+  const experiments = roomState.available && roomState.experiments;
+  updateRestartButton();
+  let unsupported = false;
+  for (const key of ['binaryFast', 'smallFastQueue', 'expireFastPackets', 'responsiveVideo', 'shortVideoBuffer', 'recoverDelayedVideo', 'relaySelection', 'gpuBudget']) {
+    const input = $(`experiment-${key}`);
+    input.disabled = !experiments || !Object.hasOwn(experiments.saved || {}, key);
+    unsupported ||= input.disabled;
+    input.checked = experiments?.saved[key] === true;
+  }
+  $('experimental-status').textContent = !experiments
+    ? 'Entre na sala ou atualize o servidor para configurar estes experimentos.'
+    : experiments.pendingReload ? 'Alterações salvas. Reinicie o app para aplicar.'
+      : unsupported ? 'Atualize o servidor para disponibilizar todas as opções experimentais.' : 'As opções salvas estão em uso nesta sessão.';
+}
+for (const key of ['binaryFast', 'smallFastQueue', 'expireFastPackets', 'responsiveVideo', 'shortVideoBuffer', 'recoverDelayedVideo', 'relaySelection', 'gpuBudget']) {
+  $(`experiment-${key}`).addEventListener('change', async () => {
+    const input = $(`experiment-${key}`);
+    input.disabled = true;
+    try {
+      await api.roomAction({ type: 'experiment', key, enabled: input.checked });
+      await refreshRoom();
+      status('Experimento salvo. Reinicie o app para aplicar.');
+    } catch (error) { await refreshRoom(); status(error.message, true); }
+  });
+}
 $('choose-photo').addEventListener('click', () => $('profile-file').click());
 $('remove-photo').addEventListener('click', () => roomAction({ type: 'photo-remove' }));
 $('profile-file').addEventListener('change', async (event) => {
@@ -246,15 +328,24 @@ $('profile-file').addEventListener('change', async (event) => {
 
 async function pollDiagnostics() {
   clearTimeout(diagnosticTimer);
+  diagnosticTimer = null;
   if (activeTab !== 'connection' || document.hidden) return;
+  // Compartilha a consulta em voo, mas só a chamada mais recente pode pintar
+  // ou agendar outra consulta após troca de aba/visibilidade.
+  const request = ++diagnosticGeneration;
+  if (!diagnosticRead) diagnosticRead = api.readRoom('diagnostics').finally(() => { diagnosticRead = null; });
   let available = false;
   try {
-    const data = await api.readRoom('diagnostics');
+    const data = await diagnosticRead;
+    if (request !== diagnosticGeneration || activeTab !== 'connection' || document.hidden) return;
     available = data.available;
     $('run-diagnostics').disabled = !data.available || diagnosticsRunning;
     $('diagnostic-output').textContent = data.diagnostics || data.reason || 'Nenhum teste executado nesta sessão.';
     if (data.diagnostics?.trim().endsWith('Fim do teste.')) diagnosticsRunning = false;
-  } catch (error) { $('diagnostic-output').textContent = error.message; diagnosticsRunning = false; }
+  } catch (error) {
+    if (request !== diagnosticGeneration || activeTab !== 'connection' || document.hidden) return;
+    $('diagnostic-output').textContent = error.message; diagnosticsRunning = false;
+  }
   $('run-diagnostics').disabled = !available || diagnosticsRunning;
   if (diagnosticsRunning) diagnosticTimer = setTimeout(pollDiagnostics, 500);
 }
@@ -267,16 +358,46 @@ $('copy-diagnostics').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('diagnostic-output').textContent); status('Resultado copiado.'); }
   catch (error) { status(error.message, true); }
 });
-document.addEventListener('visibilitychange', () => { if (activeTab === 'connection') pollDiagnostics(); updateLogSubscription(); });
+for (const id of ['copy-session-metrics', 'copy-trial-metrics']) {
+  const button = $(id);
+  const trial = id === 'copy-trial-metrics';
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    const condition = trial ? $('trial-condition').value : null;
+    try {
+      const value = await api.roomAction({ type: 'performance-report' });
+      if (!value?.report) throw Error('Atualize o servidor para copiar as métricas da sessão.');
+      if (trial && !value.report.streams?.some(stream => stream.watching && stream.state === 'connected' && stream.metrics?.frames > 0 && Number.isFinite(stream.metrics.ageMs) && stream.metrics.ageMs <= 10000)) {
+        throw Error('Assista à transmissão e aguarde a primeira amostra de vídeo.');
+      }
+      const payload = trial ? { condition, report: value.report } : value.report;
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      if (trial) $('trial-result').textContent = 'Amostra copiada para ' + condition + '.';
+      else status('Métricas da sessão copiadas.');
+    } catch (error) {
+      if (trial) $('trial-result').textContent = error.message;
+      else status(error.message, true);
+    } finally { button.disabled = !roomState.available; }
+  });
+}
+document.addEventListener('visibilitychange', () => { diagnosticGeneration++; if (activeTab === 'connection') pollDiagnostics(); updateLogSubscription(); });
 api.onSection((name) => selectTab(name));
 
 async function refreshObs() {
+  $('obs-url').value = ''; $('obs-token').value = ''; $('obs-token-field').hidden = true;
   $('obs-monitor').disabled = true;
   $('copy-obs-url').disabled = true;
   try {
     const data = await api.readRoom('obs');
     $('obs-status').textContent = !data.available ? data.reason : data.supported ? `Transmissão OBS para ${data.name}.` : 'O servidor atual não está com a integração OBS habilitada. Você ainda pode configurar o monitor das marcações.';
     $('obs-url').value = data.url || '';
+    $('obs-token').value = data.token || '';
+    $('obs-token-field').hidden = !data.individual;
+    $('obs-token-hint').textContent = !data.available || !data.supported
+      ? 'Consulte a configuração do servidor antes de publicar pelo OBS.'
+      : data.individual ? 'Cole o token privado abaixo no Bearer Token do OBS. Ele vincula a transmissão ao seu participante; não o compartilhe.'
+        : data.authRequired ? 'Preencha o Bearer Token do OBS com o token de publicação fornecido pelo administrador.'
+        : 'Este servidor não exige Bearer Token de publicação. O campo pode ficar em branco.';
     $('copy-obs-url').disabled = !data.available || !data.supported;
     $('obs-certificate').hidden = !data.certificateWarning;
     const options = (data.displays || []).map((display) => {
@@ -298,6 +419,10 @@ $('obs-monitor').addEventListener('change', async () => {
 });
 $('copy-obs-url').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('obs-url').value); status('Endereço do OBS copiado.'); }
+  catch (error) { status(error.message, true); }
+});
+$('copy-obs-token').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('obs-token').value); status('Token OBS copiado.'); }
   catch (error) { status(error.message, true); }
 });
 load().catch((error) => status(error.message, true));

@@ -465,10 +465,30 @@
 
   const RAINBOW = (n) => `hsl(${(n * 37) % 360} 95% 62%)`;
   const alive = new WeakMap(); // camada -> quantas partículas vivas
+  let reducedMotion = null;
+  function particlesOff() {
+    if (document.documentElement?.hasAttribute('data-wss-economy')) return true;
+    if (typeof matchMedia !== 'function') return false;
+    reducedMotion ||= matchMedia('(prefers-reduced-motion: reduce)');
+    return reducedMotion.matches;
+  }
+  function expireParticle(particle, layer) {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true; clearTimeout(timer); particle.remove();
+      alive.set(layer, Math.max(0, (alive.get(layer) || 1) - 1));
+    };
+    // CSS pode ser cancelado, oculto ou não carregar; o limite não pode ficar preso.
+    const timer = setTimeout(finish, 1600);
+    particle.addEventListener('animationend', finish, { once: true });
+    particle.addEventListener('animationcancel', finish, { once: true });
+  }
 
   // state: um objeto por mouse (guarda a posição anterior). x, y: números na unidade unit
   // ('px' ou '%'), em relação à camada.
   function trail(layer, state, x, y, rawStyle, color, unit = 'px') {
+    if (particlesOff()) { state.trailPos = null; return; }
     const style = normalize(rawStyle);
     if (style.trail === 'none' || !layer) return;
     const now = performance.now();
@@ -497,10 +517,7 @@
       else if (style.trail === 'sparkles') p.textContent = '✦';
       else if (style.trail === 'snow') p.textContent = '❄';
       else if (style.trail === 'notes') p.textContent = state.trailN % 2 ? '♪' : '♫';
-      p.addEventListener('animationend', () => {
-        p.remove();
-        alive.set(layer, Math.max(0, (alive.get(layer) || 1) - 1));
-      }, { once: true });
+      expireParticle(p, layer);
       layer.append(p);
     }
   }
@@ -926,6 +943,7 @@
 
   // Brilhinhos da purpurina (as mesmas partículas do rastro, coloridas, no máximo ~25/s).
   function sprinkle(layer, state, x, y) {
+    if (particlesOff()) return;
     if (!layer) return;
     const now = performance.now();
     if (now - (state.at || 0) < 40) return;
@@ -944,10 +962,7 @@
     p.style.setProperty('--dy', `${8 + Math.random() * 14}px`);
     p.style.setProperty('--s', String(0.6 + Math.random() * 0.6));
     p.style.setProperty('--r', `${Math.round(Math.random() * 160 - 80)}deg`);
-    p.addEventListener('animationend', () => {
-      p.remove();
-      alive.set(layer, Math.max(0, (alive.get(layer) || 1) - 1));
-    }, { once: true });
+    expireParticle(p, layer);
     layer.append(p);
   }
 
@@ -1288,7 +1303,7 @@
       view.svg.classList.add('wfx-ed-fading');
       view.svg.addEventListener('animationend', () => view.svg.remove(), { once: true });
     }
-    preview.addEventListener('pointermove', (e) => {
+    const move = (e) => {
       const [x, y, r] = local(e);
       place(x, y);
       if (downAt && !stroke && Math.hypot(x - downAt[0], y - downAt[1]) > 6) {
@@ -1299,10 +1314,21 @@
         stroke.points.push(x / r.width, y / r.height);
         stroke.brush.update(stroke.points);
       }
+    };
+    let moveFrame = 0, latestMove = null;
+    const cancelMove = () => { cancelAnimationFrame(moveFrame); moveFrame = 0; latestMove = null; };
+    preview.addEventListener('pointermove', (e) => {
+      if (downAt || stroke) { cancelMove(); move(e); return; }
+      latestMove = { clientX: e.clientX, clientY: e.clientY };
+      if (!moveFrame) moveFrame = requestAnimationFrame(() => {
+        moveFrame = 0; const event = latestMove; latestMove = null;
+        if (event && visible()) move(event);
+      });
     });
-    preview.addEventListener('pointerleave', () => { fake.hidden = true; state.trailPos = null; });
+    preview.addEventListener('pointerleave', () => { cancelMove(); fake.hidden = true; state.trailPos = null; });
     preview.addEventListener('contextmenu', (e) => e.preventDefault());
     preview.addEventListener('pointerdown', (e) => {
+      cancelMove();
       e.preventDefault();
       preview.focus();
       const [x, y] = local(e);
@@ -1343,9 +1369,26 @@
     }
 
     // Demonstração automática ao escolher (pra ver na hora como fica).
-    let demoTimer = null;
+    const demoTimers = new Set(), demoStrokes = new Set();
+    let disposed = false;
+    const visible = () => !disposed && container.isConnected && !document.hidden
+      && !container.closest('[hidden],dialog:not([open]),details:not([open])');
+    function stopDemo() {
+      for (const timer of demoTimers) clearTimeout(timer);
+      demoTimers.clear();
+      for (const view of demoStrokes) view.svg.remove();
+      demoStrokes.clear();
+    }
+    function scheduleDemo(step, delay) {
+      const timer = setTimeout(() => {
+        demoTimers.delete(timer);
+        if (visible()) step(); else stopDemo();
+      }, delay);
+      demoTimers.add(timer);
+    }
     function demo(what) {
-      clearTimeout(demoTimer);
+      stopDemo(); cancelMove();
+      if (!visible()) return;
       const r = preview.getBoundingClientRect();
       if (!r.width) return;
       const cx = r.width * 0.42;
@@ -1353,14 +1396,15 @@
       if (what === 'ping' || what === 'all') showPing(r.width * 0.62, cy);
       if (what === 'draw' || what === 'all') {
         const view = startStroke();
+        demoStrokes.add(view);
         let i = 0;
         const step = () => {
           const t = i / 24;
           view.points.push(0.12 + t * 0.5, 0.62 + Math.sin(t * Math.PI * 2.2) * 0.18);
           view.brush.update(view.points);
           i += 1;
-          if (i <= 24) demoTimer = setTimeout(step, 22);
-          else endStroke(view);
+          if (i <= 24) scheduleDemo(step, 22);
+          else { demoStrokes.delete(view); endStroke(view); }
         };
         step();
       }
@@ -1370,15 +1414,29 @@
           const t = i / 18;
           place(cx - 60 + t * 120, cy + Math.sin(t * Math.PI * 2) * 22);
           i += 1;
-          if (i <= 18) demoTimer = setTimeout(step, 28);
+          if (i <= 18) scheduleDemo(step, 28);
           else if (what === 'click' || what === 'all') showClick('left');
         };
         step();
       }
     }
 
+    const syncVisibility = () => {
+      if (!visible()) { stopDemo(); cancelMove(); release(); if (!fake.hidden) fake.hidden = true; state.trailPos = null; }
+    };
+    const observer = new MutationObserver(syncVisibility);
+    // Só mudanças de visibilidade; transformações/partículas não acionam o observador.
+    observer.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['hidden', 'open'] });
+    document.addEventListener('visibilitychange', syncVisibility);
+    function destroy() {
+      if (disposed) return;
+      disposed = true; syncVisibility(); observer.disconnect();
+      document.removeEventListener('visibilitychange', syncVisibility);
+      window.removeEventListener('pagehide', destroy);
+    }
+    window.addEventListener('pagehide', destroy, { once: true });
     render();
-    return { refresh: render, demo };
+    return { refresh: render, demo, destroy };
   }
 
   // O ping clássico, só pra prévia do editor (as páginas têm o delas).

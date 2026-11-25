@@ -1,6 +1,6 @@
 /* Gamepad físico -> perfil local -> estado Xbox normalizado enviado ao proprietário. */
 window.WssGamepadClient = {
-  async start({ panel, canSend, send, onStatus = () => {} }) {
+  async start({ panel, canSend, send, onStatus = () => {}, pollIntervalMs = window.WssInputPacing?.DEFAULT_INTERVAL_MS || 8 }) {
     const bridge = window.wssDesktop || window.desktopSettings;
     const model = window.WssGamepad;
     const make = (tag, text) => { const node = document.createElement(tag); if (text) node.textContent = text; return node; };
@@ -8,6 +8,7 @@ window.WssGamepadClient = {
     try { profiles = JSON.parse(localStorage.getItem('wss-gamepad-profiles') || '{}'); } catch {}
     if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) profiles = {};
     if (bridge?.readGamepadProfiles) profiles = await bridge.readGamepadProfiles().catch(() => profiles);
+    profiles = Object.assign(Object.create(null), profiles);
     const select = make('select'); select.setAttribute('aria-label', 'Meu controle físico');
     const presetRow = make('div'); presetRow.className = 'gamepad-profile-controls';
     const presetLabel = make('label', 'Preset do controle'); const presetSelect = make('select'); presetSelect.disabled = true; presetSelect.className = 'gamepad-preset'; presetSelect.setAttribute('aria-label', 'Preset do controle');
@@ -33,11 +34,12 @@ window.WssGamepadClient = {
       button.setAttribute('aria-label', 'Testar vibração ' + side); button.title = 'Testar vibração ' + side + ' por 1 segundo'; button.disabled = true;
       (i ? view.vibrationRight : view.vibrationLeft).append(button); return button;
     });
-    let activeActuator = null, activeSide = -1, vibrationRun = 0, vibrationMessage = false;
+    let activeActuator = null, activeSide = -1, vibrationRun = 0, vibrationMessage = false, remoteFeedback = null;
     const actuatorFor = (pad) => pad?.vibrationActuator || pad?.hapticActuators?.[0];
     const dualRumble = (a) => typeof a?.playEffect === 'function' && (!a.effects?.length || a.effects.includes('dual-rumble'));
     const supportsVibration = (a) => dualRumble(a);
     function stopVibration() {
+      remoteFeedback?.stop();
       vibrationRun++; const actuator = activeActuator; activeActuator = null; activeSide = -1;
       vibrationButtons.forEach(button => button.classList.remove('is-active'));
       if (actuator) { try { Promise.resolve(typeof actuator.reset === 'function' ? actuator.reset() : actuator.playEffect('dual-rumble', { duration: 0, strongMagnitude: 0, weakMagnitude: 0 })).catch(() => {}); } catch {} vibrationStatus.textContent = 'Teste interrompido.'; }
@@ -60,9 +62,20 @@ window.WssGamepadClient = {
     presetHint.textContent = 'Escolha o modelo e teste os comandos. Os ajustes são salvos automaticamente.';
     view.mapping.append(extras, remap);
     panel.append(select, presetRow, status, feedback, monitor, diagnostic);
-    let pads = [], selected = '', signature = '', lastSent = '', sentAt = 0, wasSending = false, lastPaint = 0;
+    const pads = [];
+    let knownDevices = [], selected = '', lastSent = null, sentAt = 0, wasSending = false, lastPaint = 0;
+    let lastView = null;
     const current = () => pads.find((pad) => String(pad.index) === selected);
-    const getProfile = () => profiles[current()?.id] ? model.profile({ ...profiles[current().id], triggerLimits: [1, 1] }) : model.defaultProfile(current());
+    remoteFeedback = window.WssGamepadFeedback?.create({ getPad: current, canPlay: () => canSend() && !activeActuator });
+    let cachedProfile = null;
+    const getProfile = () => {
+      const pad = current(), source = pad && Object.hasOwn(profiles, pad.id) ? profiles[pad.id] : null;
+      if (!cachedProfile || cachedProfile.id !== pad?.id || cachedProfile.source !== source) {
+        const profile = source ? model.profile({ ...source, triggerLimits: [1, 1] }) : model.defaultProfile(pad);
+        cachedProfile = { id: pad?.id, source, profile, sample: model.createSampler(profile, { reuseOutput: true }) };
+      }
+      return cachedProfile.profile;
+    };
     let learning = null; const rawExtraNodes = [];
     async function save(p) {
       const pad = current(); if (!pad) return;
@@ -109,6 +122,7 @@ window.WssGamepadClient = {
       addExtra.disabled = p.extraButtons.length >= 16;
     }
     function editor() {
+      lastView = null;
       learning = null; stopVibration(); vibrationMessage = false;
       mapping.replaceChildren(); const pad = current(); if (!pad) { presetSelect.disabled = true; extras.hidden = true; rawExtraNodes.length = 0; return; }
       const p = getProfile();
@@ -121,23 +135,42 @@ window.WssGamepadClient = {
       const reset = make('button', 'Restaurar padrão deste preset'); reset.type = 'button'; reset.className = 'btn'; reset.addEventListener('click', () => { const next = model.applyPreset(p.preset, p); next.extraButtons = []; next.triggerLimits = [1, 1]; next.triggers = model.profile().triggers; save(next); editor(); }); mapping.append(reset);
       extraEditor(pad, p);
     }
-    select.addEventListener('change', () => { if (wasSending) send(model.neutral()); selected = select.value; lastSent = ''; editor(); });
-    let profilePoll = 0, lastStatus = '', statusAt = 0;
+    select.addEventListener('change', () => { stopVibration(); if (wasSending) send(model.neutral()); selected = select.value; lastSent = null; editor(); });
+    let profilePoll = 0, profileReading = false, lastStatus = null, statusAt = 0;
+    const acceptProfiles = value => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+      if (JSON.stringify(value) !== JSON.stringify(profiles)) { profiles = Object.assign(Object.create(null), value); editor(); }
+    };
+    const unsubscribeProfiles = bridge?.onGamepadProfiles?.(acceptProfiles);
     const timer = setInterval(() => {
-      if (bridge?.readGamepadProfiles && performance.now() - profilePoll > 2000) {
-        profilePoll = performance.now(); bridge.readGamepadProfiles().then((value) => { if (JSON.stringify(value) !== JSON.stringify(profiles)) { profiles = value; editor(); } }).catch(() => {});
+      if (!bridge?.onGamepadProfiles && bridge?.readGamepadProfiles && !profileReading && !document.hidden
+        && ((panel.open && !panel.closest('[hidden]')) || canSend()) && performance.now() - profilePoll > 2000) {
+        profilePoll = performance.now(); profileReading = true;
+        bridge.readGamepadProfiles().then(acceptProfiles).catch(() => {}).finally(() => { profileReading = false; });
       }
-      pads = Array.from(navigator.getGamepads?.() || []).filter(Boolean);
-      const nextSignature = pads.map((p) => p.index + ':' + p.id + ':' + p.buttons.length).join('|');
-      if (signature !== nextSignature) {
-        signature = nextSignature;
+      // Atualiza referências dos snapshots do navegador sem criar arrays e uma
+      // assinatura string em toda leitura. Metadados só mudam com os dispositivos.
+      let count = 0, devicesChanged = false;
+      for (const pad of navigator.getGamepads?.() || []) {
+        if (!pad) continue;
+        const known = knownDevices[count];
+        if (!known || known.index !== pad.index || known.id !== pad.id || known.buttons !== pad.buttons.length) devicesChanged = true;
+        pads[count++] = pad;
+      }
+      pads.length = count;
+      if (devicesChanged || knownDevices.length !== count) {
+        knownDevices = pads.map(pad => ({ index: pad.index, id: pad.id, buttons: pad.buttons.length }));
         if (!selected && pads[0]) selected = String(pads[0].index);
         const options = pads.map((pad) => { const option = make('option', pad.id); option.value = String(pad.index); return option; });
         if (!pads.some((pad) => String(pad.index) === selected)) { const option = make('option', 'Controle desconectado'); option.value = selected; options.unshift(option); }
         select.replaceChildren(...options); select.value = selected; select.hidden = pads.length <= 1; editor();
       }
-      const pad = current(); const config = getProfile(); const state = pad ? model.sample(pad, config) : model.neutral();
-      vibrationButtons.forEach(button => { button.disabled = !supportsVibration(actuatorFor(pad)); });
+      const pad = current(), sending = canSend() && Boolean(pad), time = performance.now();
+      const paint = panel.open && !document.hidden && time - lastPaint > 33 && !panel.closest('[hidden]');
+      // Só remapeia/aloca o estado quando será enviado ou desenhado. Descoberta
+      // de dispositivos, presença, neutralização e relógio do envio continuam ativos.
+      const config = sending || paint ? getProfile() : null;
+      const state = sending || paint ? pad ? cachedProfile.sample(pad) : model.neutral() : null;
       if (!pad && activeActuator) stopVibration();
       if (learning && pad) {
         for (const index of learning.held) if (!(pad.buttons[index]?.value > 0.5)) learning.held.delete(index);
@@ -145,18 +178,29 @@ window.WssGamepadClient = {
         if (source >= 0 && document.hasFocus()) { const next = getProfile(); next.extraButtons[learning.index].source = source; save(next); editor(); }
         else if (performance.now() > learning.until) { learning.button.textContent = 'Detectar botão'; learning = null; feedback.textContent = 'Nenhum novo botão detectado. Confira se o dispositivo expõe essa tecla como um botão independente.'; }
       }
-      const sending = canSend() && Boolean(pad);
-      const time = performance.now();
+      if (!sending) remoteFeedback?.stop();
       if (sending) {
-        const packet = JSON.stringify(state);
-        if (packet !== lastSent || time - sentAt >= 250) { send(state); lastSent = packet; sentAt = time; }
-      } else if (wasSending) { send(model.neutral()); lastSent = ''; }
+        if (!model.sameState(state, lastSent) || time - sentAt >= 250) {
+          // Snapshot independente antes do callback, como a string anterior:
+          // mutações feitas por quem recebe não alteram a comparação seguinte.
+          const snapshot = { axes: state.axes.slice(), buttons: state.buttons.slice() };
+          send({ axes: state.axes.slice(), buttons: state.buttons.slice() }); lastSent = snapshot; sentAt = time;
+        }
+      } else if (wasSending) { send(model.neutral()); lastSent = null; }
       wasSending = sending;
-      const presence = { connected: Boolean(pad), name: pad?.id || '', sending };
-      const statusKey = JSON.stringify(presence);
-      if (statusKey !== lastStatus || time - statusAt > 1000) { lastStatus = statusKey; statusAt = time; onStatus(presence); }
-      if (panel.open && !document.hidden && time - lastPaint > 33) {
+      const connected = Boolean(pad), name = pad?.id || '';
+      if (!lastStatus || connected !== lastStatus.connected || name !== lastStatus.name || sending !== lastStatus.sending || time - statusAt > 1000) {
+        lastStatus = { connected, name, sending }; statusAt = time; onStatus({ connected, name, sending });
+      }
+      if (paint) {
         lastPaint = time;
+        // O sampler reutiliza vetores: guarde uma cópia para comparar a pintura,
+        // incluindo leituras físicas que não aparecem no estado remapeado.
+        const viewKey = JSON.stringify([pad?.id, pad?.mapping, pad?.axes, pad?.buttons.map(b => b.value), state, config,
+          sending, supportsVibration(actuatorFor(pad)), vibrationMessage]);
+        if (viewKey === lastView && !view.isLearning?.()) return;
+        lastView = viewKey;
+        vibrationButtons.forEach(button => { button.disabled = !supportsVibration(actuatorFor(pad)); });
         view.update(pad, state, config);
         if (!vibrationMessage) vibrationStatus.textContent = !pad ? 'Conecte um controle para testar.' : supportsVibration(actuatorFor(pad)) ? 'Vibração local: E testa o motor forte; D testa o motor fraco. Clique novamente para parar.' : 'Vibração indisponível neste modo de conexão.';
         for (const { chip, index } of rawExtraNodes) { const value = pad?.buttons[index]?.value || 0; chip.textContent = `B${index}: ${value.toFixed(2)}`; chip.classList.toggle('is-pressed', value > 0.1); }
@@ -165,8 +209,8 @@ window.WssGamepadClient = {
         const rawAxes = pad ? pad.axes.map((v, i) => `${i}=${v.toFixed(2)}`).join(' ') : 'nenhum';
         preview.textContent = `Botões físicos: ${raw || 'nenhum'} | Eixos físicos: ${rawAxes} | Saída: ${state.buttons.map((v, i) => v > 0.1 ? model.labelsFor(config)[i] : '').filter(Boolean).join(' ') || 'neutro'} | Eixos mapeados: ${state.axes.join(', ')}`;
       }
-    }, 16);
-    window.addEventListener('pagehide', () => { stopVibration(); if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); }, { once: true });
-    return { profiles: () => profiles };
+    }, pollIntervalMs === 8 ? 8 : 16);
+    window.addEventListener('pagehide', () => { stopVibration(); if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); unsubscribeProfiles?.(); }, { once: true });
+    return { profiles: () => profiles, feedback: value => remoteFeedback?.apply(value), stopFeedback: () => remoteFeedback?.stop() };
   },
 };

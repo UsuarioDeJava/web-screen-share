@@ -1,9 +1,25 @@
 // Tela cheia como janela sem bordas. Não chama setFullScreen(), preservando
 // o caminho de renderização em janela. A janela deve ser criada com frame:false.
-function createBorderlessFullscreen(win, screen, notify = () => {}) {
+function createBorderlessFullscreen(win, screen, notify = () => {}, {
+  schedule = callback => setTimeout(callback, 100), cancel = clearTimeout,
+} = {}) {
   const owners = new Set();
   let previous = null;
   let displayId = null;
+  let verification = null;
+
+  function cancelVerification() {
+    if (!verification) return;
+    cancel(verification.handle);
+    verification = null;
+  }
+
+  function targetDisplay() {
+    const display = screen.getAllDisplays().find((d) => d.id === displayId)
+      || screen.getDisplayMatching(win.getBounds());
+    displayId = display.id;
+    return display;
+  }
 
   function publish() {
     notify({ fullscreen: owners.size > 0, maximized: win.isMaximized() });
@@ -11,10 +27,20 @@ function createBorderlessFullscreen(win, screen, notify = () => {}) {
 
   function position() {
     if (!previous) return;
-    const display = screen.getAllDisplays().find((d) => d.id === displayId)
-      || screen.getDisplayMatching(win.getBounds());
-    displayId = display.id;
-    win.setBounds(display.bounds);
+    cancelVerification();
+    win.setBounds(targetDisplay().bounds);
+    // Após restaurar maximização, a primeira escrita pode não mudar os bounds.
+    // Confere uma vez após 100 ms; setImmediate ainda perdeu essa escrita no
+    // Windows testado. Não adia a primeira entrada e não faz polling/recursão.
+    const job = { handle: null };
+    verification = job;
+    job.handle = schedule(() => {
+      if (verification !== job) return;
+      verification = null;
+      if (!previous || !owners.size || win.isDestroyed()) return;
+      const target = targetDisplay().bounds, actual = win.getBounds();
+      if (['x', 'y', 'width', 'height'].some(key => actual[key] !== target[key])) win.setBounds(target);
+    });
   }
 
   function set(owner, on) {
@@ -31,6 +57,7 @@ function createBorderlessFullscreen(win, screen, notify = () => {}) {
     } else {
       if (!owners.delete(owner)) return;
       if (!owners.size) {
+        cancelVerification();
         const restore = previous;
         previous = null;
         win.setAlwaysOnTop(false);

@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity }) {
+function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity, getShortcuts, shortcutAction }) {
   let win = null;
   let timer = null;
   let following = false;
@@ -27,6 +27,8 @@ function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGam
   activity.subscribe(queue);
   for (const [channel, handler] of Object.entries({
     'settings:read': getState,
+    'settings:shortcuts-read': getShortcuts,
+    'settings:shortcuts-action': shortcutAction,
     'settings:gamepad-profiles': readGamepadProfiles,
     'settings:gamepad-profile-save': saveGamepadProfile,
     'settings:gamepad-setup': prepareGamepad,
@@ -77,7 +79,11 @@ function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGam
       win.setMenu(null);
       win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       win.webContents.on('will-navigate', (event) => event.preventDefault());
-      win.webContents.once('did-finish-load', () => win && win.webContents.send('settings:section', section));
+      win.webContents.once('did-finish-load', () => {
+        if (!win || win.isDestroyed()) return;
+        win.webContents.send('settings:section', section);
+        win.webContents.send('desktop:visual-mode', getState().preferences.visualMode);
+      });
       win.once('ready-to-show', () => win && win.show());
       win.on('restore', queue);
       win.on('show', queue);
@@ -85,6 +91,9 @@ function createSettingsPanel({ getParent, getState, readGamepadProfiles, saveGam
       win.loadURL(url);
     },
     close() { if (win && !win.isDestroyed()) win.close(); },
+    gamepadProfilesChanged(value) { if (win && !win.isDestroyed()) win.webContents.send('desktop:gamepad-profiles', value); },
+    visualModeChanged(value) { if (win && !win.isDestroyed()) win.webContents.send('desktop:visual-mode', value); },
+    shortcutsChanged(value) { if (win && !win.isDestroyed()) win.webContents.send('settings:shortcuts', value); },
   };
 }
 

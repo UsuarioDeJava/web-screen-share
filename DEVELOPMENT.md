@@ -3,6 +3,12 @@
 O app Electron carrega a sala do servidor configurado. As mudanças em `desktop/`
 funcionam no cliente local; alterações em `public/` precisam ser servidas pelo servidor.
 
+### Ponto 83 — teste em outros PCs
+
+Na simulação local de 768 kbit/s e 4% de perda, o receptor chegou a passar 3,675 s sem apresentar um quadro novo. Ao configurar o limite total de upload do transmissor em 1,5 Mbit/s, o p95 da idade da imagem ficou entre 747 e 841 ms em três rodadas, com redução de resolução.
+
+Na validação externa, repetir a mesma cena e o mesmo perfil com o limite de upload habitual e com um limite menor. Registrar rota, resolução, congelamentos e resposta aos comandos nas duas condições. O ganho em uma partida entre PCs segue em aberto.
+
 ## Preparar e executar
 
 Use Node.js 22.12 ou superior para desenvolver esta versão do Electron.

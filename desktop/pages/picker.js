@@ -84,7 +84,7 @@ function render() {
       entry = { card, img };
       cards.set(source.id, entry);
     }
-    if (source.thumbnail) entry.img.src = source.thumbnail;
+    if (source.thumbnail && entry.img.getAttribute('src') !== source.thumbnail) entry.img.src = source.thumbnail;
   }
   // Só mexe na ordem se ela mudou (mexer nos cartões atrapalharia um clique duplo).
   const order = list.map((s) => cards.get(s.id).card);
@@ -96,17 +96,26 @@ function render() {
 
 // Miniaturas "ao vivo": busca de novo 3 s depois da última busca terminar (cada busca
 // pode demorar uns segundos; buscas sobrepostas travam).
+let refreshTimer = null, refreshing = false, closed = false;
 async function refresh() {
+  clearTimeout(refreshTimer); refreshTimer = null;
+  if (closed || document.hidden || refreshing) return;
+  refreshing = true;
   try {
     const found = await window.picker.sources();
+    if (closed) return;
     if (found.length || loaded) sources = found;
     loaded = loaded || found.length > 0;
   } catch {
     // tenta de novo na próxima
   }
+  finally { refreshing = false; }
+  if (closed || document.hidden) return;
   render();
-  setTimeout(refresh, loaded ? 3000 : 500);
+  refreshTimer = setTimeout(refresh, loaded ? 3000 : 500);
 }
+document.addEventListener('visibilitychange', refresh);
+window.addEventListener('pagehide', () => { closed = true; clearTimeout(refreshTimer); refreshTimer = null; }, { once: true });
 
 function setKind(next) {
   kind = next;
@@ -131,6 +140,7 @@ document.addEventListener('keydown', (event) => {
 
 (async () => {
   info = await window.picker.info();
+  if(info.nativeWindow){setKind('window');for(const tab of tabs)tab.hidden=tab.dataset.kind==='screen';}
   audioRow.hidden = !info.systemAudio;
   renderHint();
   render();
