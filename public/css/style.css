@@ -1696,47 +1696,7 @@ kbd {
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-head h3 { margin: 0; font-size: 17px; }
 .dialog-sub, .dialog-tip { margin: 0; color: var(--muted); font-size: 13px; }
-.dialog-tip b, .obs-steps b { color: var(--text); }
-
-.obs-steps { display: flex; flex-direction: column; gap: 8px; margin: 0; padding-left: 22px; color: var(--muted); }
-.obs-steps li::marker { color: var(--accent-2); font-weight: 700; }
-
-.copy-field { display: flex; gap: 8px; margin-top: 6px; }
-.copy-field input {
-  flex: 1;
-  min-width: 0;
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: calc(9px * var(--radius-scale));
-  background: rgb(var(--shade-rgb) / 0.35);
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-.copy-field input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px rgb(var(--accent-2-rgb) / 0.18); }
-.copy-field .btn { height: 36px; flex: none; }
-
-.obs-overlay {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid rgb(var(--accent-2-rgb) / 0.25);
-  border-radius: calc(10px * var(--radius-scale));
-  background: rgb(var(--accent-2-rgb) / 0.06);
-}
-.obs-overlay-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; }
-.obs-overlay select {
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: calc(8px * var(--radius-scale));
-  background: rgb(var(--shade-rgb) / 0.35);
-  color: var(--text);
-}
-.obs-overlay select option { background: var(--panel); }
-.obs-overlay .dialog-tip a { color: var(--accent-2); }
+.dialog-tip b { color: var(--text); }
 
 .obs-check {
   margin: 0;
