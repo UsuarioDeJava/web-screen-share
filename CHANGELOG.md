@@ -5,6 +5,13 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.0.1 — 2026-11-25
+
+- **Abas das Configurações numa linha só**: com a aba Experimental, elas quebravam em
+  duas linhas (até em janela grande). Agora ficam sempre numa linha: "Log em tempo
+  real" virou só **Log** e, em janela estreita, a fileira rola de lado (com a rodinha
+  do mouse também), com a borda esmaecida do lado que ainda tem aba.
+
 ## 2.0.0 — 2026-11-25
 
 Versão grande: as contas com painel de administração, o usuário de testes, o tema, as

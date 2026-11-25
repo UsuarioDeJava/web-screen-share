@@ -47,6 +47,23 @@ function renderLog(reset = false) {
   if ($('follow').checked && !paused) $('log-wrap').scrollTop = $('log-wrap').scrollHeight;
 }
 
+// Fileira de abas maior que a janela: esmaece a borda do lado que ainda tem aba.
+const tabNav = document.querySelector('nav');
+function markTabOverflow() {
+  const left = tabNav.scrollLeft > 1;
+  const right = tabNav.scrollLeft + tabNav.clientWidth < tabNav.scrollWidth - 1;
+  tabNav.dataset.more = left && right ? 'both' : left ? 'left' : right ? 'right' : '';
+}
+tabNav.addEventListener('scroll', markTabOverflow, { passive: true });
+window.addEventListener('resize', markTabOverflow);
+// Rodinha em cima das abas: rola a fileira de lado.
+tabNav.addEventListener('wheel', (event) => {
+  if (tabNav.scrollWidth <= tabNav.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+  event.preventDefault();
+  tabNav.scrollLeft += event.deltaY;
+}, { passive: false });
+requestAnimationFrame(markTabOverflow);
+
 function selectTab(name, focus = false) {
   if (!tabs.includes(name)) name = 'profile';
   activeTab = name;
@@ -58,6 +75,9 @@ function selectTab(name, focus = false) {
     $(`tab-${id}`).tabIndex = active ? 0 : -1;
     $(`panel-${id}`).hidden = !active;
   }
+  // Janela estreita: a fileira de abas rola até a escolhida.
+  $(`tab-${name}`).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  markTabOverflow();
   if (name === 'log') renderLog();
   if (['profile', 'fx', 'pointer', 'shortcuts', 'experimental'].includes(name)) refreshRoom();
   if (name === 'shortcuts') api.readShortcuts().then(renderShortcuts).catch(error => status(error.message, true));

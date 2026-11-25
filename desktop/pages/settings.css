@@ -28,10 +28,15 @@ header .hint { margin: 6px 0 0; }
 .close-btn:focus-visible { outline: 2px solid #8793ff; outline-offset: 1px; }
 .close-btn svg { width: 18px; height: 18px; }
 h1 { font-size: 24px; margin: 0; } h2 { margin: 0 0 18px; font-size: 16px; }
-nav { display: flex; gap: 2px; padding-top: 0; padding-bottom: 0; border-bottom: 1px solid #252a3c; flex-wrap: wrap; }
-nav button { color: #aeb5cc; padding: 13px 12px; background: none; border: 0; border-bottom: 2px solid transparent; }
+/* As abas numa linha só: em janela estreita a fileira rola de lado (sem barra). */
+nav { display: flex; gap: 2px; padding-top: 0; padding-bottom: 0; border-bottom: 1px solid #252a3c; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+nav::-webkit-scrollbar { display: none; }
+nav[data-more=right] { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+nav[data-more=left] { mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); }
+nav[data-more=both] { mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
+nav button { flex: none; white-space: nowrap; color: #aeb5cc; padding: 13px 12px; background: none; border: 0; border-bottom: 2px solid transparent; }
 nav button[aria-selected="true"] { color: #fff; border-bottom-color: #8793ff; }
-@media (max-width: 1000px) { nav button { padding: 11px 8px; font-size: 13px; } }
+@media (max-width: 1100px) { nav button { padding: 11px 9px; font-size: 13px; } }
 #log-count, .tag { padding: 3px 9px; border-radius: 20px; background: #20263b; color: #bfc7e7; font-size: 11px; }
 main { padding-top: 20px; }
 .card { padding: 22px; border: 1px solid #252a3c; border-radius: 14px; background: #111521; margin-bottom: 16px; }
