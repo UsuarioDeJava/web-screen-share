@@ -9,11 +9,26 @@ window.WssGamepadView = {
     const left = make('div', 'gpad-config-side'), right = make('div', 'gpad-config-side');
     const buttonNodes = [];
     let activePad = null, learning = null, optionKey = '';
+    // Os botões de face com o desenho de verdade: no PlayStation as formas (cruz, círculo,
+    // quadrado, triângulo) e no Xbox a letra na cor do controle.
+    const SVG = (inner) => '<svg viewBox="0 0 20 20" aria-hidden="true">' + inner + '</svg>';
+    const PS_ICONS = [
+      SVG('<path class="ps-cross" d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>'),
+      SVG('<circle class="ps-circle" cx="10" cy="10" r="5.8"/>'),
+      SVG('<rect class="ps-square" x="4.8" y="4.8" width="10.4" height="10.4" rx="0.6"/>'),
+      SVG('<path class="ps-triangle" d="M10 3.8l6.6 11.4H3.4z"/>'),
+    ];
+    const PS_NAMES = ['Cruz', 'Círculo', 'Quadrado', 'Triângulo'];
+    const XBOX_ICONS = ['A', 'B', 'X', 'Y'].map((letter, i) =>
+      SVG('<circle class="xb-' + i + '" cx="10" cy="10" r="9"/><text x="10" y="14.2" text-anchor="middle">' + letter + '</text>'));
+    const iconFor = (i, layout) => (i < 4 ? (layout === 'playstation' ? PS_ICONS : XBOX_ICONS)[i] : '');
+    const captionFor = (i, layout, label) => (i < 4 ? (layout === 'playstation' ? PS_NAMES[i] : '') : label);
     const order = [6,4,8,10,12,14,13,15,7,5,3,2,1,0,9,11];
     window.WssGamepad.labels.forEach((label, i) => {
       const tile = make('div', 'gpad-button gpad-config-row'); tile.dataset.output = String(i); tile.classList.add('gpad-output-'+i);
-      const value = make('strong', '', '0%'); const pressure=make('progress'); pressure.max=1; pressure.value=0; pressure.setAttribute('aria-label','Pressão '+label); const caption = make('label', '', label);
-      const source = make('select'); source.setAttribute('aria-label', 'Entrada para ' + label); caption.append(source);
+      const value = make('strong', '', '0%'); const pressure=make('progress'); pressure.max=1; pressure.value=0; pressure.setAttribute('aria-label','Pressão '+label); const caption = make('label');
+      const icon = make('span', 'gpad-icon'); const text = make('span', 'gpad-label-text', label);
+      const source = make('select'); source.setAttribute('aria-label', 'Entrada para ' + label); caption.append(icon, text, source);
       const learn = make('button', '', 'Detectar'); learn.type = 'button'; learn.className = 'gpad-learn'; learn.setAttribute('aria-label', 'Detectar entrada para ' + label);
       source.addEventListener('change', () => {
         const [type, index] = source.value.split(':'); onChange(p => {
@@ -28,7 +43,7 @@ window.WssGamepadView = {
         learning = { output: i, button: learn, until: performance.now() + 10000, buttons: activePad.buttons.map(b=>b.value), axes: [...activePad.axes] };
         learn.textContent = 'Aperte…';
       });
-      tile.append(caption, value, learn, pressure); buttonNodes.push({ tile, value, caption, source, learn, pressure });
+      tile.append(caption, value, learn, pressure); buttonNodes.push({ tile, value, caption, icon, text, source, learn, pressure });
     });
     for (const i of order) (i === 7 || [5,3,2,1,0,9,11].includes(i) ? right : left).append(buttonNodes[i].tile);
     const guide = buttonNodes[16].tile; guide.classList.add('gpad-guide');
@@ -72,6 +87,8 @@ window.WssGamepadView = {
       <circle class="gpad-control" data-button="1" cx="410" cy="144" r="15"/><text x="410" y="149" data-glyph="1">B</text>
       <circle class="gpad-control" data-button="2" cx="352" cy="144" r="15"/><text x="352" y="149" data-glyph="2">X</text>
       <circle class="gpad-control" data-button="3" cx="381" cy="115" r="15"/><text x="381" y="120" data-glyph="3">Y</text>
+      <g class="gpad-ps-shapes" aria-hidden="true"><path class="ps-cross" d="M375.5 167.5l11 11M386.5 167.5l-11 11"/><circle class="ps-circle" cx="410" cy="144" r="6.8"/>
+        <rect class="ps-square" x="346" y="138" width="12" height="12" rx="0.8"/><path class="ps-triangle" d="M381 107.5l7.6 13H373.4z"/></g>
       <g data-dpad-assembly><circle class="gpad-stick-ring" cx="202" cy="225" r="37"/>
       <path class="gpad-control" data-button="12" d="m202 197-12 10 12 12 12-12Z"/><path class="gpad-control" data-button="13" d="m202 253-12-10 12-12 12 12Z"/>
       <path class="gpad-control" data-button="14" d="m174 225 10-12 12 12-12 12Z"/><path class="gpad-control" data-button="15" d="m230 225-10-12-12 12 12 12Z"/></g>
@@ -117,17 +134,24 @@ window.WssGamepadView = {
           figure.querySelector('[data-left-assembly]').setAttribute('transform', layoutKey === 'playstation' ? 'translate(55 80)' : 'translate(0 0)');
           figure.querySelector('[data-dpad-assembly]').setAttribute('transform', layoutKey === 'playstation' ? 'translate(-60 -80)' : 'translate(0 0)');
           for (const node of figure.querySelectorAll('[data-glyph]')) node.textContent = node.dataset.glyph === '16' && layoutKey === 'xbox' ? 'X' : labels[Number(node.dataset.glyph)];
-          buttonNodes.forEach((node, i) => { node.caption.firstChild.textContent = labels[i]; node.tile.title = labels[i]; }); drawWires();
+          buttonNodes.forEach((node, i) => {
+            node.icon.innerHTML = iconFor(i, layoutKey); node.icon.hidden = !node.icon.innerHTML;
+            node.text.textContent = captionFor(i, layoutKey, labels[i]); node.tile.title = labels[i];
+            node.source.setAttribute('aria-label', 'Entrada para ' + window.WssGamepad.physicalName(i, profile));
+          }); drawWires();
         }
-        const nextOptionKey=JSON.stringify([pad?.id,pad?.buttons.length,pad?.axes.length,profile.buttons,profile.triggers]);
+        const nextOptionKey=JSON.stringify([pad?.id,pad?.mapping,pad?.buttons.length,pad?.axes.length,profile.layout,profile.buttons,profile.triggers]);
         if(nextOptionKey!==optionKey){
           if (learning) { learning.button.textContent='Detectar'; learning=null; } optionKey=nextOptionKey;
           buttonNodes.forEach((node,i)=>{
             node.source.replaceChildren();
             const add=(text,value)=>{const option=make('option','',text);option.value=value;node.source.append(option);};
             add('Nenhum · não envia','none:-1');
-            if(i===6||i===7)add('Automático · B'+profile.buttons[i],'mapped:'+i);
-            for(let b=0;b<(pad?.buttons.length||17);b++)add('Botão '+b,'button:'+b);
+            // Nome do botão físico (A, B, LB, ✕ Cruz...) no mapeamento padrão; fora dele, o número.
+            const standard=!pad||pad.mapping==='standard';
+            const name=(b)=>window.WssGamepad.physicalName(b,profile,standard);
+            if(i===6||i===7)add('Automático · '+name(profile.buttons[i]),'mapped:'+i);
+            for(let b=0;b<(pad?.buttons.length||17);b++)add(name(b),'button:'+b);
             if(i===6||i===7)for(let a=0;a<(pad?.axes.length||0);a++)add('Eixo '+a+' · analógico','axis:'+a);
             const t=profile.triggers[i-6];
             const blocked=i===6||i===7 ? t.type==='none' : profile.buttons[i]<0;

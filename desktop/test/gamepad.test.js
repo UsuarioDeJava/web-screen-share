@@ -253,3 +253,11 @@ test('o controle Xbox sem fio não é confundido com o PlayStation (os dois dize
   assert.equal(preset('GameSir-T4 Kaleid'), 'custom');
   assert.equal(preset('Controle genérico'), 'xbox');
 });
+test('nomes dos botões físicos: Xbox, PlayStation e, fora do padrão, o número', () => {
+  assert.equal(model.physicalName(0, { layout: 'xbox' }), 'A');
+  assert.equal(model.physicalName(16, { layout: 'xbox' }), 'Xbox (Guide)');
+  assert.equal(model.physicalName(2, { layout: 'playstation' }), '□ Quadrado');
+  assert.equal(model.physicalName(17, { layout: 'playstation' }), 'Touchpad');
+  assert.equal(model.physicalName(17, { layout: 'xbox' }), 'Botão 17');
+  assert.equal(model.physicalName(0, { layout: 'xbox' }, false), 'Botão 0');
+});

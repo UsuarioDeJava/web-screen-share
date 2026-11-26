@@ -5,6 +5,17 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.1.2 — 2026-11-26
+
+- **Nomes de verdade no mapeamento do controle**: as listas de **Configurações >
+  Aplicativo > Meu gamepad** mostram o nome do botão (A, B, LB, RT, View, Menu,
+  ↑ Cima…) em vez de "Botão 0, Botão 1…". No controle PlayStation, com os símbolos
+  (✕ Cruz, ○ Círculo, □ Quadrado, △ Triângulo, L1, R2, Options, PS, Touchpad).
+  Controles fora do padrão continuam com o número, porque a ordem dos botões neles é
+  do fabricante.
+- **Ícones dos botões**: no desenho do controle e ao lado de cada botão, o PlayStation
+  mostra as formas coloridas e o Xbox as letras nas cores do controle.
+
 ## 2.1.1 — 2026-11-26
 
 - **"Nenhum" no mapeamento do controle**: em **Configurações > Aplicativo > Meu

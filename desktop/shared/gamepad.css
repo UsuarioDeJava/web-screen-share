@@ -102,3 +102,21 @@
 .gpad-button.is-blocked strong { text-decoration:line-through; }
 .gpad-control.is-blocked { stroke-dasharray:4 3; opacity:.5; }
 .gamepad-guide-hint { margin:0; }
+/* Ícones dos botões de face: PlayStation com as formas; Xbox com a letra na cor do controle. */
+.gpad-config-row label { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.gpad-config-row label select { flex-basis:100%; }
+.gpad-icon { display:inline-grid; width:20px; height:20px; flex:none; }
+.gpad-icon svg { width:20px; height:20px; overflow:visible; }
+.gpad-icon .ps-cross, .gpad-icon .ps-circle, .gpad-icon .ps-square, .gpad-icon .ps-triangle { fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+.ps-cross { stroke:#7fa8e6; } .ps-circle { stroke:#ff7a7a; } .ps-square { stroke:#f095d8; } .ps-triangle { stroke:#4fd4a8; }
+.gpad-icon .xb-0 { fill:#5cb85c; } .gpad-icon .xb-1 { fill:#e5534b; } .gpad-icon .xb-2 { fill:#3f8ef5; } .gpad-icon .xb-3 { fill:#f2c037; }
+.gpad-icon text { fill:#0b0f19; font:700 11.5px/1 system-ui,sans-serif; }
+.gpad-label-text:empty { display:none; }
+/* No desenho: as formas do PlayStation no lugar dos textos; no Xbox, as letras coloridas. */
+.gpad-ps-shapes { display:none; pointer-events:none; }
+.gpad-ps-shapes * { fill:none; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
+.gpad-view[data-layout="playstation"] .gpad-ps-shapes { display:inline; }
+.gpad-view[data-layout="playstation"] text[data-glyph="0"], .gpad-view[data-layout="playstation"] text[data-glyph="1"],
+.gpad-view[data-layout="playstation"] text[data-glyph="2"], .gpad-view[data-layout="playstation"] text[data-glyph="3"] { display:none; }
+.gpad-view[data-layout="xbox"] text[data-glyph="0"] { fill:#6cc96b; } .gpad-view[data-layout="xbox"] text[data-glyph="1"] { fill:#ff6b63; }
+.gpad-view[data-layout="xbox"] text[data-glyph="2"] { fill:#5aa0ff; } .gpad-view[data-layout="xbox"] text[data-glyph="3"] { fill:#ffd257; }

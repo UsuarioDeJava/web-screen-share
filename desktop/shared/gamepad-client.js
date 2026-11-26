@@ -108,7 +108,7 @@ window.WssGamepadClient = {
         const nameLabel = make('label', 'Nome'); const name = make('input'); name.type = 'text'; name.maxLength = 24; name.value = binding.name; name.setAttribute('aria-label', `Nome do botão extra ${i + 1}`); nameLabel.append(name);
         const sourceLabel = make('label', 'Botão físico'); const source = make('input'); source.type = 'number'; source.min = '0'; source.max = '63'; source.step = '1'; source.value = String(binding.source); source.setAttribute('aria-label', `Índice físico do botão extra ${i + 1}`); sourceLabel.append(source);
         const targetLabel = make('label', 'Enviar como'); const target = make('select'); target.setAttribute('aria-label', `Destino do botão extra ${i + 1}`);
-        labels.forEach((label, index) => { const option = make('option', label); option.value = String(index); target.append(option); }); target.value = String(binding.target); targetLabel.append(target);
+        labels.forEach((label, index) => { const option = make('option', model.physicalName(index, p)); option.value = String(index); target.append(option); }); target.value = String(binding.target); targetLabel.append(target);
         name.addEventListener('change', () => { const next = getProfile(); next.extraButtons[i].name = name.value; save(next); });
         source.addEventListener('change', () => { if (source.value !== '' && source.checkValidity()) { const next = getProfile(); next.extraButtons[i].source = Number(source.value); save(next); } });
         target.addEventListener('change', () => { const next = getProfile(); next.extraButtons[i].target = Number(target.value); save(next); });

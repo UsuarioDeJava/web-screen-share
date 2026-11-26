@@ -6,6 +6,17 @@
   const playLabels = ['✕', '○', '□', '△', 'L1', 'R1', 'L2', 'R2', 'Share', 'Options', 'L3', 'R3', '↑', '↓', '←', '→', 'PS'];
   const presets = [{ id: 'xbox', name: 'Xbox' }, { id: 'playstation', name: 'PlayStation' }, { id: 'custom', name: 'GameSir / personalizado' }];
   const labelsFor = (value) => value?.layout === 'playstation' ? playLabels : labels;
+  // O nome do botão físico (no mapeamento "standard" do navegador, a ordem é sempre a
+  // mesma): mostrado nas listas do mapeamento no lugar de "Botão 0, Botão 1...". Em
+  // controles fora do padrão a ordem é do fabricante: fica o número.
+  const xboxNames = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View (Back)', 'Menu (Start)', 'L3', 'R3',
+    '↑ Cima', '↓ Baixo', '← Esquerda', '→ Direita', 'Xbox (Guide)'];
+  const playNames = ['✕ Cruz', '○ Círculo', '□ Quadrado', '△ Triângulo', 'L1', 'R1', 'L2', 'R2', 'Create (Share)', 'Options', 'L3', 'R3',
+    '↑ Cima', '↓ Baixo', '← Esquerda', '→ Direita', 'PS', 'Touchpad'];
+  function physicalName(index, value, standard = true) {
+    const names = value?.layout === 'playstation' ? playNames : xboxNames;
+    return standard && index >= 0 && index < names.length ? names[index] : `Botão ${index}`;
+  }
   function defaultProfile(pad) {
     const id = String(pad?.id || '');
     // O Xbox vem antes: "Xbox Wireless Controller" também tem "Wireless Controller", que é o
@@ -92,5 +103,5 @@
     for (let i = 0; i < 17; i++) if (a.buttons[i] !== b.buttons[i]) return false;
     return true;
   }
-  return { NONE, GUIDE, labels, labelsFor, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
+  return { NONE, GUIDE, labels, labelsFor, physicalName, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
 });
