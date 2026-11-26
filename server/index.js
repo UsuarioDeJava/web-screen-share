@@ -321,6 +321,9 @@ app.get('/status', (req, res) => {
     obsAuthRequired: obsAuth.enabled && !accounts,
     proxy: proxyWithoutPublicPort(req),
     accounts: ACCOUNTS_ON,
+    // Alguém vê os dados de diagnóstico (o painel /admin está ligado): a sala pergunta,
+    // na primeira vez, se a pessoa quer compartilhar.
+    adminPanel: Boolean(accounts) || Boolean(process.env.ADMIN_PASSWORD),
     ...publicSettings(),
   });
 });

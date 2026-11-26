@@ -1589,6 +1589,35 @@ kbd {
 .tester-body .btn { height: 32px; padding: 0 12px; font-size: 13px; }
 .tester-log { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tester-log:empty::before { content: 'Nada ainda.'; }
+/* Primeira vez: o compartilhamento de dados, com destaque (senão ninguém liga). */
+.dialog.consent-dialog { width: min(760px, calc(100% - 32px)); }
+.consent-card { gap: 16px; padding: 32px 32px 28px; }
+.consent-badge { display: grid; place-items: center; width: 56px; height: 56px; border-radius: calc(16px * var(--radius-scale)); background: var(--grad); color: #fff; }
+.consent-badge svg { width: 30px; height: 30px; }
+.consent-title { margin: 0; font-size: 26px; line-height: 1.2; text-wrap: balance; }
+/* Abre com o foco no título (a tela começa do topo, e o leitor de tela lê a pergunta). */
+.consent-title:focus { outline: none; }
+.consent-lead { margin: 0; color: var(--text); font-size: 16px; line-height: 1.5; text-wrap: pretty; }
+.consent-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+.consent-col { padding: 14px 16px; border: 1px solid var(--border); border-radius: calc(12px * var(--radius-scale)); background: rgb(var(--ink-rgb) / 0.03); }
+.consent-col h3 { margin: 0 0 8px; font-size: 14px; }
+.consent-col.is-yes h3 { color: var(--accent-text); }
+.consent-col.is-no h3 { color: var(--ok-text); }
+.consent-col ul { display: grid; gap: 6px; margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; line-height: 1.4; }
+.consent-note { margin: 0; color: var(--muted); font-size: 13px; text-wrap: pretty; }
+.consent-note b { color: var(--text); }
+.consent-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.consent-actions .btn { min-height: 44px; padding: 0 20px; font-size: 15px; }
+@media (max-width: 640px) {
+  .consent-card { gap: 12px; padding: 20px 18px 18px; }
+  .consent-badge { display: none; }
+  .consent-title { font-size: 21px; }
+  .consent-lead { font-size: 15px; }
+  .consent-col ul { gap: 4px; font-size: 13px; }
+  .consent-cols { grid-template-columns: 1fr; }
+  .consent-actions { flex-direction: column-reverse; }
+  .consent-actions .btn { width: 100%; }
+}
 .dialog.sharing-dialog { width:min(920px,calc(100% - 32px)); }
 .sharing-btn { position: relative; }
 .sharing-count { display:inline-grid; place-items:center; min-width:21px; height:21px; border-radius: calc(20px * var(--radius-scale)); background:var(--panel-hover); color:var(--text); font-size:11px; font-variant-numeric: tabular-nums; }

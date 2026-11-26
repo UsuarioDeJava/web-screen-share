@@ -744,6 +744,7 @@
       }
       showApp();
       reporting.joined();
+      maybeAskConsent();
       if(obsIdentitySupported && desktop?.obsLocal) configureLocalObs().catch(e=>showToast('Entrada OBS local indisponível: '+e.message));
       loadChat(res.chat || []);
       if (voice.joined) {
@@ -6404,6 +6405,28 @@
       ...[...outgoing].map(([peer,s]) => ({ peer, direction:'envio', state:s.pc?.connectionState, route:s.diagnosticRoute, metrics:s.metrics })),
       ...[...streams.values()].filter(s=>s.watching).map(s=>({ peer:s.id, direction:'recepção', state:s.pc?.connectionState, route:s.diagnosticRoute, metrics:s.videoMetrics }))
     ], version: () => desktop?.version || pageVersion });
+  // ---------- compartilhamento de dados: a pergunta da primeira vez ----------
+  // Começa desligado. Com o painel /admin ligado (alguém vê os dados), na primeira vez que
+  // a pessoa entra na sala por este servidor (neste navegador ou app), a sala pergunta com
+  // destaque. Só os botões decidem; Esc fecha e pergunta de novo da próxima vez que abrir.
+  const consentDialog = $('consent-dialog');
+  function maybeAskConsent() {
+    if (!serverStatus.adminPanel || reporting.decided() || consentDialog.open) return;
+    try {
+      if (sessionStorage.getItem('wss-consent-asked')) return;
+      sessionStorage.setItem('wss-consent-asked', '1');
+    } catch {}
+    consentDialog.showModal();
+  }
+  function decideConsent(yes) {
+    reporting.setConsent(yes);
+    consentDialog.close();
+    if (yes) showToast('Obrigado! O compartilhamento de dados está ligado.');
+  }
+  $('consent-yes').addEventListener('click', () => decideConsent(true));
+  $('consent-no').addEventListener('click', () => decideConsent(false));
+  // Escolheu em outra aba: esta fecha também.
+  window.addEventListener('storage', () => { if (consentDialog.open && reporting.decided()) consentDialog.close(); });
   const obsRoutes=window.createObsRoutes({socket,desktop,streams,grants:controlGrants,allowed:controlAllowed,getIce:getIceServers,iceDone:iceGatheringDone,
     activate(s,r,media){
       s.obsDirect=null;closeIncoming(s);s.obsDirect=r;r.active=true;

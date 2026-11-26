@@ -200,6 +200,44 @@
     </form>
   </dialog>
 
+  <!-- Primeira vez neste servidor (com o painel /admin ligado): pergunta, com destaque, se
+       a pessoa quer compartilhar os dados de diagnóstico. Começa desligado; só os botões
+       decidem (Esc fecha e a sala pergunta de novo da próxima vez). -->
+  <dialog id="consent-dialog" class="dialog consent-dialog" aria-labelledby="consent-title" aria-describedby="consent-lead">
+    <div class="dialog-card consent-card">
+      <div class="consent-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+      </div>
+      <h2 id="consent-title" class="consent-title" tabindex="-1" autofocus>Ajude a deixar a sala sem travadas</h2>
+      <p id="consent-lead" class="consent-lead">Quer compartilhar dados de diagnóstico com quem administra este servidor? Com eles dá pra ver quando a imagem trava, a conexão cai ou o app falha, e corrigir mais rápido.</p>
+      <div class="consent-cols">
+        <section class="consent-col is-yes">
+          <h3>O que é enviado</h3>
+          <ul>
+            <li>Seu nick, se é o app ou o navegador, e a versão</li>
+            <li>As configurações de vídeo: perfil, codec e captura</li>
+            <li>As métricas de cada conexão, a cada 10 segundos: quadros, resolução, taxa, atraso e perdas</li>
+            <li>Com quem você está conectado (quem assiste e quem transmite pra você)</li>
+            <li>As falhas detectadas: vídeo travado, erro na captura, app sem responder</li>
+          </ul>
+        </section>
+        <section class="consent-col is-no">
+          <h3>O que não é enviado</h3>
+          <ul>
+            <li>A imagem da sua tela e o som</li>
+            <li>O chat e o que você digita</li>
+            <li>Senhas, tokens e arquivos do seu PC</li>
+          </ul>
+        </section>
+      </div>
+      <p class="consent-note">Fica desligado até você escolher. Dá pra mudar quando quiser em <b>Configurações &gt; Log &gt; Relatar problema</b>; desligando, os envios param na hora.</p>
+      <div class="consent-actions">
+        <button id="consent-no" class="btn" type="button">Agora não</button>
+        <button id="consent-yes" class="btn btn-primary" type="button">Compartilhar dados</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="keys-dialog" class="dialog" aria-labelledby="keys-title">
     <form method="dialog" class="dialog-card">
       <div class="dialog-head">

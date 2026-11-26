@@ -93,7 +93,10 @@ window.WssDiagnosticClient = function ({ socket, member, desktop, capture, strea
     if (!desktop?.diagnosticFault && !document.hidden && elapsed>5000 && elapsed<60000) fault('interface_stalled');
   },1000);
   setInterval(sample,10000);
-  return { retry(peer){if(enabled && online && socket.connected) socket.volatile.emit('diagnostics:retry',peer);}, fault, preview, setConsent, submit, joined(){ online=true; syncConsent(); },
+  // A pessoa já escolheu (sim ou não) neste servidor? Sem como guardar, conta como sim
+  // (a sala não fica perguntando).
+  function decided() { try { return localStorage.getItem(preference) !== null; } catch { return true; } }
+  return { decided, retry(peer){if(enabled && online && socket.connected) socket.volatile.emit('diagnostics:retry',peer);}, fault, preview, setConsent, submit, joined(){ online=true; syncConsent(); },
     left(){ stopTest?.(); online=false; generation++; history=[]; if (socket.connected) queue=[]; draft=null;
       desktop?.diagnosticFault?.(false).catch(()=>{}); } };
 };
