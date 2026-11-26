@@ -101,7 +101,6 @@
 .gpad-button.is-blocked { opacity:.55; border-left-style:dashed; }
 .gpad-button.is-blocked strong { text-decoration:line-through; }
 .gpad-control.is-blocked { stroke-dasharray:4 3; opacity:.5; }
-.gamepad-guide-hint { margin:0; }
 /* Ícones dos botões de face: PlayStation com as formas; Xbox com a letra na cor do controle. */
 .gpad-config-row label { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .gpad-config-row label select { flex-basis:100%; }
@@ -120,13 +119,10 @@
 .gpad-view[data-layout="playstation"] text[data-glyph="2"], .gpad-view[data-layout="playstation"] text[data-glyph="3"] { display:none; }
 .gpad-view[data-layout="xbox"] text[data-glyph="0"] { fill:#6cc96b; } .gpad-view[data-layout="xbox"] text[data-glyph="1"] { fill:#ff6b63; }
 .gpad-view[data-layout="xbox"] text[data-glyph="2"] { fill:#5aa0ff; } .gpad-view[data-layout="xbox"] text[data-glyph="3"] { fill:#ffd257; }
-/* Botões como teclas: uma linha por ligação (botão do controle → tecla). */
-.gamepad-keys { display:flex; flex-direction:column; gap:8px; margin:12px 0; }
-.gamepad-keys h4 { margin:0; }
-.gamepad-key-bindings { display:flex; flex-direction:column; gap:8px; }
-.gamepad-key-binding { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
-.gamepad-key-binding label { display:flex; flex-direction:column; gap:4px; font-size:12px; }
-.gamepad-key-binding select { min-width:150px; }
-.gamepad-key-arrow { align-self:center; padding-top:16px; opacity:.7; }
-.gamepad-key-choose { min-width:120px; }
-.gamepad-add-key { align-self:flex-start; }
+/* "Tecla do teclado": o campo da tecla logo abaixo da lista, do mesmo tamanho dela. */
+.gpad-key { grid-column:1; display:block; width:100%; height:26px; margin:0; padding:0 8px; text-align:left; cursor:pointer;
+  background:#0d1320; color:#e9edfb; border:1px solid #303b55; border-radius:5px; font:600 10px system-ui; }
+.gpad-key::before { content:'⌨ '; color:#9aa8c4; font-weight:400; }
+.gpad-key:hover:not(:disabled), .gpad-key:focus-visible { border-color:#7d6bd1; }
+.gpad-config-row.is-capturing .gpad-key { border-color:#af91ff; color:#d7cdff; font-weight:400; }
+.gpad-config-row.is-key strong { visibility:hidden; }

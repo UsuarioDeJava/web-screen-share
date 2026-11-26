@@ -13,8 +13,8 @@
     '↑ Cima', '↓ Baixo', '← Esquerda', '→ Direita', 'Xbox (Guide)'];
   const playNames = ['✕ Cruz', '○ Círculo', '□ Quadrado', '△ Triângulo', 'L1', 'R1', 'L2', 'R2', 'Create (Share)', 'Options', 'L3', 'R3',
     '↑ Cima', '↓ Baixo', '← Esquerda', '→ Direita', 'PS', 'Touchpad'];
-  // Botões do controle como teclas do teclado (ex.: A → Espaço): o código da tecla pela
-  // posição física (KeyboardEvent.code), como o teclado do controle remoto.
+  // "Tecla do teclado" no mapeamento (ex.: A → Espaço): o código da tecla pela posição
+  // física (KeyboardEvent.code), como o teclado do controle remoto.
   const KEY_CODE = /^[A-Za-z][A-Za-z0-9]{0,23}$/;
   const KEY_NAMES = { Space: 'Espaço', Enter: 'Enter', Escape: 'Esc', Tab: 'Tab', Backspace: 'Backspace', CapsLock: 'Caps Lock',
     ShiftLeft: 'Shift esquerdo', ShiftRight: 'Shift direito', ControlLeft: 'Ctrl esquerdo', ControlRight: 'Ctrl direito',
@@ -31,12 +31,6 @@
     m = /^Digit(\d)$/.exec(code); if (m) return m[1];
     m = /^Numpad(\d)$/.exec(code); if (m) return `${m[1]} (numérico)`;
     return code;
-  }
-  // As teclas apertadas agora (pelos botões ligados a elas).
-  function keysDown(pad, config) {
-    const down = new Set();
-    for (const k of config.keys || []) if ((Number(pad?.buttons?.[k.source]?.value) || 0) > 0.5) down.add(k.code);
-    return down;
   }
   function physicalName(index, value, standard = true) {
     const names = value?.layout === 'playstation' ? playNames : xboxNames;
@@ -73,9 +67,7 @@
       v: 2,
       preset: presets.some((p) => p.id === value.preset) ? value.preset : 'xbox',
       layout: value.preset === 'playstation' || (value.preset === 'custom' && value.layout === 'playstation') ? 'playstation' : 'xbox',
-      keys: Array.isArray(value.keys) ? value.keys.slice(0, 16)
-        .filter((k) => k && Number.isInteger(k.source) && k.source >= 0 && k.source < 64 && typeof k.code === 'string' && KEY_CODE.test(k.code))
-        .map((k) => ({ source: k.source, code: k.code })) : [],
+      keys: keyBindings(value.keys, buttons),
       extraButtons: Array.isArray(value.extraButtons) ? value.extraButtons.slice(0, 16)
         .filter((v) => v && Number.isInteger(v.source) && v.source >= 0 && v.source < 64 && Number.isInteger(v.target) && v.target >= 0 && v.target < 17)
         .map((v, i) => ({ source: v.source, target: v.target, name: typeof v.name === 'string' ? v.name.replace(/[\x00-\x1f]/g, '').slice(0, 24) : `M${i + 1}` })) : [],
@@ -94,6 +86,18 @@
       deadzone: Number.isFinite(value.deadzone) ? Math.max(0, Math.min(0.5, value.deadzone)) : 0.12,
     };
   }
+  // Uma tecla por saída (botão ou gatilho do controle virtual). A 2.2.0 guardava o botão
+  // físico (source): vira a saída que lê esse botão.
+  function keyBindings(list, buttons) {
+    const keys = [];
+    for (const k of Array.isArray(list) ? list : []) {
+      if (!k || typeof k.code !== 'string' || !KEY_CODE.test(k.code)) continue;
+      let output = Number.isInteger(k.output) ? k.output : -1;
+      if (output < 0 && Number.isInteger(k.source) && k.source >= 0) { output = buttons.indexOf(k.source); if (output < 0 && k.source < 17) output = k.source; }
+      if (output >= 0 && output < 17 && !keys.some((x) => x.output === output)) keys.push({ output, code: k.code });
+    }
+    return keys;
+  }
   function sample(pad, config) {
     return sampleProfile(pad, profile(config));
   }
@@ -101,19 +105,12 @@
     const normalized = profile(config);
     // Opt-in para leitura interna: o próximo sample sobrescreve o resultado.
     // Quem retém/envia um estado deve copiar os vetores antes da próxima leitura.
-    const output = reuseOutput ? neutral() : null;
-    const taken = normalized.keys.length ? new Set(normalized.keys.map((k) => k.source)) : null;
-    // keysActive: as teclas vão (gamepad e teclado liberados); senão o botão volta a ser do controle.
-    return (pad, keysActive = false) => sampleProfile(pad, normalized, output, keysActive ? taken : null);
+    const output = reuseOutput ? { ...neutral(), keys: [] } : null;
+    return (pad) => sampleProfile(pad, normalized, output);
   }
-  let takenNow = null; // botões físicos que agora vão como tecla (não como botão do controle)
-  const buttonValue = (pad, index) => index < 0 || takenNow?.has(index) ? 0 : Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
-  function sampleProfile(pad, p, output = null, taken = null) {
-    takenNow = taken;
-    try { return sampleButtons(pad, p, output); } finally { takenNow = null; }
-  }
-  function sampleButtons(pad, p, output) {
-    const result = output || { buttons: Array(17), axes: Array(4) }, buttons = result.buttons;
+  const buttonValue = (pad, index) => index < 0 ? 0 : Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
+  function sampleProfile(pad, p, output = null) {
+    const result = output || { buttons: Array(17), axes: Array(4), keys: [] }, buttons = result.buttons;
     for (let i = 0; i < 17; i++) buttons[i] = buttonValue(pad, p.buttons[i]);
     for (let i = 0; i < 2; i++) {
       const trigger = p.triggers[i];
@@ -127,6 +124,9 @@
       value = Math.abs(value) <= p.deadzone ? 0 : Math.sign(value) * (Math.abs(value) - p.deadzone) / (1 - p.deadzone);
       result.axes[i] = Math.round(value * (p.invert[i] ? -1 : 1) * 1000) / 1000;
     }
+    // Saída ligada a uma tecla: vai como a tecla (result.keys), nunca como botão do controle.
+    result.keys.length = 0;
+    for (const k of p.keys) { if (buttons[k.output] > 0.5 && !result.keys.includes(k.code)) result.keys.push(k.code); buttons[k.output] = 0; }
     return result;
   }
   const neutral = () => ({ axes: [0, 0, 0, 0], buttons: Array(17).fill(0) });
@@ -138,5 +138,5 @@
     for (let i = 0; i < 17; i++) if (a.buttons[i] !== b.buttons[i]) return false;
     return true;
   }
-  return { NONE, GUIDE, labels, labelsFor, physicalName, keyName, keysDown, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
+  return { NONE, GUIDE, labels, labelsFor, physicalName, keyName, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
 });

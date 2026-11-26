@@ -5,6 +5,14 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.2.1 — 2026-11-26
+
+- **Tecla do teclado direto na lista do botão**: em **Meu gamepad**, a lista de cada
+  botão e gatilho tem **Tecla do teclado…**; escolha e aperte a tecla. A seção separada
+  "Botões como teclas" saiu, e o que já estava ligado nela vem junto.
+- O botão que vira tecla não vai mais como botão do controle quando o teclado não está
+  liberado.
+
 ## 2.2.0 — 2026-11-26
 
 - **Botões do controle como teclas**: em **Configurações > Aplicativo > Meu gamepad >

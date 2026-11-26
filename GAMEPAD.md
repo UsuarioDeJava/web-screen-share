@@ -76,17 +76,16 @@ PlayStation, ✕ Cruz, ○ Círculo, □ Quadrado, △ Triângulo, Options, Touc
 fora do mapeamento padrão do navegador continuam com o número (Botão 0, Botão 1…),
 porque neles a ordem é do fabricante.
 
-### Botões como teclas
+### Tecla do teclado
 
-Em **Botões como teclas**, um botão do controle vira uma tecla do teclado no PC de quem
-transmite (ex.: A → Espaço): escolha o botão (ou **Detectar** e aperte no controle),
-clique na tecla e aperte a tecla desejada (qualquer uma, até Esc; clicar de novo
-cancela). Um botão pode apertar mais de uma tecla, até 16 ligações por perfil.
+Na lista de qualquer botão ou gatilho, **Tecla do teclado…** abre a caixinha da tecla:
+aperte a que quiser (ex.: A → Espaço). Pra trocar, clique na caixinha e aperte outra;
+clicar de novo cancela. **Detectar** continua escolhendo qual botão do controle aperta
+a tecla.
 
-Só funciona quando quem transmite liberou o **gamepad e o teclado** pra você. Enquanto
-isso, o botão ligado a uma tecla deixa de ir como botão do controle; sem o teclado
-liberado, ele volta a ser botão do controle. Ao parar de controlar (ou quando o teclado
-é tirado), as teclas que estavam apertadas são soltas do lado de lá.
+A tecla só vai quando quem transmite liberou o **gamepad e o teclado** pra você, e esse
+botão nunca vai como botão do controle. Ao parar de controlar, nada fica apertado do
+lado de lá. Perfis da 2.2.0 (seção "Botões como teclas") são convertidos sozinhos.
 
 ## Detalhes de compartilhamento
 

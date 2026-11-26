@@ -261,14 +261,23 @@ test('nomes dos botões físicos: Xbox, PlayStation e, fora do padrão, o númer
   assert.equal(model.physicalName(17, { layout: 'xbox' }), 'Botão 17');
   assert.equal(model.physicalName(0, { layout: 'xbox' }, false), 'Botão 0');
 });
-test('botões como teclas: com o teclado liberado viram a tecla; sem ele, voltam a ser botões', () => {
-  const p = model.profile({ v: 2, keys: [{ source: 0, code: 'Space' }, { source: 0, code: 'KeyE' }, { source: 3, code: 'ShiftLeft' }, { source: 64, code: 'KeyQ' }, { source: 1, code: 'tecla ruim' }] });
-  assert.deepEqual(p.keys.map((k) => k.code), ['Space', 'KeyE', 'ShiftLeft'], 'ligações inválidas saem');
-  const pad = { buttons: Array.from({ length: 17 }, (_, i) => ({ value: i === 0 ? 1 : 0 })), axes: [0, 0, 0, 0] };
-  const sample = model.createSampler(p);
-  assert.equal(sample(pad, true).buttons[0], 0, 'com as teclas, o A não vai como botão');
-  assert.equal(sample(pad, false).buttons[0], 1, 'sem o teclado, o A volta a ser botão');
-  assert.deepEqual([...model.keysDown(pad, p)], ['Space', 'KeyE'], 'um botão pode apertar mais de uma tecla');
-  assert.equal(model.applyPreset('playstation', p).keys.length, 3, 'trocar o preset mantém as teclas');
+test('"Tecla do teclado" no mapeamento: a saída vira a tecla e nunca vai como botão', () => {
+  const p = model.profile({ v: 2, keys: [{ output: 0, code: 'Space' }, { output: 0, code: 'KeyE' }, { output: 7, code: 'ShiftLeft' },
+    { output: 17, code: 'KeyQ' }, { output: 1, code: 'tecla ruim' }] });
+  assert.deepEqual(p.keys, [{ output: 0, code: 'Space' }, { output: 7, code: 'ShiftLeft' }], 'uma tecla por saída; inválidas saem');
+  const pad = { buttons: Array.from({ length: 17 }, (_, i) => ({ value: i === 0 || i === 7 ? 1 : 0 })), axes: [0, 0, 0, 0] };
+  const state = model.createSampler(p)(pad);
+  assert.equal(state.buttons[0], 0, 'o A não vai como botão');
+  assert.equal(state.buttons[7], 0, 'nem o RT');
+  assert.deepEqual(state.keys, ['Space', 'ShiftLeft']);
+  pad.buttons[0].value = 0.3;
+  assert.deepEqual(model.sample(pad, p).keys, ['ShiftLeft'], 'meio apertado não conta');
+  // Segue o mapeamento: se a saída A lê o botão B, é o B que aperta a tecla.
+  const moved = model.profile({ v: 2, buttons: [1], keys: [{ output: 0, code: 'Space' }] });
+  pad.buttons[0].value = 0; pad.buttons[1].value = 1;
+  assert.deepEqual(model.sample(pad, moved).keys, ['Space']);
+  assert.equal(model.applyPreset('playstation', p).keys.length, 2, 'trocar o preset mantém as teclas');
+  assert.deepEqual(model.profile({ v: 2, buttons: [1, 0], keys: [{ source: 0, code: 'KeyE' }, { source: 3, code: 'KeyR' }] }).keys,
+    [{ output: 1, code: 'KeyE' }, { output: 3, code: 'KeyR' }], 'perfis da 2.2.0 (botão físico) viram a saída que lê o botão');
   assert.deepEqual(['Space', 'KeyA', 'Digit3', 'ArrowUp', 'Numpad5', 'ShiftLeft'].map(model.keyName), ['Espaço', 'A', '3', '↑', '5 (numérico)', 'Shift esquerdo']);
 });

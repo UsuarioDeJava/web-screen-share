@@ -8,7 +8,33 @@ window.WssGamepadView = {
     const layout = make('div', 'gpad-layout');
     const left = make('div', 'gpad-config-side'), right = make('div', 'gpad-config-side');
     const buttonNodes = [];
-    let activePad = null, learning = null, optionKey = '';
+    let activePad = null, learning = null, optionKey = '', capture = null;
+    const model = window.WssGamepad;
+    // "Tecla do teclado": a próxima tecla apertada vira a saída (clicar de novo ou 10 s cancela).
+    function stopCapture() {
+      if (!capture) return;
+      const { node, listener, timer } = capture; capture = null;
+      window.removeEventListener('keydown', listener, true); clearTimeout(timer);
+      node.tile.classList.remove('is-capturing');
+      node.key.textContent = model.keyName(node.code); node.key.hidden = !node.code;
+      node.source.value = node.selected;
+    }
+    function startCapture(i) {
+      const node = buttonNodes[i]; stopCapture();
+      const listener = (event) => {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (!/^[A-Za-z][A-Za-z0-9]{0,23}$/.test(event.code || '')) return;
+        const code = event.code; stopCapture();
+        onChange(p => {
+          p.keys = p.keys.filter(k => k.output !== i); p.keys.push({ output: i, code });
+          if (i === 6 || i === 7) { if (p.triggers[i - 6].type === 'none') p.triggers[i - 6] = model.profile().triggers[i - 6]; }
+          else if (p.buttons[i] < 0) p.buttons[i] = i;
+        });
+      };
+      capture = { node, listener, timer: setTimeout(stopCapture, 10000) };
+      window.addEventListener('keydown', listener, true);
+      node.tile.classList.add('is-capturing'); node.key.hidden = false; node.key.textContent = 'Aperte uma tecla…';
+    }
     // Os botões de face com o desenho de verdade: no PlayStation as formas (cruz, círculo,
     // quadrado, triângulo) e no Xbox a letra na cor do controle.
     const SVG = (inner) => '<svg viewBox="0 0 20 20" aria-hidden="true">' + inner + '</svg>';
@@ -30,8 +56,14 @@ window.WssGamepadView = {
       const icon = make('span', 'gpad-icon'); const text = make('span', 'gpad-label-text', label);
       const source = make('select'); source.setAttribute('aria-label', 'Entrada para ' + label); caption.append(icon, text, source);
       const learn = make('button', '', 'Detectar'); learn.type = 'button'; learn.className = 'gpad-learn'; learn.setAttribute('aria-label', 'Detectar entrada para ' + label);
+      const key = make('button', 'gpad-key'); key.type = 'button'; key.hidden = true; key.setAttribute('aria-label', 'Tecla de ' + label);
+      key.addEventListener('click', () => { if (capture?.node.key === key) stopCapture(); else startCapture(i); });
       source.addEventListener('change', () => {
-        const [type, index] = source.value.split(':'); onChange(p => {
+        const [type, index] = source.value.split(':');
+        if (type === 'key') { startCapture(i); return; }
+        stopCapture();
+        onChange(p => {
+          p.keys = p.keys.filter(k => k.output !== i);
           // "Nenhum": essa saída não vai pro controle de quem transmite.
           if (i === 6 || i === 7) p.triggers[i - 6] = type === 'none' ? { type: 'none', source: 0, min: 0, max: 1 } : { type, source: Number(index), min: type === 'axis' ? -1 : 0, max: 1 };
           else p.buttons[i] = type === 'none' ? window.WssGamepad.NONE : Number(index);
@@ -43,7 +75,7 @@ window.WssGamepadView = {
         learning = { output: i, button: learn, until: performance.now() + 10000, buttons: activePad.buttons.map(b=>b.value), axes: [...activePad.axes] };
         learn.textContent = 'Aperte…';
       });
-      tile.append(caption, value, learn, pressure); buttonNodes.push({ tile, value, caption, icon, text, source, learn, pressure });
+      tile.append(caption, value, learn, key, pressure); buttonNodes.push({ tile, value, caption, icon, text, source, learn, key, pressure, code: '', selected: '' });
     });
     for (const i of order) (i === 7 || [5,3,2,1,0,9,11].includes(i) ? right : left).append(buttonNodes[i].tile);
     const guide = buttonNodes[16].tile; guide.classList.add('gpad-guide');
@@ -140,13 +172,14 @@ window.WssGamepadView = {
             node.source.setAttribute('aria-label', 'Entrada para ' + window.WssGamepad.physicalName(i, profile));
           }); drawWires();
         }
-        const nextOptionKey=JSON.stringify([pad?.id,pad?.mapping,pad?.buttons.length,pad?.axes.length,profile.layout,profile.buttons,profile.triggers]);
+        const nextOptionKey=JSON.stringify([pad?.id,pad?.mapping,pad?.buttons.length,pad?.axes.length,profile.layout,profile.buttons,profile.triggers,profile.keys]);
         if(nextOptionKey!==optionKey){
-          if (learning) { learning.button.textContent='Detectar'; learning=null; } optionKey=nextOptionKey;
+          if (learning) { learning.button.textContent='Detectar'; learning=null; } stopCapture(); optionKey=nextOptionKey;
           buttonNodes.forEach((node,i)=>{
             node.source.replaceChildren();
             const add=(text,value)=>{const option=make('option','',text);option.value=value;node.source.append(option);};
             add('Nenhum · não envia','none:-1');
+            add('Tecla do teclado…','key:0');
             // Nome do botão físico (A, B, LB, ✕ Cruz...) no mapeamento padrão; fora dele, o número.
             const standard=!pad||pad.mapping==='standard';
             const name=(b)=>window.WssGamepad.physicalName(b,profile,standard);
@@ -154,14 +187,17 @@ window.WssGamepadView = {
             for(let b=0;b<(pad?.buttons.length||17);b++)add(name(b),'button:'+b);
             if(i===6||i===7)for(let a=0;a<(pad?.axes.length||0);a++)add('Eixo '+a+' · analógico','axis:'+a);
             const t=profile.triggers[i-6];
-            const blocked=i===6||i===7 ? t.type==='none' : profile.buttons[i]<0;
-            node.source.value=blocked ? 'none:-1' : i===6||i===7 ? t.type+':'+(t.type==='mapped'?i:t.source) : 'button:'+profile.buttons[i];
-            node.tile.classList.toggle('is-blocked',blocked);
-            node.tile.title=labels[i]+(blocked?' · não é enviado':'');
+            node.code=profile.keys.find(k=>k.output===i)?.code||'';
+            const blocked=!node.code&&(i===6||i===7 ? t.type==='none' : profile.buttons[i]<0);
+            node.source.value=node.selected=node.code ? 'key:0' : blocked ? 'none:-1' : i===6||i===7 ? t.type+':'+(t.type==='mapped'?i:t.source) : 'button:'+profile.buttons[i];
+            node.key.hidden=!node.code; node.key.textContent=model.keyName(node.code);
+            node.tile.classList.toggle('is-blocked',blocked); node.tile.classList.toggle('is-key',Boolean(node.code));
+            node.tile.title=labels[i]+(node.code?' → '+model.keyName(node.code):blocked?' · não é enviado':'');
             figure.querySelector('[data-button="'+i+'"],[data-trigger="'+i+'"]')?.classList.toggle('is-blocked',blocked);
           });drawWires();
         }
-        buttonNodes.forEach(node=>{node.source.disabled=node.learn.disabled=!pad;});
+        buttonNodes.forEach(node=>{node.source.disabled=node.learn.disabled=node.key.disabled=!pad;});
+        if(!pad)stopCapture();
         if(learning&&pad){
           const l=learning;let type='button',source=pad.buttons.findIndex((b,i)=>b.value-l.buttons[i]>.25);
           if((l.output===6||l.output===7)&&source<0){type='axis';source=pad.axes.findIndex((v,i)=>Math.abs(v-l.axes[i])>.25);}
@@ -179,9 +215,10 @@ window.WssGamepadView = {
         bindings.forEach((binding, i) => extraNodes[i].classList.toggle('is-pressed', (pad?.buttons[binding.source]?.value || 0) > 0.1));
         extraVisual.hidden = !bindings.length;
         title.textContent = pad?.id || 'Nenhum controle conectado'; root.classList.toggle('is-disconnected', !pad);
-        state.buttons.forEach((value, i) => { buttonNodes[i].value.textContent = Math.round(value*100)+'%'; buttonNodes[i].pressure.value=value; wires[i].classList.toggle('is-active',value>0.01); buttonNodes[i].tile.classList.toggle('is-pressed', value > 0.1); buttonNodes[i].tile.style.setProperty('--pressure', `${value * 100}%`); });
-        for (const c of controls) c.classList.toggle('is-pressed', state.buttons[Number(c.dataset.button)] > 0.1);
-        for (const trigger of triggers) { const amount = state.buttons[Number(trigger.dataset.trigger)] * 27; trigger.setAttribute('height', String(amount)); trigger.setAttribute('y', String(35 - amount)); }
+        const shown = state.buttons.map((value, i) => buttonNodes[i].code ? (state.keys?.includes(buttonNodes[i].code) ? 1 : 0) : value);
+        shown.forEach((value, i) => { buttonNodes[i].value.textContent = Math.round(value*100)+'%'; buttonNodes[i].pressure.value=value; wires[i].classList.toggle('is-active',value>0.01); buttonNodes[i].tile.classList.toggle('is-pressed', value > 0.1); buttonNodes[i].tile.style.setProperty('--pressure', `${value * 100}%`); });
+        for (const c of controls) c.classList.toggle('is-pressed', shown[Number(c.dataset.button)] > 0.1);
+        for (const trigger of triggers) { const amount = shown[Number(trigger.dataset.trigger)] * 27; trigger.setAttribute('height', String(amount)); trigger.setAttribute('y', String(35 - amount)); }
         stickNodes.forEach((stick, i) => {
           const x = state.axes[i * 2], y = state.axes[i * 2 + 1]; stick.x.textContent = x.toFixed(4); stick.y.textContent = y.toFixed(4);
           stick.inputs.forEach(({source, invert, index}) => {
