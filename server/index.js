@@ -9,8 +9,11 @@ const express = require('express');
 const signaling = require('../public/js/signaling');
 const { Server } = require('socket.io');
 const { setupObs } = require('./obs');
+const { createAccounts } = require('./accounts');
+const { createAccountAuth } = require('./account-auth');
 const { createRoomConfig } = require('./room-config');
 const { createAdmin } = require('./admin');
+const { createTesters } = require('./testers');
 const { createTurnCredentials } = require('./turn-credentials');
 const { createCredentialLimiter } = require('./credential-limiter');
 const { createObsAuth } = require('./obs-auth');
@@ -22,6 +25,9 @@ const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const VERSION = process.env.APP_VERSION || 'dev';
 const LOCAL_TURN_SECRET = process.env.LOCAL_TURN_SECRET;
+// Contas: desligadas por padrão (entra quem escolher um nick; o painel /admin abre com o
+// ADMIN_PASSWORD). ACCOUNTS=on liga: só entra quem tem conta, criada no painel.
+const ACCOUNTS_ON = /^(on|true|1|yes|sim)$/i.test((process.env.ACCOUNTS || '').trim());
 const obsAuth = createObsAuth(process.env.OBS_PUBLISH_TOKEN);
 if (process.env.ROOM_COOKIE_SECURE !== undefined && !['0', '1'].includes(process.env.ROOM_COOKIE_SECURE)) throw Error('ROOM_COOKIE_SECURE deve ser 0 ou 1.');
 const turnIssuer = LOCAL_TURN_SECRET ? createTurnCredentials({ secret: LOCAL_TURN_SECRET,
@@ -39,8 +45,9 @@ const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
 // numa porta diferente: o TURN não passa pelo proxy e precisa ir direto nesta porta.
 const PUBLIC_PORT = /^\d+$/.test(process.env.PUBLIC_PORT || '') ? process.env.PUBLIC_PORT : null;
 const DISPLAY_PORT = PUBLIC_PORT || PORT;
-// Configurações persistentes da sala.
+// Pasta de dados (no container, /data): configurações da sala e, com contas, as contas.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const accounts = ACCOUNTS_ON ? createAccounts({ file: process.env.ACCOUNTS_FILE || path.join(DATA_DIR, 'accounts.json') }) : null;
 const roomConfig = createRoomConfig({ file: process.env.SETTINGS_FILE || path.join(DATA_DIR, 'settings.json') });
 const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;
 const MEDIAMTX_API_URL = process.env.MEDIAMTX_API_URL;
@@ -311,8 +318,9 @@ app.get('/status', (req, res) => {
       ? { names: certificate.names, expiresAt: certificate.expiresAt }
       : null,
     obs: obsOn(),
-    obsAuthRequired: obsAuth.enabled,
+    obsAuthRequired: obsAuth.enabled && !accounts,
     proxy: proxyWithoutPublicPort(req),
+    accounts: ACCOUNTS_ON,
     ...publicSettings(),
   });
 });
@@ -523,8 +531,11 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     cleanName,
     turnLink,
     authorizePublish,
-    publicationAuth: obsAuth.middleware,
-    publicationInfo: path => obsPublishers.info(path),
+    authorizeView,
+    // Com contas, o Bearer do endereço antigo (/obs/<nick>) é a chave da conta
+    // (authorizePublish); sem contas, o OBS_PUBLISH_TOKEN, se houver.
+    publicationAuth: accounts ? (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); } : obsAuth.middleware,
+    publicationInfo: (path, nick) => (path.startsWith('pub_') ? obsPublishers.info(path) : accountObsOwner(nick)),
     publisherAuth(req, res, next) {
       res.set('Cache-Control', 'no-store');
       const path = req.params.publisherId ? 'pub_' + req.params.publisherId : req.params.pathId;
@@ -554,21 +565,51 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
   })
   : null;
 
+// ---------- contas e configurações da sala ----------
+
+const bearer = (req) => {
+  const match = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '');
+  return match ? match[1] : '';
+};
+// O endereço antigo do OBS (/obs/<nick>): com contas, a chave da conta ("Bearer Token" no
+// OBS) diz quem é. O OBS pelo app usa as credenciais individuais, como sem contas.
 function authorizePublish(req, nick) {
   const settings = roomConfig.get();
   if (!settings.obs) return { status: 403, error: 'A transmissão pelo OBS está desligada nesta sala.' };
-  return { nick };
+  if (!accounts) return { nick };
+  const account = accounts.byObsKey(bearer(req));
+  if (!account || account.root) return { status: 401, error: 'Chave do OBS errada: use o endereço e o token de Configurações > Conexão e testes.' };
+  if (settings.sharing === 'admins' && !account.admin) return { status: 403, error: 'Nesta sala só contas com administração transmitem.' };
+  return { nick: account.nick };
+}
+// Assistir uma transmissão do OBS: com contas, só com uma sessão aberta.
+function authorizeView(req) {
+  if (!accounts) return true;
+  const account = accounts.resume(bearer(req));
+  return Boolean(account && !account.root);
 }
 const obsOn = () => Boolean(obs) && roomConfig.get().obs;
+// Com contas, o endereço antigo (/obs/<nick>) só abre com a chave da conta: a transmissão
+// é de quem está na sala com essa conta (sem contas, ela fica sem vínculo).
+function accountObsOwner(nick) {
+  const account = accounts && nick ? accounts.byNick(nick) : null;
+  if (!account) return null;
+  const user = [...users.values()].find((u) => u.account === account.id);
+  return user ? { ownerId: user.id, name: user.name } : null;
+}
+// O painel desligou o OBS, ou (com contas) só quem tem administração transmite.
 function obsRefusal(user) {
   const settings = roomConfig.get();
   if (!settings.obs) return { status: 403, error: 'A transmissão pelo OBS está desligada nesta sala.' };
+  if (accounts && settings.sharing === 'admins' && !(user && user.admin)) return { status: 403, error: 'Nesta sala só contas com administração transmitem.' };
   return null;
 }
+// Com contas, o painel pode deixar só quem tem administração transmitir.
+const sharingRefused = (user) => Boolean(accounts) && roomConfig.get().sharing === 'admins' && !(user && user.admin);
 // O que a sala mostra (todo mundo, inclusive na tela de entrada).
 function publicSettings() {
-  const { roomName, notice, control } = roomConfig.get();
-  return { roomName, notice, control };
+  const { roomName, notice, control, sharing } = roomConfig.get();
+  return { roomName, notice, control, sharing: accounts ? sharing : 'all' };
 }
 
 // IP de onde o cliente chega até este servidor (ex.: o do Tailscale). Vai junto dos
@@ -581,13 +622,20 @@ function clientAddress(socket) {
 // Nome não prova propriedade. OBS só pertence ao socket vinculado à credencial.
 function ownsStream(user, id) {
   if (id === user.id) return user.sharing;
-  return Boolean(obs && obs.list().some(stream => stream.id === id && stream.ownerId === user.id));
+  // Com contas, o endereço antigo (/obs/<nick>) só abre com a chave da conta: o nick prova.
+  return Boolean(obs && obs.list().some(stream => stream.id === id && (stream.ownerId === user.id
+    || (accounts && user.account && stream.stream.startsWith('obs_') && stream.name === user.name))));
 }
 
 const remoteControl = require('./control').createControl({ io, users, ownsStream, allow, logEvent, enabled: () => roomConfig.get().control });
 
 // O painel mudou alguma coisa: a sala fica sabendo na hora.
 function applySettings(changed) {
+  if (changed.sharing === 'admins' && accounts) {
+    for (const user of users.values()) {
+      if (user.sharing && !user.admin) io.to(user.id).emit('share:refused', { reason: 'Agora nesta sala só contas com administração transmitem.' });
+    }
+  }
   if (changed.chatHistory !== undefined && chatHistory.length > changed.chatHistory) {
     chatHistory.splice(0, chatHistory.length - changed.chatHistory);
     chatStore.changed();
@@ -609,8 +657,12 @@ async function checkServices() {
   return {room:'Respondendo',turn:turn===null?'TURN externo configurado · sem teste TCP local':turn?'Porta TCP local respondendo':'Porta TCP local sem resposta',
     obs:!obs?'Não configurado':!obsOn()?'Desativado':media?'API do MediaMTX respondendo':'API do MediaMTX sem resposta'};
 }
+// Usuário de testes: as contas com administração controlam de longe (só com contas).
+const testers = accounts ? createTesters({ io, users, accounts, logEvent, allow }) : null;
+const accountAuth = accounts ? createAccountAuth({ io, accounts, users, removeUser, logEvent, allow, clientAddress,
+  onChanged: () => testers.broadcast() }) : null;
 createAdmin({ guided,checkServices,router: adminRouter, password: process.env.ADMIN_PASSWORD, io, users, config: roomConfig, diagnostics,
-  removeUser, clearChat, onSettings: applySettings, logEvent, version: VERSION, obsAvailable: Boolean(obs) });
+  removeUser, clearChat, onSettings: applySettings, logEvent, version: VERSION, obsAvailable: Boolean(obs), accounts, accountAuth });
 const revokeControlFor = remoteControl.revokeFor;
 const assetUploads = require('./asset-uploads').createAssetUploads({ getOwner: socket => users.get(socket.id) });
 app.post('/asset-upload', assetUploads.http);
@@ -631,6 +683,8 @@ function removeUser(socket, revokePublication = true) {
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
+  if (obs && user && user.account) obs.refreshOwners();
+  if (testers) testers.broadcast();
 }
 
 function listLanAddresses() {
@@ -649,6 +703,8 @@ function listLanAddresses() {
 io.on('connection', (socket) => {
   diagnostics.attach(socket);
   guided.attach(socket);
+  if (accountAuth) accountAuth.attach(socket);
+  if (testers) testers.attach(socket);
   socket.on('relay:probe', (_payload, ack) => {
     if (typeof ack !== 'function') return;
     if (!users.has(socket.id) || !allow(socket, 'relay-probe', 1, 60000)) return ack(null);
@@ -663,10 +719,17 @@ io.on('connection', (socket) => {
   socket.on('join', (payload, ack) => {
     if (typeof ack !== 'function') return;
     if (users.has(socket.id)) return ack({ error: 'Você já está na sala.' });
-    const name = cleanName(payload && payload.name);
+    // Com contas, o nick é o da conta (entrou antes com auth:login ou auth:resume).
+    const account = accountAuth ? accountAuth.accountOf(socket) : null;
+    if (accountAuth) {
+      if (!account) return ack({ error: 'Entre com a sua conta.', auth: true });
+      if (account.root) return ack({ error: 'A conta Admin só abre a administração (/admin).', auth: true });
+      if (account.mustChange) return ack({ error: 'Crie a sua senha primeiro.', auth: true });
+    }
+    const name = account ? account.nick : cleanName(payload && payload.name);
     if (!name) return ack({ error: 'Escolha um nick.' });
     const { maxUsers } = roomConfig.get();
-    if (maxUsers && users.size >= maxUsers) return ack({ error: `A sala está cheia (até ${maxUsers} pessoas).` });
+    if (maxUsers && users.size >= maxUsers && !(account && account.admin)) return ack({ error: `A sala está cheia (até ${maxUsers} pessoas).` });
 
     // Após uma queda de rede o cliente reconecta com outro socket, mas o antigo
     // continua "vivo" aqui até o timeout de ping. Derruba esse fantasma pra
@@ -683,6 +746,11 @@ io.on('connection', (socket) => {
     }
 
     const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId, joinedAt: Date.now() };
+    if (account) {
+      user.account = account.id;
+      user.admin = Boolean(account.admin);
+      user.tester = Boolean(account.tester);
+    }
     const hue = cleanHue(payload.hue);
     if (hue !== null) user.hue = hue;
     const color = cleanColor(payload.color);
@@ -694,9 +762,11 @@ io.on('connection', (socket) => {
     logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
+    if (obs && user.account) obs.refreshOwners(); // o OBS dela (endereço antigo) já no ar: fica dela
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
-    ack({ me: publicUser(user), users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION,
+    ack({ me: { ...publicUser(user), admin: Boolean(user.admin) }, users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION,
       settings: { ...publicSettings(), obs: obsOn() }, assetUpload: 1, obsPublication: obs ? 1 : 0 });
+    if (testers) testers.broadcast();
   });
   socket.on('obs:credentials', (previous, ack) => {
     if (typeof ack !== 'function') return;
@@ -712,6 +782,10 @@ io.on('connection', (socket) => {
   socket.on('share', (sharing, startedAt) => {
     const user = users.get(socket.id);
     if (!user) return;
+    if (sharing && !user.sharing && sharingRefused(user)) {
+      socket.emit('share:refused', { reason: 'Nesta sala só contas com administração transmitem.' });
+      return;
+    }
     user.sharing = Boolean(sharing);
     const now = Date.now();
     user.since = user.sharing
@@ -970,6 +1044,10 @@ io.on('connection', (socket) => {
   socket.on('disconnect', reason => removeUser(socket, !['transport close', 'transport error', 'ping timeout'].includes(reason)));
 });
 
+// Com contas: a conta Admin (com a senha no log), na primeira vez; ADMIN_RESET_PASSWORD=1 dá outra.
+if (accounts && obsAuth.enabled) logEvent('AVISO: com ACCOUNTS=on, o endereço antigo do OBS usa a chave de cada conta; o OBS_PUBLISH_TOKEN fica sem uso.');
+if (accounts && process.env.ADMIN_PASSWORD) logEvent('AVISO: com ACCOUNTS=on, o /admin abre com as contas com administração; o ADMIN_PASSWORD fica sem uso.');
+if (accounts) accounts.ensureRoot({ reset: process.env.ADMIN_RESET_PASSWORD === '1' }).catch((err) => logEvent(`ERRO criando a conta Admin: ${err.message}`));
 
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';

@@ -261,7 +261,11 @@ function validateRoomAction(value) {
   if (value.type === 'color' && (value.color === null || /^#[0-9a-f]{6}$/i.test(value.color))) {
     return { type: value.type, color: value.color === null ? null : value.color.toLowerCase(), commit: value.commit !== false };
   }
-  if (['photo-remove', 'diagnostics', 'check-updates', 'obs-check', 'performance-report'].includes(value.type)) return { type: value.type };
+  if (['photo-remove', 'diagnostics', 'check-updates', 'admin-open', 'obs-check', 'performance-report'].includes(value.type)) return { type: value.type };
+  // Conta (com contas no servidor): trocar o nick e a senha.
+  if (value.type === 'account-nick' && typeof value.nick === 'string' && value.nick.trim() && value.nick.length <= 80) return { type: value.type, nick: value.nick };
+  if (value.type === 'account-password' && typeof value.current === 'string' && typeof value.next === 'string'
+    && value.current.length <= 200 && value.next.length >= 6 && value.next.length <= 200) return { type: value.type, current: value.current, next: value.next };
   // Imagens próprias do estilo (setinha e ping): a sala lê o arquivo (.cur, .ani, PNG...) e
   // reduz; aqui só o tamanho e o formato do pedido.
   if (value.type === 'fx-image-remove' && ['cursor', 'ping'].includes(value.kind)) return { type: value.type, kind: value.kind };

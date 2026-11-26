@@ -50,6 +50,17 @@ function createAdminSessions({ password, secure = true, ttlMs = 8 * 60 * 60 * 10
     if (!credential || typeof key !== 'string') return { ok: false, status: 401 };
     const supplied = hash(key);
     if (!crypto.timingSafeEqual(supplied, credential)) return { ok: false, status: 401 };
+    return open(previous, null);
+  }
+  // Com contas (ACCOUNTS=on): quem confere nick e senha é o accounts.js; a sessão do painel
+  // guarda de qual conta ela é (subject), pra conferir a administração a cada ação.
+  function start({ cookie: previous, address, subject } = {}) {
+    const quota = limiter.consume(address);
+    if (!quota.allowed) return { ok: false, status: 429, retryAfter: quota.retryAfter };
+    if (typeof subject !== 'string' || !subject) return { ok: false, status: 401 };
+    return open(previous, subject);
+  }
+  function open(previous, subject) {
     const old = find(previous);
     if (sessions.size - Number(Boolean(old)) >= maxSessions) return { ok: false, status: 503 };
     const wall = now(), mono = monotonic();
@@ -63,13 +74,16 @@ function createAdminSessions({ password, secure = true, ttlMs = 8 * 60 * 60 * 10
       digest = null;
     }
     if (!digest) return { ok: false, status: 503 };
-    const entry = { digest, createdAt: wall, createdMono: mono, expiresAt: wall + ttlMs,
+    const entry = { digest, subject, createdAt: wall, createdMono: mono, expiresAt: wall + ttlMs,
       expiresMono: mono + ttlMs, timer: null };
     arm(entry, ttlMs); sessions.set(digest, entry);
     revoke(old);
     return { ok: true, status: 200, cookie: cookie(token, Math.floor(ttlMs / 1000)), expiresAt: entry.expiresAt };
   }
-  return { enabled: Boolean(credential), authenticate, valid: header => Boolean(find(header)),
+  return { enabled: Boolean(credential), authenticate, start, valid: header => Boolean(find(header)),
+    subject: header => find(header)?.subject || null,
+    // Uma conta perdeu a administração (ou foi apagada): as sessões dela no painel acabam.
+    revokeSubject(subject) { for (const entry of [...sessions.values()]) if (entry.subject === subject) revoke(entry); },
     logout(header) { revoke(find(header)); return cookie('', 0); },
   };
 }

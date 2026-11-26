@@ -5,10 +5,6 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
-## Alterações ainda não publicadas
-
-- Entrada por nick. O painel web abre diretamente em `/admin` com a senha `ADMIN_PASSWORD`. Foram removidas as contas de participantes e os comandos de usuário de testes.
-
 ## 2.0.1 — 2026-11-25
 
 - **Abas das Configurações numa linha só**: com a aba Experimental, elas quebravam em

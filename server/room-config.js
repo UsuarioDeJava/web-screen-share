@@ -7,9 +7,10 @@ const DEFAULTS = Object.freeze({
   roomName: '', // nome da sala, na tela de entrada e no topo da lista ('' = "Sala")
   notice: '', // recado na tela de entrada (ex.: "bem-vindos")
   chatHistory: 100, // quantas mensagens o chat guarda (0: não guarda nada)
+  sharing: 'all', // com contas: quem pode transmitir, 'all' (todo mundo) ou 'admins' (só contas com administração)
   control: true, // dá pra liberar o controle remoto (teclado, mouse, gamepad)
   obs: true, // dá pra transmitir pelo OBS
-  maxUsers: 0, // limite de pessoas na sala (0: sem limite)
+  maxUsers: 0, // limite de pessoas na sala (0: sem limite; com contas, quem tem administração sempre entra)
 });
 
 const text = (max) => (value) => (typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : undefined);
@@ -19,6 +20,7 @@ const RULES = {
   roomName: text(40),
   notice: text(200),
   chatHistory: int(0, 1000),
+  sharing: (value) => (value === 'all' || value === 'admins' ? value : undefined),
   control: bool,
   obs: bool,
   maxUsers: int(0, 500),

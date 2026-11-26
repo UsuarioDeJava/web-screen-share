@@ -331,7 +331,11 @@ Isso revoga o vínculo/comandos e a autorização de sinalização; não promete
 instantaneamente uma sessão RTP já estabelecida no MediaMTX.
 
 O endereço legado `/obs/SEU-NICK` continua disponível como publicação sem vínculo
-com um PC: não habilita comandos nem marcações locais por coincidência de nick.
+com um PC: não habilita comandos nem marcações locais por coincidência de nick. Com as
+contas ligadas (`ACCOUNTS=on`), esse endereço só aceita a chave do OBS da conta como
+Bearer Token (e o `OBS_PUBLISH_TOKEN` fica sem uso); a transmissão aparece com o nick
+da conta, ligada a ela. Com contas, quem assiste uma transmissão do OBS precisa estar
+logado.
 Para proteger essa publicação legada, configure `OBS_PUBLISH_TOKEN` no ambiente com
 32 a 256 caracteres ASCII sem espaços. Prefira um segredo aleatório; por exemplo,
 gere 32 bytes em hexadecimal com
@@ -380,9 +384,87 @@ servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 
 ## Painel de administração
 
-Defina `ADMIN_PASSWORD` no ambiente do servidor (no Compose, use o arquivo `.env`) e recrie o container. Abra `https://<endereço-do-servidor>:3000/admin` no navegador e informe a senha. A sessão dura oito horas ou até clicar em **Sair**. Para trocar a senha, altere a variável e recrie o container. Sem a variável, o painel fica desabilitado.
+O painel fica em `https://<endereço-do-servidor>:3000/admin`. Use HTTPS para acessar o
+painel. Para desenvolvimento HTTP local, defina `ROOM_COOKIE_SECURE=0`.
 
-O painel permite configurar a sala, ver e desconectar participantes e limpar o chat. Os participantes entram em `/` com um nick. As configurações existentes em `settings.json` são reaproveitadas. Na atualização, as contas antigas e as variáveis `ACCOUNTS`, `ROOM_ACCOUNT_KEYS` e `ROOM_ACCESS_KEY` deixam de controlar a entrada. Quem alcança a sala entra por nick. Use HTTPS para acessar o painel. Para desenvolvimento HTTP local, defina `ROOM_COOKIE_SECURE=0`. Para OBS, copie o endereço e o token atuais na sala.
+**Sem contas (o padrão)**, os participantes entram em `/` só com um nick. Defina
+`ADMIN_PASSWORD` no ambiente do servidor (no Compose, use o arquivo `.env`) e recrie o
+container. Abra o `/admin` no navegador e informe a senha. A sessão dura oito horas ou
+até clicar em **Sair**. Para trocar a senha, altere a variável e recrie o container. Sem
+a variável, o painel fica desabilitado.
+
+O painel permite configurar a sala, ver e desconectar participantes e limpar o chat. As
+configurações ficam em `settings.json` na pasta de dados. As variáveis `ROOM_ACCESS_KEY`
+e `ROOM_ACCOUNT_KEYS` deixam de controlar a entrada.
+
+### Contas (opcional)
+
+Pra ligar as contas (só entra quem tem conta, e quem cria as contas é o dono do
+servidor), adicione no container a variável **`ACCOUNTS=on`** (no CasaOS: nas
+configurações do app, em variáveis de ambiente; no `docker-compose.yml`, descomente a
+linha `ACCOUNTS=on`). Com contas, o `/admin` abre com o nick e a senha de uma conta com
+administração, e o `ADMIN_PASSWORD` fica sem uso.
+
+1. **A conta Admin.** Na primeira vez que o servidor sobe com `ACCOUNTS=on`, ele cria a
+   conta **Admin** com uma senha aleatória e mostra no log: no CasaOS, nos **Logs** do app; no Docker, `docker logs web-screen-share`.
+   Procure a linha `Conta de administração criada: nick "Admin", senha: ...`. Ela só
+   aparece essa vez. Esqueceu? Suba o container com a variável
+   `ADMIN_RESET_PASSWORD=1`: uma senha nova aparece no log (depois tire a variável).
+2. **Entre com o Admin** no `/admin` (ou na página da sala, que leva pro `/admin`), com
+   o nick `Admin` e a senha do log. No primeiro acesso ela pede uma senha sua. A conta
+   Admin não entra na sala (não aparece na lista, não transmite nem assiste).
+3. **No painel**, em **Contas**, crie a conta de cada pessoa: o nick e uma senha
+   provisória (o botão **Gerar** sugere uma fácil de digitar). Passe a senha pra
+   pessoa: no primeiro acesso ela troca por uma dela. Marque **Conta com
+   administração** pra quem também pode abrir o painel e **Usuário de testes** pra
+   conta que a administração controla de longe (veja
+   [Usuário de testes](#usuário-de-testes)). Não dá pra repetir nick (nem com
+   maiúsculas diferentes).
+
+Quem tem administração abre o painel pelo botão do escudo, ao lado do seu nome na
+sala: no navegador, o `/admin` abre numa aba nova e já entra com a sua conta; no app,
+abre no navegador do sistema, que pede o nick e a senha.
+
+Com contas, o painel tem ainda:
+
+- **Contas**: renomear, dar uma senha provisória nova (quem estava conectado com ela
+  sai), dar ou tirar a administração, marcar ou desmarcar **Testes** e apagar a conta
+  (a pessoa sai na hora). Só o dono (a conta Admin) marca administração e testes e
+  mexe nessas contas; as outras contas com administração criam e cuidam só das contas
+  normais (e renomeiam a própria), pra ninguém sair criando administradores.
+- **Sala**: além do resto, quem pode transmitir (todo mundo ou só contas com
+  administração). Vale pra sala, pro app e pro OBS.
+- **Minha conta**: trocar a sua senha.
+
+Cada pessoa troca o próprio **nick** e a **senha** em **Configurações > Perfil**, no
+cartão **Conta**. Nick que já existe não salva: aparece o aviso em
+vermelho. A sessão fica lembrada no navegador/app: da próxima vez entra direto, até
+clicar em **Sair**.
+
+As contas ficam em `accounts.json`, na pasta de dados (as senhas só como hash).
+Tirando a variável `ACCOUNTS` (ou deixando vazia), a sala volta a ser só com nick; as
+contas continuam guardadas pra quando ligar de novo.
+
+### Usuário de testes
+
+Uma conta marcada pelo dono como **Usuário de testes** é, pra quem usa, uma conta
+normal (no primeiro acesso pede a senha nova, sem selo nem aviso nenhum). Só quem tem
+administração vê, na lista de pessoas, o selo **Teste** e um botão de controlar ao lado
+dela. Esse botão abre um painel com o estado dela (app ou navegador, transmitindo, na
+voz) e os comandos, executados na sala dela como se ela tivesse clicado:
+
+- **Transmissão** (só com ela no app): a lista das telas e janelas, só pelo nome (sem
+  prévia), com ou sem o som do PC ou só o som do programa; começar e parar. No
+  navegador não dá: quem escolhe a tela é a própria pessoa.
+- **Controle remoto**: dar o controle (teclado, mouse, gamepad) pra alguém da sala e
+  tirar, como no botão 🎮 dela (precisa estar transmitindo a tela inteira pelo app).
+- **Voz**: entrar e sair, ligar e desligar o microfone e o som.
+
+O servidor só repassa os comandos dessa lista, confere na hora que quem manda tem
+administração e que o destino é de testes, e anota cada comando no log do servidor; no
+app de quem é de testes, cada comando aparece no **Log** (categoria **Usuário de
+testes**), pra depuração. Uma conta de testes que também tem administração não vê o
+próprio selo nem controla a si mesma. Precisa das contas ligadas (`ACCOUNTS=on`).
 
 ### Diagnósticos no painel
 
@@ -456,7 +538,8 @@ da GPU. O padrão permanece Completo.
 
 1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`),
    digita um nick e clica em **Entrar**. Se o nick já estiver em uso, o servidor
-   acrescenta um número (ex.: `Ana (2)`).
+   acrescenta um número (ex.: `Ana (2)`). Com as contas ligadas (`ACCOUNTS=on`), entra
+   com o nick e a senha da sua conta (veja [Contas (opcional)](#contas-opcional)).
 2. Pra transmitir, clique em **Compartilhar tela** no topo e escolha a tela/janela no
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO**, o tempo no ar e
    um contador de quantas pessoas estão assistindo (passe o mouse nele pra ver quem).

@@ -418,6 +418,7 @@
       showCertificateWarning(status.certificate);
       btnObs.hidden = !status.obs;
       applyRoomSettings({ ...status });
+      if (status.accounts) enableAccounts();
       if (status.proxy) {
         proxyBanner.textContent = proxyWarningText(status.proxy.port);
         proxyBanner.hidden = false;
@@ -441,19 +442,55 @@
     appEl.hidden = true;
     loginEl.hidden = false;
     loginForm.hidden = false;
+    newpassForm.hidden = true;
     loginBtn.disabled = false;
     loginBtn.textContent = 'Entrar';
     loginError.textContent = error || '';
-    nickInput.focus();
+    if (accountsMode && nickInput.value) passwordInput.focus();
+    else nickInput.focus();
   }
-  let roomSettings = { roomName: '', notice: '', control: true };
 
+  // ---------- contas (opcional: ACCOUNTS=on no servidor) ----------
+  // Com contas, só entra quem tem conta: nick e senha. A sessão (um token) fica guardada
+  // neste navegador/app e da próxima vez entra direto. A conta Admin só abre a
+  // administração (/admin); as contas com administração entram na sala e abrem a
+  // administração pelo botão do escudo.
+  const passwordInput = $('password');
+  const newpassForm = $('newpass-form');
+  const btnAdmin = $('btn-admin');
+  let accountsMode = false;
+  let account = null; // { id, nick, admin, tester, root, mustChange, obsKey }
+  // Usuários de testes na sala agora (ids da sala): só quem tem administração recebe.
+  let testerIds = new Set();
+  let session = null;
+  try { session = localStorage.getItem('wss-session') || null; } catch {}
+  function saveSession(token) {
+    session = token || null;
+    try {
+      if (session) localStorage.setItem('wss-session', session);
+      else localStorage.removeItem('wss-session');
+    } catch {}
+  }
+  // Pra assistir pelo OBS (WHEP) com contas: a sessão vai junto.
+  const authHeaders = () => (accountsMode && session ? { Authorization: `Bearer ${session}` } : {});
+  let roomSettings = { roomName: '', notice: '', sharing: 'all', control: true };
+
+  function enableAccounts() {
+    if (accountsMode) return;
+    accountsMode = true;
+    passwordInput.hidden = false;
+    $('login-sub').textContent = 'Entre com a sua conta.';
+    $('login-hint').textContent = 'A sua conta é criada pelo dono do servidor: peça pra ele.';
+    $('ptab-account').hidden = false;
+    if (session && socket.connected) resumeSession();
+  }
 
   // O nome da sala, o recado da entrada e as regras que o dono escolheu no painel.
   function applyRoomSettings(next) {
     roomSettings = {
       roomName: typeof next.roomName === 'string' ? next.roomName : roomSettings.roomName,
       notice: typeof next.notice === 'string' ? next.notice : roomSettings.notice,
+      sharing: next.sharing === 'admins' ? 'admins' : 'all',
       control: next.control !== false,
     };
     $('login-title').textContent = roomSettings.roomName || 'Web Screen Share';
@@ -462,10 +499,129 @@
     $('login-notice').hidden = !roomSettings.notice;
     if (typeof next.obs === 'boolean') btnObs.hidden = !next.obs;
   }
+  const shareAllowed = () => roomSettings.sharing !== 'admins' || Boolean(me && me.admin);
+
+  // A administração é a página /admin. No navegador, abre numa aba nova e entra sozinha
+  // com a sessão desta conta; no app, abre no navegador do sistema (lá pede nick e senha).
+  const adminUrl = () => new URL('/admin', location.href).href;
+  function openAdmin() {
+    if (!account || !account.admin) return;
+    window.open(adminUrl(), '_blank', 'noopener');
+  }
+  btnAdmin.addEventListener('click', openAdmin);
+
+  // Entrou na conta (ou voltou numa sessão guardada): cria a senha, vai pra
+  // administração (a conta Admin) ou entra na sala.
+  function afterAuth(enter) {
+    try { localStorage.setItem('wss-nick', account.nick); } catch {}
+    nickInput.value = account.nick;
+    if (account.mustChange) {
+      showNewPass();
+      return;
+    }
+    if (account.root) {
+      wantedName = null;
+      if (desktop) {
+        window.open(adminUrl(), '_blank', 'noopener');
+        socket.emit('auth:logout');
+        forgetAccount();
+        showLogin('A conta Admin só abre a administração: ela abriu no seu navegador (/admin).');
+      } else location.assign(adminUrl());
+      return;
+    }
+    if (enter || wantedName) {
+      wantedName = account.nick;
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Entrando…';
+      join();
+    }
+  }
+
+  function resumeSession(enter = true) {
+    socket.emit('auth:resume', { token: session }, (res) => {
+      if (!res || res.error) {
+        const wasIn = Boolean(me) || Boolean(wantedName);
+        forgetAccount();
+        if (wasIn || !loginEl.hidden) showLogin(wasIn ? (res && res.error) || 'Entre de novo.' : '');
+        return;
+      }
+      account = res.account;
+      afterAuth(enter);
+    });
+  }
+
+  function forgetAccount() {
+    saveSession(null);
+    account = null;
+    wantedName = null;
+  }
+
+  // Sair da conta: a sessão deste aparelho acaba (as dos outros continuam).
+  function logout() {
+    leaveVoice();
+    stopSharing();
+    socket.emit('auth:logout');
+    forgetAccount();
+    if (me) leaveRoomLocally();
+    showLogin();
+  }
+
+  function showNewPass() {
+    loginEl.hidden = false;
+    appEl.hidden = true;
+    loginForm.hidden = true;
+    newpassForm.hidden = false;
+    $('newpass-nick').textContent = account.nick;
+    $('newpass-error').textContent = '';
+    $('newpass').value = '';
+    $('newpass2').value = '';
+    $('newpass').focus();
+  }
+
+  newpassForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const next = $('newpass').value;
+    const error = $('newpass-error');
+    if (next.length < 6) { error.textContent = 'A senha precisa de pelo menos 6 caracteres.'; return; }
+    if (next !== $('newpass2').value) { error.textContent = 'As duas senhas não estão iguais.'; return; }
+    $('newpass-btn').disabled = true;
+    socket.emit('auth:password', { next }, (res) => {
+      $('newpass-btn').disabled = false;
+      if (!res || res.error) { error.textContent = (res && res.error) || 'Não deu pra salvar a senha.'; return; }
+      account = res.account;
+      afterAuth(true);
+    });
+  });
+  $('newpass-cancel').addEventListener('click', logout);
+
+  // A conta mudou do lado do servidor (nick, administração) ou acabou.
+  socket.on('auth:account', (next) => {
+    if (!next || !account || next.id !== account.id) return;
+    const renamed = next.nick !== account.nick;
+    account = next;
+    if (me) {
+      const wasAdmin = me.admin;
+      me.admin = Boolean(next.admin);
+      btnAdmin.hidden = !me.admin;
+      if (me.admin && !wasAdmin) socket.emit('tester:list', applyTesterList);
+      if (!me.admin && wasAdmin) applyTesterList([]);
+      if (renamed) rejoin();
+    }
+  });
+  socket.on('auth:expired', (msg) => {
+    const wasIn = Boolean(me) || Boolean(account);
+    leaveVoice();
+    stopSharing();
+    forgetAccount();
+    if (me) leaveRoomLocally();
+    if (wasIn) showLogin((msg && msg.reason) || 'A sua sessão acabou: entre de novo.');
+  });
   socket.on('room:kicked', (msg) => {
     leaveVoice();
     stopSharing();
     wantedName = null;
+    saveSession(null);
+    account = null;
     if (me) leaveRoomLocally();
     showLogin(`Você foi desconectado da sala${msg && msg.by ? ` por ${msg.by}` : ''}.`);
   });
@@ -480,6 +636,15 @@
   });
   socket.on('chat:cleared', () => { if (me) loadChat([]); });
 
+  // Trocou de nick: sai e entra de novo com o nick novo (pros outros, sai um e entra o
+  // outro; transmissão e voz continuam).
+  function rejoin() {
+    if (!me || !account) return;
+    socket.emit('leave');
+    leaveRoomLocally();
+    wantedName = account.nick;
+    join();
+  }
 
   function showApp() {
     loginEl.hidden = true;
@@ -496,12 +661,34 @@
       loginError.textContent = 'Digite um nick.';
       return;
     }
+    // Com contas, a senha vai junto.
+    const password = passwordInput.value;
+    if (accountsMode && !password) {
+      loginError.textContent = 'Digite a senha.';
+      passwordInput.focus();
+      return;
+    }
     sounds.unlock(); // o navegador só libera som depois de um clique
     loginBtn.disabled = true;
     loginBtn.textContent = socket.connected ? 'Entrando…' : 'Conectando ao servidor…';
     loginError.textContent = '';
     try {
       if (!serverStatus.version) await loadServerStatus();
+      if (accountsMode) {
+        if (!socket.connected) socket.connect();
+        socket.emit('auth:login', { nick: name, password }, (res) => {
+          if (!res || res.error) {
+            showLogin((res && res.error) || 'Não deu pra entrar.');
+            passwordInput.select();
+            return;
+          }
+          passwordInput.value = '';
+          saveSession(res.token);
+          account = res.account;
+          afterAuth(true);
+        });
+        return;
+      }
       wantedName = name;
       try { localStorage.setItem('wss-nick', name); } catch {}
       if (socket.connected) join(); else socket.connect();
@@ -513,10 +700,16 @@
       if (!res || res.error) {
         wantedName = null;
         stopSharing();
+        // Com contas: sem sessão (expirou), ou a conta ainda precisa de senha nova.
+        if (res && res.auth && account && account.mustChange) { showNewPass(); return; }
+        if (res && res.auth && account && account.root) { afterAuth(false); return; }
         showLogin((res && res.error) || 'Não foi possível entrar na sala.');
         return;
       }
-      me = { id: res.me.id, name: res.me.name };
+      me = { id: res.me.id, name: res.me.name, admin: Boolean(res.me.admin) };
+      btnAdmin.hidden = !me.admin;
+      testerIds = new Set();
+      if (me.admin) socket.emit('tester:list', applyTesterList);
       if (res.settings) applyRoomSettings(res.settings);
       stopRelayProbe?.();
       if (transportExperiments.snapshot().active.relaySelection && window.WssRelayProbe)
@@ -621,6 +814,10 @@
     chatSeenId = null;
     joinedBefore = false;
     stopSharing();
+    if (accountsMode) {
+      logout();
+      return;
+    }
     socket.emit('leave');
     wantedName = null;
     leaveRoomLocally();
@@ -636,7 +833,10 @@
 
   socket.on('connect', () => {
     setConnection(true);
-    if (wantedName) join();
+    // Com contas, o socket novo precisa da sessão de novo antes de entrar (a sessão
+    // guardada entra direto, inclusive ao abrir a página).
+    if (accountsMode && session) resumeSession();
+    else if (wantedName) join();
   });
 
   socket.on('disconnect', (reason) => {
@@ -748,6 +948,7 @@
       if (u.voice) li.append(voiceIndicator(u));
       if (u.id === myId) li.append(el('span', 'user-you', 'você'));
       if (entry.obs) li.append(el('span', 'tag tag-obs', u.kind === 'obs' && !u.ownerId ? 'OBS · sem vínculo' : 'OBS'));
+      if (testerIds.has(u.id) && me && me.admin && u.id !== myId) li.append(el('span', 'tag tag-test', 'Teste'), testerButton(u));
       const grant = controlGrantButton(u);
       if (grant) li.append(grant);
       const tiles = entry.streamIds.map((id) => streams.get(id)).filter(Boolean);
@@ -1090,6 +1291,10 @@
 
   async function startSharing() {
     if (capturePending || captureProbePending || localStream || !me) return;
+    if (!shareAllowed()) {
+      showToast('Nesta sala só contas com administração transmitem.');
+      return;
+    }
     capturePending = true;
     const attempt = ++captureAttempt, owner = me.id;
     const options = { ...captureOptions };
@@ -1636,7 +1841,7 @@
       if (!current()) return;
       const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/whep`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/sdp' },
+        headers: { 'Content-Type': 'application/sdp', ...authHeaders() },
         body: pc.localDescription.sdp,
       });
       const location = res.status === 201 && res.headers.get('Location');
@@ -1856,7 +2061,7 @@
       await iceGatheringDone(pc, 3000);
       const res = await fetch(`/mtx/${encodeURIComponent(stream)}/whep`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/sdp' },
+        headers: { 'Content-Type': 'application/sdp', ...authHeaders() },
         body: pc.localDescription.sdp,
       });
       const body = await res.text();
@@ -2696,7 +2901,7 @@
   async function describeObsSource(s) {
     let st;
     try {
-      const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/stats`, { cache: 'no-store' });
+      const res = await fetch(`/mtx/${encodeURIComponent(s.stream)}/stats`, { cache: 'no-store', headers: authHeaders() });
       if (!res.ok) return [];
       st = await res.json();
     } catch {
@@ -3987,7 +4192,7 @@
   let settingsReturnFocus = null;
   function openSettings(section = 'profile') {
     if (desktop && typeof desktop.openSettings === 'function') { desktop.openSettings(section); return; }
-    if (!me) return;
+    if (!me && !accountsMode) return;
     if (!settingsLayer) {
       settingsLayer = document.createElement('dialog');
       settingsLayer.className = 'settings-layer';
@@ -4561,7 +4766,9 @@
     const tone = toneOf(me.name);
     return { color: markFill(tone), ink: inkFor(tone), letter: [...me.name][0] || '?', photo: profileAvatars.get(me.name) || null, name: me.name };
   }
-  const PROFILE_TABS = ['look', 'fx'];
+  // Abas do perfil: 'look' (foto e cor), 'fx' (mouse e efeitos) e 'account' (nick e
+  // senha, com contas). Aceita true/false do jeito antigo (fx ou não).
+  const PROFILE_TABS = ['look', 'fx', 'account'];
   function selectProfileTab(which) {
     const name = which === true ? 'fx' : which === false ? 'look' : which;
     for (const tab of PROFILE_TABS) {
@@ -4572,6 +4779,7 @@
     }
     if (name === 'fx' && !fxEditor) fxEditor = Fx.editor($('fx-editor'), { get: () => myFull, look: myLook, change: setMyStyle, images: { upload: uploadFxImage, remove: removeFxImage } });
     else if (name === 'fx') fxEditor.refresh();
+    if (name === 'account') renderAccountTab();
   }
   for (const tab of PROFILE_TABS) {
     $(`ptab-${tab}`).addEventListener('click', () => selectProfileTab(tab));
@@ -4585,6 +4793,60 @@
     });
   }
 
+  // Aba Conta: trocar o nick (único na sala: se já existir, o aviso vermelho) e a senha.
+  function accountMessage(id, text, ok = false) {
+    const el = $(id);
+    el.textContent = text;
+    el.classList.toggle('is-bad', !ok && Boolean(text));
+    el.classList.toggle('is-ok', ok);
+  }
+  function renderAccountTab() {
+    $('account-nick').value = account ? account.nick : '';
+    accountMessage('account-nick-msg', '');
+    accountMessage('account-pass-msg', '');
+    for (const id of ['account-pass-current', 'account-pass-new', 'account-pass-new2']) $(id).value = '';
+  }
+  function changeNick(nick) {
+    return new Promise((resolve) => {
+      socket.emit('auth:nick', { nick }, (res) => {
+        if (!res || res.error) { resolve({ error: (res && res.error) || 'Não deu pra trocar o nick.' }); return; }
+        const renamed = account && res.account.nick !== account.nick;
+        account = res.account;
+        if (renamed) rejoin();
+        resolve({ ok: true, nick: res.account.nick });
+      });
+    });
+  }
+  function changePassword(current, next) {
+    return new Promise((resolve) => {
+      socket.emit('auth:password', { current, next }, (res) => {
+        if (!res || res.error) { resolve({ error: (res && res.error) || 'Não deu pra trocar a senha.' }); return; }
+        account = res.account;
+        resolve({ ok: true });
+      });
+    });
+  }
+  $('account-nick-save').addEventListener('click', async () => {
+    const nick = $('account-nick').value.replace(/\s+/g, ' ').trim();
+    if (!nick) { accountMessage('account-nick-msg', 'Digite um nick.'); return; }
+    $('account-nick-save').disabled = true;
+    const res = await changeNick(nick);
+    $('account-nick-save').disabled = false;
+    if (res.error) accountMessage('account-nick-msg', res.error);
+    else accountMessage('account-nick-msg', `Pronto: agora você é ${res.nick}.`, true);
+  });
+  $('account-pass-save').addEventListener('click', async () => {
+    const current = $('account-pass-current').value;
+    const next = $('account-pass-new').value;
+    if (next.length < 6) { accountMessage('account-pass-msg', 'A senha nova precisa de pelo menos 6 caracteres.'); return; }
+    if (next !== $('account-pass-new2').value) { accountMessage('account-pass-msg', 'As duas senhas novas não estão iguais.'); return; }
+    $('account-pass-save').disabled = true;
+    const res = await changePassword(current, next);
+    $('account-pass-save').disabled = false;
+    if (res.error) { accountMessage('account-pass-msg', res.error); return; }
+    for (const id of ['account-pass-current', 'account-pass-new', 'account-pass-new2']) $(id).value = '';
+    accountMessage('account-pass-msg', 'Senha trocada. As outras sessões da sua conta foram desconectadas.', true);
+  });
 
   // A sua cor ou foto mudou: a cor dos rabiscos no app, o seu mouse e a janela do perfil.
   function onMyProfileChanged() {
@@ -5610,6 +5872,101 @@
   });
 
   if (desktop && typeof desktop.onControlRevoke === 'function') desktop.onControlRevoke(revokeControl);
+  // ---------- usuário de testes ----------
+  // Quem tem administração controla de longe as contas marcadas pelo dono como "de
+  // testes" (o selo "Teste" e o botão só aparecem pra administração). Quem é de testes
+  // executa os comandos aqui, como se tivesse clicado, e anota no Log do app.
+
+  const testerPanel = window.WssTester.panel({ socket, dialog: $('tester-dialog'), body: $('tester-body'), title: $('tester-title'), sub: $('tester-sub') });
+  // A lista vem do servidor; a própria conta sai dela (uma conta de testes com
+  // administração não vê o próprio selo nem se controla).
+  function applyTesterList(list) {
+    const mine = account ? account.id : null;
+    const next = new Set((Array.isArray(list) ? list : []).filter((t) => t && t.account !== mine).map((t) => t.id));
+    for (const id of testerIds) if (!next.has(id)) testerPanel.gone(id);
+    testerIds = next;
+    if (me) renderUsers();
+  }
+  socket.on('tester:list', applyTesterList);
+  function testerButton(u) {
+    const btn = el('button', 'tester-btn');
+    btn.type = 'button';
+    btn.append(icon('remote'));
+    btn.title = `Controlar ${u.name} (usuário de testes)`;
+    btn.setAttribute('aria-label', btn.title);
+    btn.addEventListener('click', (e) => { e.stopPropagation(); testerPanel.open(u); });
+    return btn;
+  }
+
+  const testerLog = (message, level) => {
+    if (desktop && typeof desktop.testerLog === 'function') desktop.testerLog(message, level);
+    else console.info(`[usuário de testes] ${message}`);
+  };
+  function testerState() {
+    const track = localStream && localStream.getVideoTracks()[0];
+    const canControl = Boolean(desktop && desktopCaps && desktopCaps.control && myControlStream() && roomSettings.control);
+    return {
+      app: Boolean(desktop), appVersion: (desktop && desktop.version) || '', remoteShare: Boolean(desktop && desktop.testerPreselect),
+      sharing: Boolean(localStream), sharePending: Boolean(capturePending), sharingName: (track && track.label) || '',
+      voice: { joined: voice.joined, muted: voice.muted, deafened: voice.deafened, noMic: voice.noMic },
+      canControl,
+      controlNote: !roomSettings.control ? 'O controle remoto está desligado nesta sala.'
+        : desktop && !(desktopCaps && desktopCaps.control) ? 'O controle remoto está indisponível neste app.' : '',
+      grants: [...controlGrants.values()].map((g) => ({ to: g.to, name: g.name, devices: g.devices })),
+      people: me ? [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id).map((u) => ({ id: u.id, name: u.name })) : [],
+    };
+  }
+  window.WssTester.agent({ socket, log: testerLog, handlers: {
+    state: () => ({ state: testerState() }),
+    async sources() {
+      if (!desktop || typeof desktop.testerSources !== 'function') throw new Error('Só no app (no navegador, quem escolhe a tela é a pessoa).');
+      return { sources: await desktop.testerSources() };
+    },
+    async 'share-start'({ source, audio, windowAudio }) {
+      if (!desktop || typeof desktop.testerPreselect !== 'function') throw new Error('Só no app (no navegador, quem escolhe a tela é a pessoa).');
+      if (localStream || capturePending) throw new Error('Já está transmitindo.');
+      if (!shareAllowed()) throw new Error('Nesta sala só contas com administração transmitem.');
+      const picked = await desktop.testerPreselect({ id: source, audio, windowAudio });
+      if (!picked || picked.error) throw new Error((picked && picked.error) || 'Não deu pra escolher essa tela ou janela.');
+      await startSharing();
+      if (!localStream) throw new Error('A transmissão não começou (veja o Log do app dele).');
+    },
+    'share-stop'() {
+      if (!localStream) throw new Error('Não está transmitindo.');
+      stopSharing();
+    },
+    'control-grant'({ to, devices }) {
+      const user = users.get(to);
+      if (!user || user.kind === 'obs' || !me || user.id === me.id) throw new Error('Essa pessoa não está mais na sala.');
+      if (!testerState().canControl) throw new Error(testerState().controlNote || 'Precisa estar transmitindo a tela inteira pelo app.');
+      return new Promise((resolve, reject) => grantControl(user, (res) => (res && res.error ? reject(new Error(res.error)) : resolve()), devices));
+    },
+    'control-revoke'({ to }) {
+      if (to && !controlGrants.has(to)) throw new Error('Essa pessoa não tinha o controle.');
+      revokeControl(to || undefined);
+    },
+    async 'voice-join'() {
+      if (voice.joined) return;
+      await joinVoice();
+      if (!voice.joined) throw new Error('Não entrou na voz (o microfone foi liberado?).');
+    },
+    'voice-leave'() {
+      if (!voice.joined) throw new Error('Não está na voz.');
+      leaveVoice();
+    },
+    mute({ muted }) {
+      if (!voice.joined) throw new Error('Não está na voz.');
+      if (voice.noMic && !muted) throw new Error('Sem microfone neste PC.');
+      voice.muted = Boolean(muted);
+      if (!voice.muted) voice.deafened = false; // como no botão: ligar o microfone volta a ouvir
+      sendVoiceState();
+    },
+    deafen({ deafened }) {
+      if (!voice.joined) throw new Error('Não está na voz.');
+      voice.deafened = Boolean(deafened);
+      sendVoiceState();
+    },
+  } });
 
   desktop?.onControlBlocked?.(value => {
     const grant = controlGrants.get(value?.from);
@@ -5961,6 +6318,8 @@
         experiments: transportExperiments.snapshot(),
         gamepad: desktopCaps?.gamepad, gamepadOnly:Boolean(myControlStream() && myControlStream()===myObsStreamId() && !obsOverlay), controlNote: problem, controlPeople: [...users.values()].filter((u) => u.kind !== 'obs' && u.id !== me.id)
           .map((u) => ({ name: u.name, active: controlGrants.has(u.id), devices: controlGrants.get(u.id)?.devices || { keyboard: false, mouse: false, gamepad: false }, disabled: Boolean(problem) })),
+        // Com contas: o nick e se ela abre a administração.
+        account: accountsMode && account ? { nick: account.nick, admin: Boolean(account.admin) } : null,
         diagnostics: diagOutput.textContent, serverVersion: sidebarVersionEl.textContent,
         shortcuts: [...keysDialog.querySelectorAll('dt')].filter((node) => !node.hidden && !node.nextElementSibling?.hidden)
           .map((node) => ({ keys: node.textContent.trim(), action: node.nextElementSibling?.textContent.trim() || '' })) };
@@ -6006,6 +6365,16 @@
         if (response.error) throw new Error(response.error);
         if (!(await photoStore.set(blob))) showToast('A foto foi aplicada, mas não foi possível salvá-la neste PC.');
         renderProfileDialog();
+      } else if (command.type === 'account-nick') {
+        const res = await changeNick(command.nick);
+        if (res.error) throw new Error(res.error);
+        return { ok: true, nick: res.nick };
+      } else if (command.type === 'account-password') {
+        const res = await changePassword(command.current, command.next);
+        if (res.error) throw new Error(res.error);
+      } else if (command.type === 'admin-open') {
+        if (!account || !account.admin) throw new Error('Só contas com administração.');
+        openAdmin();
       } else if (command.type === 'performance-report') return { ok: true, report: await performanceReport() };
       else if (command.type === 'diagnostics') { runDiagnostics(); }
       else if (command.type === 'obs-check') return { ok: true, check: await obsPortCheck() };

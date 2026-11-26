@@ -16,10 +16,23 @@
   <section id="login" class="login">
     <form id="admin-login" class="login-card">
       <h1>Administração</h1>
-      <label for="password">Senha do painel</label>
-      <input id="password" type="password" autocomplete="current-password" required>
+      <!-- Com contas (ACCOUNTS=on): nick e senha de uma conta com administração. -->
+      <p id="login-sub" class="login-sub" hidden>Entre com uma conta com administração.</p>
+      <label for="nick" id="nick-label" hidden>Nick</label>
+      <input id="nick" maxlength="24" autocomplete="username" hidden>
+      <label for="password" id="password-label">Senha do painel</label>
+      <input id="password" type="password" maxlength="200" autocomplete="current-password" required>
       <button class="btn btn-primary">Entrar</button>
       <p id="error" class="login-error" role="alert"></p>
+    </form>
+    <!-- Primeiro acesso (ou senha resetada pelo dono): a pessoa cria a senha dela. -->
+    <form id="admin-newpass" class="login-card" hidden>
+      <h1>Crie a sua senha</h1>
+      <p class="login-sub">Primeiro acesso de <b id="newpass-nick"></b>: troque a senha provisória por uma só sua.</p>
+      <input id="newpass" type="password" maxlength="200" placeholder="Senha nova (pelo menos 6 caracteres)" aria-label="Senha nova" autocomplete="new-password">
+      <input id="newpass2" type="password" maxlength="200" placeholder="Repita a senha nova" aria-label="Repita a senha nova" autocomplete="new-password">
+      <button class="btn btn-primary">Salvar e entrar</button>
+      <p id="newpass-error" class="login-error" role="alert"></p>
     </form>
   </section>
   <div id="admin" class="admin" hidden></div>

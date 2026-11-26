@@ -83,7 +83,7 @@ window.WssAdminReview=function({panels,card,table,el,button,ask,when,refresh,fmt
       const a=el('a');a.href=url;a.download='wss-diagnostico-'+r.observedAt+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }));return box;
   }
-  const keys={roomName:'Nome da sala',notice:'Aviso',chatHistory:'Histórico do chat',control:'Controle remoto',obs:'OBS',maxUsers:'Limite de pessoas'};
+  const keys={roomName:'Nome da sala',notice:'Aviso',chatHistory:'Histórico do chat',sharing:'Quem pode transmitir',control:'Controle remoto',obs:'OBS',maxUsers:'Limite de pessoas'};
   function render(state) {
     const d=state.diagnostics; investigations=d.investigations||[];
     totals.replaceChildren(table(['Cliente / versão / perfil / codec / nativa','Com relato','Observadas'],(d.comparisons||[]).map(c=>[c.key,c.affected,c.total])));

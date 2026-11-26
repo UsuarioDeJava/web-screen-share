@@ -19,6 +19,17 @@ Coisas pedidas que ainda não foram feitas.
 - **Só o som do programa da janela** (app 2.0, experimental, Windows 10 2004+): quando o
   Electron tiver isso pronto (electron/electron#54628), trocar a captura própria pela
   dele.
+- **Usuário de testes** (2.0): o dono marca a conta; a administração vê o selo Teste e
+  controla de longe pela sala (transmissão sem prévia no app, controle remoto, voz e
+  microfone). Cada comando vai pro log do servidor e pro Log do app dele.
+
+## Próximo
+
+- **Usuário de testes: controle total.** Hoje: transmissão (começar/parar, som), dar e
+  tirar o controle, voz, microfone e som. Pra crescer: uma entrada em `COMMANDS`
+  (server/testers.js), um handler no app.js e um texto em `LABELS` (tester.js). Ideias:
+  perfil de captura, assistir/parar de assistir uma transmissão, chat, Configurações do
+  app, reiniciar o app, ler o Log de longe.
 
 ## Talvez depois
 

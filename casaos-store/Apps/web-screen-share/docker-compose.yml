@@ -14,6 +14,7 @@ services:
     environment:
       PUBLIC_PORT: ""
       ADMIN_PASSWORD: ""
+      ACCOUNTS: ""
     volumes:
       - type: bind
         source: /DATA/AppData/$AppID/data
@@ -34,6 +35,16 @@ services:
               Password for the web panel at /admin. Leave empty to disable the panel.
             pt_BR: >-
               Senha do painel web em /admin. Deixe vazia para desabilitar o painel.
+        - container: ACCOUNTS
+          description:
+            en_US: >-
+              "on" turns on accounts: only people with an account you create in /admin
+              can join (the Admin password is printed in the app's logs). Empty: anyone
+              joins with a nickname
+            pt_BR: >-
+              "on" liga as contas: só entra quem tem conta, criada por você no /admin
+              (a senha do Admin aparece nos logs do app). Vazio: entra quem escolher
+              um nick
       ports:
         - container: "3000"
           description:

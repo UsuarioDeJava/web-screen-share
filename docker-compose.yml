@@ -25,6 +25,9 @@ services:
       - PORT=3000
       # Senha do painel /admin, definida no ambiente do Compose ou no .env.
       - ADMIN_PASSWORD
+      # Contas (nick e senha, criadas por você no /admin). Sem esta linha, entra quem
+      # escolher um nick, como sempre (e o /admin abre com o ADMIN_PASSWORD).
+      # - ACCOUNTS=on
       # Cookie Secure exige HTTPS; 0 somente para desenvolvimento HTTP local.
       # - ROOM_COOKIE_SECURE=1
       # Token opcional de publicação OBS: segredo aleatório, 32 a 256 caracteres sem espaços.
