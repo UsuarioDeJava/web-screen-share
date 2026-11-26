@@ -1520,6 +1520,9 @@ if (!app.requestSingleInstanceLock()) {
     input.settled.finally(() => { inputQuitReady = true; app.quit(); });
   });
   app.on('will-quit', () => {
+    // O WebRTC nativo do OBS local (node-datachannel) tem threads próprias: sem o
+    // cleanup(), depois da primeira transmissão do OBS pelo app o processo não termina.
+    try { require('node-datachannel').cleanup(); } catch {}
     restoreSystemCursor();
     windowAudio.stop();
     shortcuts.dispose();
