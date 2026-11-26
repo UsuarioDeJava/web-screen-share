@@ -1,4 +1,4 @@
-const { WebContentsView, ipcMain, dialog } = require('electron');
+const { WebContentsView, ipcMain, dialog, clipboard } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -100,6 +100,9 @@ function createSettingsPanel({ getParent, getInset = () => 0, getState, readGame
       return { saved: true };
     },
     'settings:close': () => { setImmediate(close); return { ok: true }; },
+    // Copiar (endereço e token do OBS, resultado do teste...): a página é um arquivo
+    // local, sem permissão pra área de transferência do navegador; o app copia.
+    'settings:copy': (text) => { clipboard.writeText(String(text ?? '').slice(0, 1000000)); return { ok: true }; },
   })) {
     ipcMain.handle(channel, (event, value) => {
       // Uma notificação de aba oculta pode já estar em trânsito ao fechar o popup.

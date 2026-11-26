@@ -47,6 +47,9 @@ function renderLog(reset = false) {
   if ($('follow').checked && !paused) $('log-wrap').scrollTop = $('log-wrap').scrollHeight;
 }
 
+// Copiar: no app quem copia é o próprio app (a página não tem a permissão do navegador).
+const copyText = (text) => (typeof api.copyText === 'function' ? api.copyText(text) : navigator.clipboard.writeText(text));
+
 // Fileira de abas maior que a janela: esmaece a borda do lado que ainda tem aba.
 const tabNav = document.querySelector('nav');
 function markTabOverflow() {
@@ -426,7 +429,7 @@ $('run-diagnostics').addEventListener('click', async () => {
   catch (error) { status(error.message, true); $('run-diagnostics').disabled = false; }
 });
 $('copy-diagnostics').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('diagnostic-output').textContent); status('Resultado copiado.'); }
+  try { await copyText($('diagnostic-output').textContent); status('Resultado copiado.'); }
   catch (error) { status(error.message, true); }
 });
 for (const id of ['copy-session-metrics', 'copy-trial-metrics']) {
@@ -442,7 +445,7 @@ for (const id of ['copy-session-metrics', 'copy-trial-metrics']) {
         throw Error('Assista à transmissão e aguarde a primeira amostra de vídeo.');
       }
       const payload = trial ? { condition, report: value.report } : value.report;
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      await copyText(JSON.stringify(payload, null, 2));
       if (trial) $('trial-result').textContent = 'Amostra copiada para ' + condition + '.';
       else status('Métricas da sessão copiadas.');
     } catch (error) {
@@ -529,16 +532,12 @@ $('obs-monitor').addEventListener('change', async () => {
   catch (error) { status(error.message, true); }
   await refreshObs();
 });
-$('copy-obs-token').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('obs-token').value); status('Chave do OBS copiada.'); }
-  catch (error) { status(error.message, true); }
-});
 $('copy-obs-url').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('obs-url').value); status('Endereço do OBS copiado.'); }
+  try { await copyText($('obs-url').value); status('Endereço do OBS copiado.'); }
   catch (error) { status(error.message, true); }
 });
 $('copy-obs-token').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('obs-token').value); status('Token OBS copiado.'); }
+  try { await copyText($('obs-token').value); status('Token OBS copiado.'); }
   catch (error) { status(error.message, true); }
 });
 load().catch((error) => status(error.message, true));

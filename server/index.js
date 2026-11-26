@@ -541,7 +541,7 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     // Com contas, o Bearer do endereço antigo (/obs/<nick>) é a chave da conta
     // (authorizePublish); sem contas, o OBS_PUBLISH_TOKEN, se houver.
     publicationAuth: accounts ? (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); } : obsAuth.middleware,
-    publicationInfo: path => obsPublishers.info(path),
+    publicationInfo: (path, nick) => (path.startsWith('pub_') ? obsPublishers.info(path) : accountObsOwner(nick)),
     publisherAuth(req, res, next) {
       res.set('Cache-Control', 'no-store');
       const path = req.params.publisherId ? 'pub_' + req.params.publisherId : req.params.pathId;
@@ -594,6 +594,14 @@ function authorizeView(req) {
   return Boolean(account && !account.root);
 }
 const obsOn = () => Boolean(obs) && roomConfig.get().obs;
+// Com contas, o endereço antigo (/obs/<nick>) só abre com a chave da conta: a transmissão
+// é de quem está na sala com essa conta (sem contas, ela fica sem vínculo).
+function accountObsOwner(nick) {
+  const account = accounts && nick ? accounts.byNick(nick) : null;
+  if (!account) return null;
+  const user = [...users.values()].find((u) => u.account === account.id);
+  return user ? { ownerId: user.id, name: user.name } : null;
+}
 // O painel desligou o OBS, ou nesta sala só contas com administração transmitem.
 function obsRefusal(user) {
   const settings = roomConfig.get();
@@ -658,6 +666,7 @@ function removeUser(socket, revokePublication = true) {
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
+  if (obs && user && user.account) obs.refreshOwners();
   if (admin) admin.changed();
 }
 
@@ -733,6 +742,7 @@ io.on('connection', (socket) => {
     logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
+    if (obs && user.account) obs.refreshOwners(); // o OBS dela já no ar: fica dela
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
     ack({ me: { ...publicUser(user), admin: Boolean(user.admin) }, users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION,
       settings: { ...publicSettings(), obs: obsOn() }, assetUpload: 1, obsPublication: obs && !accounts ? 1 : 0 });

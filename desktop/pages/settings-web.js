@@ -36,6 +36,7 @@
     readRoom: async (section) => copy(await roomApi().read(section)),
     roomAction: async (value) => copy(await roomApi().action(copy(value))),
     close: async () => { if (room && room.WssSettings) room.WssSettings.close(); },
+    copyText: (text) => navigator.clipboard.writeText(String(text ?? '')),
     onSection: (callback) => {
       sectionHandler = callback;
       if (pendingSection) { const name = pendingSection; pendingSection = null; callback(name); }

@@ -179,7 +179,7 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     const removed = [];
     for (const pathId of live) {
       if (streams.has(pathId)) continue;
-      const info = pathId.startsWith('pub_') ? publicationInfo(pathId) : null;
+      const info = ownerInfo(pathId);
       const stream = { id: `obs:${pathId}`, name: info?.name || (pathId.startsWith('obs_') ? cleanName(nickFor(pathId)) : '') || 'OBS',
         ownerId: info?.ownerId || null, sharing: true, kind: 'obs', stream: pathId, startedAt: Date.now() };
       streams.set(pathId, stream);
@@ -192,6 +192,11 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     }
     if (added.length || removed.length) onStreamsChanged(added, removed);
   }
+
+  // De quem é a transmissão: pub_ pela credencial individual; obs_ (o endereço antigo) só
+  // com contas, pela conta do nick (a chave dela abriu o endereço).
+  const ownerInfo = (pathId) => (pathId.startsWith('pub_') ? publicationInfo(pathId)
+    : pathId.startsWith('obs_') ? publicationInfo(pathId, cleanName(nickFor(pathId))) : null);
 
   let polling = false;
   async function tick() {
@@ -213,10 +218,12 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
       }
     },
     close() { closed = true; clearInterval(timer); httpClient.close(); },
+    // Alguém entrou ou saiu: as transmissões pelo endereço antigo (com contas) acham o dono de novo.
+    refreshOwners() { for (const pathId of streams.keys()) this.refreshOwner(pathId); },
     refreshOwner(pathId) {
       const stream = streams.get(pathId);
-      if (!stream || !pathId.startsWith('pub_')) return;
-      const info = publicationInfo(pathId);
+      if (!stream) return;
+      const info = ownerInfo(pathId);
       const ownerId = info?.ownerId || null, name = info?.name || stream.name;
       if (stream.ownerId === ownerId && stream.name === name) return;
       stream.ownerId = ownerId; stream.name = name; onStreamUpdated(stream);

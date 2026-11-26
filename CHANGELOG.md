@@ -11,6 +11,14 @@ nova do app. As notas de cada release no GitHub vêm daqui.
   duas linhas (até em janela grande). Agora ficam sempre numa linha: "Log em tempo
   real" virou só **Log** e, em janela estreita, a fileira rola de lado (com a rodinha
   do mouse também), com a borda esmaecida do lado que ainda tem aba.
+- **Copiar no app**: os botões de copiar das Configurações (o token e o endereço do OBS,
+  o resultado do teste de conexão, as métricas) não faziam nada no app. Agora copiam.
+- **OBS com contas ligado a você**: transmitindo pelo endereço `/obs/SEU-NICK` com a
+  chave da conta, a transmissão aparecia como "OBS · sem vínculo". Agora ela é sua
+  (na sua linha da lista, como as do app), inclusive se você entrar na sala depois de
+  o OBS já estar no ar ou reconectar. Sem contas, use o endereço e o token que aparecem
+  em Configurações > OBS e overlays **do mesmo app ou aba** que fica na sala: eles são
+  daquele participante.
 
 ## 2.0.0 — 2026-11-25
 

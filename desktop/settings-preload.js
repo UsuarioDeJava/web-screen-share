@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('desktopSettings', {
   readRoom: (section) => ipcRenderer.invoke('settings:room-read', section),
   roomAction: (value) => ipcRenderer.invoke('settings:room-action', value),
   close: () => ipcRenderer.invoke('settings:close'),
+  copyText: (text) => ipcRenderer.invoke('settings:copy', String(text ?? '')),
   onSection: (callback) => { ipcRenderer.on('settings:section', (_event, value) => callback(value)); },
   onLog: (callback) => { ipcRenderer.on('settings:log', (_event, data) => callback(data)); },
 });
