@@ -5,6 +5,11 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.2.2 — 2026-11-26
+
+- O círculo dos analógicos em **Meu gamepad** não anda mais pro lado quando o valor
+  fica negativo.
+
 ## 2.2.1 — 2026-11-26
 
 - **Tecla do teclado direto na lista do botão**: em **Meu gamepad**, a lista de cada
