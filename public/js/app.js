@@ -6075,6 +6075,7 @@
   function releaseControl() {
     if (controlling) streams.get(controlling)?.controlPointerReset?.();
     sendControl({ kind: 'gamepad', ...window.WssGamepad.neutral() });
+    gamepadClient?.releaseKeys?.(); // as teclas dos botões do controle (ex.: A → Espaço)
     for (const code of controlKeys) sendControl({ kind: 'key', code, down: false });
     for (const button of controlButtons) sendControl({ kind: 'button', button, down: false });
     controlKeys.clear();
@@ -6308,6 +6309,9 @@
   window.WssGamepadClient.start({
     canSend: () => Boolean(controlling && document.hasFocus() && !document.hidden && !controlDialog.open && !sharingDialog.open && !captureDialog.open && controlAllowed.get(controlling)?.devices.gamepad),
     send: (state) => sendControl({ kind: 'gamepad', ...state }),
+    // Botões do controle como teclas: precisa do gamepad e do teclado liberados.
+    canSendKeys: () => Boolean(controlling && controlAllowed.get(controlling)?.devices.keyboard),
+    sendKey: (code, down) => sendControl({ kind: 'key', code, down }),
     panel: $('gamepad-config'),
     onStatus: (status) => { for (const [stream, grant] of controlAllowed) if (grant.devices.gamepad) socket.emit('control:presence', { stream, ...status, sending: status.sending && controlling === stream }); },
   }).then(client => { gamepadClient = client; });

@@ -5,6 +5,17 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.2.0 — 2026-11-26
+
+- **Botões do controle como teclas**: em **Configurações > Aplicativo > Meu gamepad >
+  Botões como teclas**, ligue um botão do controle a uma tecla do teclado (ex.: A →
+  Espaço): escolha o botão, clique na tecla e aperte a que quiser. Funciona quando quem
+  transmite liberou o gamepad e o teclado pra você; enquanto isso, o botão vira a tecla
+  e deixa de ir como botão do controle. Sem o teclado liberado, ele volta a ser botão.
+  Ao parar de controlar, nada fica apertado do lado de lá.
+- **Mapeamento do controle em dia no navegador**: o que você muda nas Configurações
+  vale na sala na hora, sem recarregar a página.
+
 ## 2.1.2 — 2026-11-26
 
 - **Nomes de verdade no mapeamento do controle**: as listas de **Configurações >

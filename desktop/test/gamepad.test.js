@@ -261,3 +261,14 @@ test('nomes dos botões físicos: Xbox, PlayStation e, fora do padrão, o númer
   assert.equal(model.physicalName(17, { layout: 'xbox' }), 'Botão 17');
   assert.equal(model.physicalName(0, { layout: 'xbox' }, false), 'Botão 0');
 });
+test('botões como teclas: com o teclado liberado viram a tecla; sem ele, voltam a ser botões', () => {
+  const p = model.profile({ v: 2, keys: [{ source: 0, code: 'Space' }, { source: 0, code: 'KeyE' }, { source: 3, code: 'ShiftLeft' }, { source: 64, code: 'KeyQ' }, { source: 1, code: 'tecla ruim' }] });
+  assert.deepEqual(p.keys.map((k) => k.code), ['Space', 'KeyE', 'ShiftLeft'], 'ligações inválidas saem');
+  const pad = { buttons: Array.from({ length: 17 }, (_, i) => ({ value: i === 0 ? 1 : 0 })), axes: [0, 0, 0, 0] };
+  const sample = model.createSampler(p);
+  assert.equal(sample(pad, true).buttons[0], 0, 'com as teclas, o A não vai como botão');
+  assert.equal(sample(pad, false).buttons[0], 1, 'sem o teclado, o A volta a ser botão');
+  assert.deepEqual([...model.keysDown(pad, p)], ['Space', 'KeyE'], 'um botão pode apertar mais de uma tecla');
+  assert.equal(model.applyPreset('playstation', p).keys.length, 3, 'trocar o preset mantém as teclas');
+  assert.deepEqual(['Space', 'KeyA', 'Digit3', 'ArrowUp', 'Numpad5', 'ShiftLeft'].map(model.keyName), ['Espaço', 'A', '3', '↑', '5 (numérico)', 'Shift esquerdo']);
+});

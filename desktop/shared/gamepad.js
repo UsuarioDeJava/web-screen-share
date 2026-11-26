@@ -13,6 +13,31 @@
     '↑ Cima', '↓ Baixo', '← Esquerda', '→ Direita', 'Xbox (Guide)'];
   const playNames = ['✕ Cruz', '○ Círculo', '□ Quadrado', '△ Triângulo', 'L1', 'R1', 'L2', 'R2', 'Create (Share)', 'Options', 'L3', 'R3',
     '↑ Cima', '↓ Baixo', '← Esquerda', '→ Direita', 'PS', 'Touchpad'];
+  // Botões do controle como teclas do teclado (ex.: A → Espaço): o código da tecla pela
+  // posição física (KeyboardEvent.code), como o teclado do controle remoto.
+  const KEY_CODE = /^[A-Za-z][A-Za-z0-9]{0,23}$/;
+  const KEY_NAMES = { Space: 'Espaço', Enter: 'Enter', Escape: 'Esc', Tab: 'Tab', Backspace: 'Backspace', CapsLock: 'Caps Lock',
+    ShiftLeft: 'Shift esquerdo', ShiftRight: 'Shift direito', ControlLeft: 'Ctrl esquerdo', ControlRight: 'Ctrl direito',
+    AltLeft: 'Alt', AltRight: 'Alt Gr', MetaLeft: 'Windows', MetaRight: 'Windows direito', ArrowUp: '↑', ArrowDown: '↓',
+    ArrowLeft: '←', ArrowRight: '→', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'Page Up',
+    PageDown: 'Page Down', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: 'Ç / ;',
+    Quote: "'", Backquote: '`', Comma: ',', Period: '.', Slash: '/', IntlBackslash: '\\ (ABNT)', IntlRo: '/ (ABNT)',
+    NumpadEnter: 'Enter (numérico)', NumpadAdd: '+ (numérico)', NumpadSubtract: '- (numérico)', NumpadMultiply: '* (numérico)',
+    NumpadDivide: '/ (numérico)', NumpadDecimal: ', (numérico)', ContextMenu: 'Menu' };
+  function keyName(code) {
+    if (typeof code !== 'string' || !code) return '';
+    if (KEY_NAMES[code]) return KEY_NAMES[code];
+    let m = /^Key([A-Z])$/.exec(code); if (m) return m[1];
+    m = /^Digit(\d)$/.exec(code); if (m) return m[1];
+    m = /^Numpad(\d)$/.exec(code); if (m) return `${m[1]} (numérico)`;
+    return code;
+  }
+  // As teclas apertadas agora (pelos botões ligados a elas).
+  function keysDown(pad, config) {
+    const down = new Set();
+    for (const k of config.keys || []) if ((Number(pad?.buttons?.[k.source]?.value) || 0) > 0.5) down.add(k.code);
+    return down;
+  }
   function physicalName(index, value, standard = true) {
     const names = value?.layout === 'playstation' ? playNames : xboxNames;
     return standard && index >= 0 && index < names.length ? names[index] : `Botão ${index}`;
@@ -26,7 +51,7 @@
   }
   function applyPreset(id, current) {
     const p = profile(current);
-    return profile({ preset: id, layout: id === 'custom' ? p.layout : id, deadzone: p.deadzone, triggers: p.triggers, extraButtons: p.extraButtons });
+    return profile({ preset: id, layout: id === 'custom' ? p.layout : id, deadzone: p.deadzone, triggers: p.triggers, extraButtons: p.extraButtons, keys: p.keys });
   }
   // "Nenhum": a saída não vai pro controle de quem transmite (-1 nos botões, type 'none' nos gatilhos).
   const NONE = -1;
@@ -48,6 +73,9 @@
       v: 2,
       preset: presets.some((p) => p.id === value.preset) ? value.preset : 'xbox',
       layout: value.preset === 'playstation' || (value.preset === 'custom' && value.layout === 'playstation') ? 'playstation' : 'xbox',
+      keys: Array.isArray(value.keys) ? value.keys.slice(0, 16)
+        .filter((k) => k && Number.isInteger(k.source) && k.source >= 0 && k.source < 64 && typeof k.code === 'string' && KEY_CODE.test(k.code))
+        .map((k) => ({ source: k.source, code: k.code })) : [],
       extraButtons: Array.isArray(value.extraButtons) ? value.extraButtons.slice(0, 16)
         .filter((v) => v && Number.isInteger(v.source) && v.source >= 0 && v.source < 64 && Number.isInteger(v.target) && v.target >= 0 && v.target < 17)
         .map((v, i) => ({ source: v.source, target: v.target, name: typeof v.name === 'string' ? v.name.replace(/[\x00-\x1f]/g, '').slice(0, 24) : `M${i + 1}` })) : [],
@@ -74,10 +102,17 @@
     // Opt-in para leitura interna: o próximo sample sobrescreve o resultado.
     // Quem retém/envia um estado deve copiar os vetores antes da próxima leitura.
     const output = reuseOutput ? neutral() : null;
-    return pad => sampleProfile(pad, normalized, output);
+    const taken = normalized.keys.length ? new Set(normalized.keys.map((k) => k.source)) : null;
+    // keysActive: as teclas vão (gamepad e teclado liberados); senão o botão volta a ser do controle.
+    return (pad, keysActive = false) => sampleProfile(pad, normalized, output, keysActive ? taken : null);
   }
-  const buttonValue = (pad, index) => index < 0 ? 0 : Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
-  function sampleProfile(pad, p, output = null) {
+  let takenNow = null; // botões físicos que agora vão como tecla (não como botão do controle)
+  const buttonValue = (pad, index) => index < 0 || takenNow?.has(index) ? 0 : Math.max(0, Math.min(1, Number(pad.buttons[index]?.value) || 0));
+  function sampleProfile(pad, p, output = null, taken = null) {
+    takenNow = taken;
+    try { return sampleButtons(pad, p, output); } finally { takenNow = null; }
+  }
+  function sampleButtons(pad, p, output) {
     const result = output || { buttons: Array(17), axes: Array(4) }, buttons = result.buttons;
     for (let i = 0; i < 17; i++) buttons[i] = buttonValue(pad, p.buttons[i]);
     for (let i = 0; i < 2; i++) {
@@ -103,5 +138,5 @@
     for (let i = 0; i < 17; i++) if (a.buttons[i] !== b.buttons[i]) return false;
     return true;
   }
-  return { NONE, GUIDE, labels, labelsFor, physicalName, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
+  return { NONE, GUIDE, labels, labelsFor, physicalName, keyName, keysDown, presets, defaultProfile, applyPreset, permissions, kindDevice, validState, profile, sample, createSampler, neutral, sameState };
 });

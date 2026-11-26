@@ -61,6 +61,33 @@ próprio firmware, como o [GameSir G7 SE](https://gamesir.com/support/manuals/ga
 Nesses casos, configure a função no software ou no controle do fabricante. O aplicativo
 não consegue distinguir duas teclas físicas que chegam como a mesma entrada.
 
+### Nenhum, o botão Xbox/PS e os nomes dos botões
+
+Cada botão e gatilho pode ficar como **Nenhum · não envia**: ele deixa de ir pro
+controle virtual de quem transmite (no desenho, aparece tracejado). O **Guide** (botão
+Xbox/PS) já vem como Nenhum, porque no PC de quem transmite ele abria a Game Bar ou a
+Steam; pra liberar, escolha o botão de novo em Guide. No **seu** PC o aplicativo não
+consegue segurar esse botão, porque o Windows e a Steam leem o controle direto: desligue
+em Configurações do Windows > Jogos > Xbox Game Bar (a opção de abrir com o botão do
+controle) e, na Steam, em Configurações > Controle.
+
+As listas do mapeamento mostram o nome do botão físico (A, LB, View, ↑ Cima; no
+PlayStation, ✕ Cruz, ○ Círculo, □ Quadrado, △ Triângulo, Options, Touchpad). Controles
+fora do mapeamento padrão do navegador continuam com o número (Botão 0, Botão 1…),
+porque neles a ordem é do fabricante.
+
+### Botões como teclas
+
+Em **Botões como teclas**, um botão do controle vira uma tecla do teclado no PC de quem
+transmite (ex.: A → Espaço): escolha o botão (ou **Detectar** e aperte no controle),
+clique na tecla e aperte a tecla desejada (qualquer uma, até Esc; clicar de novo
+cancela). Um botão pode apertar mais de uma tecla, até 16 ligações por perfil.
+
+Só funciona quando quem transmite liberou o **gamepad e o teclado** pra você. Enquanto
+isso, o botão ligado a uma tecla deixa de ir como botão do controle; sem o teclado
+liberado, ele volta a ser botão do controle. Ao parar de controlar (ou quando o teclado
+é tirado), as teclas que estavam apertadas são soltas do lado de lá.
+
 ## Detalhes de compartilhamento
 
 O botão **Detalhes**, ao lado de **Compartilhar tela** no canto superior direito,

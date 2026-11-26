@@ -120,3 +120,13 @@
 .gpad-view[data-layout="playstation"] text[data-glyph="2"], .gpad-view[data-layout="playstation"] text[data-glyph="3"] { display:none; }
 .gpad-view[data-layout="xbox"] text[data-glyph="0"] { fill:#6cc96b; } .gpad-view[data-layout="xbox"] text[data-glyph="1"] { fill:#ff6b63; }
 .gpad-view[data-layout="xbox"] text[data-glyph="2"] { fill:#5aa0ff; } .gpad-view[data-layout="xbox"] text[data-glyph="3"] { fill:#ffd257; }
+/* Botões como teclas: uma linha por ligação (botão do controle → tecla). */
+.gamepad-keys { display:flex; flex-direction:column; gap:8px; margin:12px 0; }
+.gamepad-keys h4 { margin:0; }
+.gamepad-key-bindings { display:flex; flex-direction:column; gap:8px; }
+.gamepad-key-binding { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+.gamepad-key-binding label { display:flex; flex-direction:column; gap:4px; font-size:12px; }
+.gamepad-key-binding select { min-width:150px; }
+.gamepad-key-arrow { align-self:center; padding-top:16px; opacity:.7; }
+.gamepad-key-choose { min-width:120px; }
+.gamepad-add-key { align-self:flex-start; }

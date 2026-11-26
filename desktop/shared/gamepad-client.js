@@ -1,6 +1,7 @@
 /* Gamepad físico -> perfil local -> estado Xbox normalizado enviado ao proprietário. */
 window.WssGamepadClient = {
-  async start({ panel, canSend, send, onStatus = () => {}, pollIntervalMs = window.WssInputPacing?.DEFAULT_INTERVAL_MS || 8 }) {
+  // sendKey/canSendKeys: botões ligados a teclas (precisa do gamepad e do teclado liberados).
+  async start({ panel, canSend, send, sendKey = null, canSendKeys = () => false, onStatus = () => {}, pollIntervalMs = window.WssInputPacing?.DEFAULT_INTERVAL_MS || 8 }) {
     const bridge = window.wssDesktop || window.desktopSettings;
     const model = window.WssGamepad;
     const make = (tag, text) => { const node = document.createElement(tag); if (text) node.textContent = text; return node; };
@@ -31,6 +32,12 @@ window.WssGamepadClient = {
     const layoutLabel = make('label', 'Aparência do controle'); const layoutSelect = make('select'); layoutSelect.setAttribute('aria-label', 'Aparência do controle personalizado');
     for (const [id, label] of [['xbox', 'Xbox'], ['playstation', 'PlayStation']]) { const option = make('option', label); option.value = id; layoutSelect.append(option); } layoutLabel.append(layoutSelect);
     extras.append(make('h4', 'Botões extras · GameSir e outros'), extraInfo, layoutLabel, extraReadings, extraBindings, addExtra);
+    const keysSection = make('section'); keysSection.className = 'gamepad-keys';
+    const keysInfo = make('p', 'Um botão do controle vira uma tecla do teclado no PC de quem transmite (ex.: A → Espaço). Funciona quando a pessoa liberou o gamepad e o teclado pra você; enquanto isso, o botão escolhido deixa de ir como botão do controle.');
+    keysInfo.className = 'dialog-sub hint';
+    const keyBindings = make('div'); keyBindings.className = 'gamepad-key-bindings';
+    const addKey = make('button', 'Adicionar tecla'); addKey.type = 'button'; addKey.className = 'btn gamepad-add-key';
+    keysSection.append(make('h4', 'Botões como teclas'), keysInfo, keyBindings, addKey);
     const vibrationStatus = make('p'); vibrationStatus.className = 'gamepad-vibration-status'; vibrationStatus.setAttribute('role', 'status');
     const vibrationButtons = ['esquerda', 'direita'].map((side, i) => {
       const button = make('button', '〰 ' + (i ? 'D' : 'E')); button.type = 'button'; button.className = 'gamepad-vibrate gamepad-vibrate-' + side;
@@ -63,10 +70,12 @@ window.WssGamepadClient = {
     const panelVisible = () => !panel.closest('[hidden],details:not([open]),dialog:not([open])');
     const diagnostic = make('section'); diagnostic.className = 'gamepad-diagnostic'; diagnostic.append(make('h4', 'Leituras técnicas'), preview, vibrationStatus);
     presetHint.textContent = 'Escolha o modelo e teste os comandos. Os ajustes são salvos automaticamente.';
-    view.mapping.append(extras, remap);
+    view.mapping.append(extras, keysSection, remap);
     panel.append(select, presetRow, guideHint, status, feedback, monitor, diagnostic);
     const pads = [];
     let knownDevices = [], selected = '', lastSent = null, sentAt = 0, wasSending = false, lastPaint = 0;
+    const heldKeys = new Set(); // teclas que os botões estão segurando do lado de lá
+    const releaseKeys = () => { for (const code of heldKeys) sendKey?.(code, false); heldKeys.clear(); };
     let lastView = null;
     const current = () => pads.find((pad) => String(pad.index) === selected);
     remoteFeedback = window.WssGamepadFeedback?.create({ getPad: current, canPlay: () => canSend() && !activeActuator });
@@ -115,7 +124,8 @@ window.WssGamepadClient = {
         const learn = make('button', 'Detectar botão'); learn.type = 'button'; learn.className = 'btn';
         learn.addEventListener('click', () => {
           if (learning) learning.button.textContent = 'Detectar botão';
-          learning = { index: i, button: learn, until: performance.now() + 15000, held: new Set(current().buttons.map((b, index) => b.value > 0.5 ? index : -1).filter((index) => index >= 0)) };
+          learning = { index: i, button: learn, until: performance.now() + 15000, held: new Set(current().buttons.map((b, index) => b.value > 0.5 ? index : -1).filter((index) => index >= 0)),
+            apply: (found) => { const next = getProfile(); next.extraButtons[i].source = found; save(next); editor(); } };
           learn.textContent = 'Pressione o botão…'; feedback.textContent = 'Pressione o botão físico desejado. A detecção termina em 15 segundos.';
         });
         const remove = make('button', 'Remover'); remove.type = 'button'; remove.className = 'btn'; remove.setAttribute('aria-label', `Remover botão extra ${i + 1}`);
@@ -124,10 +134,57 @@ window.WssGamepadClient = {
       });
       addExtra.disabled = p.extraButtons.length >= 16;
     }
+    // Escolher a tecla: a próxima tecla apertada (qualquer uma, até Esc); clicar de novo cancela.
+    let keyCapture = null;
+    function stopKeyCapture() {
+      if (!keyCapture) return;
+      window.removeEventListener('keydown', keyCapture.listener, true); clearTimeout(keyCapture.timer);
+      keyCapture.button.textContent = keyCapture.label; keyCapture = null;
+    }
+    function keysEditor(pad, p) {
+      stopKeyCapture(); keyBindings.replaceChildren();
+      const standard = pad.mapping === 'standard';
+      p.keys.forEach((binding, i) => {
+        const row = make('div'); row.className = 'gamepad-key-binding';
+        const sourceLabel = make('label', 'Botão do controle'); const source = make('select'); source.setAttribute('aria-label', `Botão do controle da tecla ${i + 1}`);
+        for (let b = 0; b < Math.max(pad.buttons.length, binding.source + 1); b++) { const option = make('option', model.physicalName(b, p, standard)); option.value = String(b); source.append(option); }
+        source.value = String(binding.source); sourceLabel.append(source);
+        source.addEventListener('change', () => { const next = getProfile(); next.keys[i].source = Number(source.value); save(next); editor(); });
+        const learn = make('button', 'Detectar'); learn.type = 'button'; learn.className = 'btn';
+        learn.addEventListener('click', () => {
+          if (learning) learning.button.textContent = learning.button === learn ? 'Detectar' : learning.button.textContent;
+          learning = { button: learn, until: performance.now() + 15000, held: new Set(current().buttons.map((b, index) => b.value > 0.5 ? index : -1).filter((index) => index >= 0)),
+            apply: (found) => { const next = getProfile(); next.keys[i].source = found; save(next); editor(); } };
+          learn.textContent = 'Aperte no controle…'; feedback.textContent = 'Aperte o botão do controle que vai virar a tecla.';
+        });
+        const arrow = make('span', '→'); arrow.className = 'gamepad-key-arrow'; arrow.setAttribute('aria-hidden', 'true');
+        const keyLabel = make('label', 'Tecla'); const key = make('button', model.keyName(binding.code)); key.type = 'button'; key.className = 'btn gamepad-key-choose';
+        key.setAttribute('aria-label', `Tecla ligada: ${model.keyName(binding.code)}. Clique e aperte outra pra trocar.`); keyLabel.append(key);
+        key.addEventListener('click', () => {
+          const same = keyCapture?.button === key; stopKeyCapture(); if (same) return;
+          const listener = (event) => {
+            event.preventDefault(); event.stopImmediatePropagation();
+            if (!/^[A-Za-z][A-Za-z0-9]{0,23}$/.test(event.code || '')) return;
+            const code = event.code; stopKeyCapture();
+            const next = getProfile(); next.keys[i].code = code; save(next); editor();
+          };
+          keyCapture = { button: key, label: key.textContent, listener, timer: setTimeout(stopKeyCapture, 10000) };
+          window.addEventListener('keydown', listener, true); key.textContent = 'Aperte uma tecla…';
+        });
+        const remove = make('button', 'Remover'); remove.type = 'button'; remove.className = 'btn'; remove.setAttribute('aria-label', `Remover a tecla ${i + 1}`);
+        remove.addEventListener('click', () => { const next = getProfile(); next.keys.splice(i, 1); save(next); editor(); });
+        row.append(sourceLabel, learn, arrow, keyLabel, remove); keyBindings.append(row);
+      });
+      addKey.disabled = p.keys.length >= 16;
+    }
+    addKey.addEventListener('click', () => {
+      const next = getProfile(); if (next.keys.length >= 16) return;
+      next.keys.push({ source: 0, code: 'Space' }); save(next); editor();
+    });
     function editor() {
       lastView = null;
       learning = null; stopVibration(); vibrationMessage = false;
-      mapping.replaceChildren(); const pad = current(); if (!pad) { presetSelect.disabled = true; extras.hidden = true; rawExtraNodes.length = 0; return; }
+      mapping.replaceChildren(); const pad = current(); keysSection.hidden = !pad; if (!pad) { presetSelect.disabled = true; extras.hidden = true; rawExtraNodes.length = 0; stopKeyCapture(); keyBindings.replaceChildren(); return; }
       const p = getProfile();
       presetSelect.disabled = !pad; presetSelect.value = p.preset;
       function number(label, value, max, change, step = '1') {
@@ -137,6 +194,7 @@ window.WssGamepadClient = {
       number('Zona morta (0 a 0,5)', p.deadzone, 0.5, (next, value) => { next.deadzone = value; }, '0.01');
       const reset = make('button', 'Restaurar padrão deste preset'); reset.type = 'button'; reset.className = 'btn'; reset.addEventListener('click', () => { const next = model.applyPreset(p.preset, p); next.extraButtons = []; next.triggerLimits = [1, 1]; next.triggers = model.profile().triggers; save(next); editor(); }); mapping.append(reset);
       extraEditor(pad, p);
+      keysEditor(pad, p);
     }
     select.addEventListener('change', () => { stopVibration(); if (wasSending) send(model.neutral()); selected = select.value; lastSent = null; editor(); });
     let profilePoll = 0, profileReading = false, lastStatus = null, statusAt = 0;
@@ -173,12 +231,19 @@ window.WssGamepadClient = {
       // Só remapeia/aloca o estado quando será enviado ou desenhado. Descoberta
       // de dispositivos, presença, neutralização e relógio do envio continuam ativos.
       const config = sending || paint ? getProfile() : null;
-      const state = sending || paint ? pad ? cachedProfile.sample(pad) : model.neutral() : null;
+      // Teclas: ao enviar, só com o teclado liberado; na prévia (sem enviar), mostra como ficaria.
+      const keysActive = sending ? Boolean(sendKey && canSendKeys()) : true;
+      const state = sending || paint ? pad ? cachedProfile.sample(pad, keysActive) : model.neutral() : null;
+      const keysNow = pad && config?.keys.length && keysActive ? model.keysDown(pad, config) : null;
+      if (sending && keysActive && sendKey) {
+        for (const code of keysNow || []) if (!heldKeys.has(code)) { heldKeys.add(code); sendKey(code, true); }
+        for (const code of heldKeys) if (!keysNow?.has(code)) { heldKeys.delete(code); sendKey(code, false); }
+      } else releaseKeys();
       if (!pad && activeActuator) stopVibration();
       if (learning && pad) {
         for (const index of learning.held) if (!(pad.buttons[index]?.value > 0.5)) learning.held.delete(index);
         const source = pad.buttons.findIndex((b, index) => index < 64 && b.value > 0.5 && !learning.held.has(index));
-        if (source >= 0 && document.hasFocus()) { const next = getProfile(); next.extraButtons[learning.index].source = source; save(next); editor(); }
+        if (source >= 0 && document.hasFocus()) learning.apply(source);
         else if (performance.now() > learning.until) { learning.button.textContent = 'Detectar botão'; learning = null; feedback.textContent = 'Nenhum novo botão detectado. Confira se o dispositivo expõe essa tecla como um botão independente.'; }
       }
       if (!sending) remoteFeedback?.stop();
@@ -210,10 +275,17 @@ window.WssGamepadClient = {
         status.textContent = pad ? `${pad.mapping === 'standard' ? 'Mapeamento padrão' : 'Controle sem padrão: ajuste os índices físicos abaixo'}. ${sending ? 'Enviando' : 'Teste local'}.` : 'Conecte o gamepad e pressione um botão.';
         const raw = pad ? pad.buttons.map((b, i) => b.value > 0.1 ? `${i}=${b.value.toFixed(2)}` : '').filter(Boolean).join(' ') : '';
         const rawAxes = pad ? pad.axes.map((v, i) => `${i}=${v.toFixed(2)}`).join(' ') : 'nenhum';
-        preview.textContent = `Botões físicos: ${raw || 'nenhum'} | Eixos físicos: ${rawAxes} | Saída: ${state.buttons.map((v, i) => v > 0.1 ? model.labelsFor(config)[i] : '').filter(Boolean).join(' ') || 'neutro'} | Eixos mapeados: ${state.axes.join(', ')}`;
+        preview.textContent = `Botões físicos: ${raw || 'nenhum'} | Eixos físicos: ${rawAxes} | Saída: ${state.buttons.map((v, i) => v > 0.1 ? model.labelsFor(config)[i] : '').filter(Boolean).join(' ') || 'neutro'} | Eixos mapeados: ${state.axes.join(', ')}`
+          + (config?.keys.length ? ` | Teclas: ${[...(keysNow || [])].map(model.keyName).join(', ') || 'nenhuma'}` : '');
       }
     }, pollIntervalMs === 8 ? 8 : 16);
-    window.addEventListener('pagehide', () => { stopVibration(); if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); unsubscribeProfiles?.(); }, { once: true });
-    return { profiles: () => profiles, feedback: value => remoteFeedback?.apply(value), stopFeedback: () => remoteFeedback?.stop() };
+    // No navegador, as Configurações (outra página) mudam o mapeamento no localStorage: vale aqui também.
+    window.addEventListener('storage', (event) => {
+      if (event.key !== 'wss-gamepad-profiles' || bridge?.readGamepadProfiles) return;
+      try { const value = JSON.parse(event.newValue || '{}'); if (value && typeof value === 'object' && !Array.isArray(value)) acceptProfiles(value); } catch {}
+    });
+    window.addEventListener('pagehide', () => { stopVibration(); releaseKeys(); if (wasSending) send(model.neutral()); onStatus({ connected: false, name: '', sending: false }); clearInterval(timer); unsubscribeProfiles?.(); }, { once: true });
+    // releaseKeys: solta as teclas que os botões estão segurando (a sala chama ao parar de controlar).
+    return { profiles: () => profiles, releaseKeys, feedback: value => remoteFeedback?.apply(value), stopFeedback: () => remoteFeedback?.stop() };
   },
 };
