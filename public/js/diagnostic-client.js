@@ -11,7 +11,7 @@ window.WssDiagnosticClient = function ({ socket, member, desktop, capture, strea
   }
   function collect() {
     const links = streams().slice(0,12);
-    const snapshot = window.WssDiagnosticFields.snapshot({ client:desktop?'App':'Navegador', version:version(),
+    const snapshot = window.WssDiagnosticFields.snapshot({ client:desktop?'App':'Navegador', version:version(), platform:window.WssDiagnosticFields.platform(),
       settings:capture(), streams:links.map(s=>({...s.metrics, direction:s.direction, route:s.route, state:s.state})) });
     return { snapshot, peers:links.map(s=>s.peer) };
   }
@@ -32,10 +32,12 @@ window.WssDiagnosticClient = function ({ socket, member, desktop, capture, strea
       }
     } finally { draining = false; }
   }
-  function fault(code, at = Date.now(), snapshot) {
+  // detail: o que ajuda a achar a causa (a mensagem do erro e onde, o motivo da falha de
+  // captura, quanto tempo travou...), limpo e curto (sem endereços completos).
+  function fault(code, at = Date.now(), snapshot, detail) {
     if (!enabled || !online || !member() || Date.now()-(recent.get(code)||0)<60000) return;
     recent.set(code,Date.now());
-    queue.push({ id:id(), code, at, snapshot:snapshot || collect().snapshot, history:history.slice() });
+    queue.push({ id:id(), code, at, snapshot:snapshot || collect().snapshot, history:history.slice(), detail:window.WssDiagnosticFields.detail(detail) });
     if (queue.length>8) queue.shift();
     void drain();
   }
@@ -47,7 +49,7 @@ window.WssDiagnosticClient = function ({ socket, member, desktop, capture, strea
     const pending = await desktop?.diagnosticFault?.(true).catch(()=>null);
     if (epoch !== generation || !enabled || !online) return;
     if (pending && at-pending.at<86400000)
-      fault(pending.code,pending.at,prior?.snapshot);
+      fault(pending.code,pending.at,prior?.snapshot,pending.detail);
     history = [...history.filter(x=>at-x.at<60000), {at,snapshot:reading.snapshot}].slice(-6);
     try { sessionStorage.setItem(lastSample,JSON.stringify(history.at(-1))); } catch {}
     socket.volatile.emit('diagnostics:live',reading);
@@ -84,13 +86,25 @@ window.WssDiagnosticClient = function ({ socket, member, desktop, capture, strea
     if (!result.ok) throw Error(result.error);
     return preview();
   }
-  window.addEventListener('error',e=>{ if(e instanceof ErrorEvent) fault('script_error'); });
-  window.addEventListener('unhandledrejection',()=>fault('script_error'));
+  // Onde o erro aconteceu: o arquivo e a linha (do evento ou da primeira linha da pilha).
+  const where = (file, line, col) => file ? ` @ ${String(file).split(/[?#]/)[0].split('/').pop() || 'página'}:${line || 0}:${col || 0}` : '';
+  const firstFrame = stack => (String(stack || '').split('\n').find(l => /:\d+:\d+\)?\s*$/.test(l)) || '').trim().replace(/^at\s+/, '');
+  window.addEventListener('error',e=>{
+    if (!(e instanceof ErrorEvent)) return;
+    // (a mensagem do evento vem com "Uncaught " na frente: usa a do próprio erro, se tiver)
+    fault('script_error',undefined,undefined,`${e.error?.name || 'Erro'}: ${e.error?.message ?? String(e.message || '').replace(/^Uncaught (\w+: )?/, '')}${e.filename ? where(e.filename,e.lineno,e.colno) : e.error?.stack ? ` @ ${firstFrame(e.error.stack)}` : ''}`);
+  });
+  window.addEventListener('unhandledrejection',e=>{
+    const r=e.reason;
+    fault('script_error',undefined,undefined,`Promessa rejeitada: ${r?.name ? `${r.name}: ` : ''}${r?.message || String(r).slice(0,200)}${r?.stack ? ` @ ${firstFrame(r.stack)}` : ''}`);
+  });
   let lastTick=performance.now();
   document.addEventListener('visibilitychange',()=>{lastTick=performance.now();});
   setInterval(()=>{
     const now=performance.now(), elapsed=now-lastTick; lastTick=now;
-    if (!desktop?.diagnosticFault && !document.hidden && elapsed>5000 && elapsed<60000) fault('interface_stalled');
+    // A página travou (o relógio de 1 s atrasou mais de 5 s). Vale no app também: o aviso
+    // de "parou de responder" do Electron só vem com a pessoa mexendo e nem sempre vem.
+    if (!document.hidden && elapsed>5000 && elapsed<60000) fault('interface_stalled',undefined,undefined,`A página ficou ${Math.round(elapsed/1000)} s sem responder.`);
   },1000);
   setInterval(sample,10000);
   // A pessoa já escolheu (sim ou não) neste servidor? Sem como guardar, conta como sim

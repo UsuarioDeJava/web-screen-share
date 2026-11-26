@@ -79,8 +79,8 @@ window.WssAdminDiagnostics = function ({panels, el, button, ask, when, refresh})
         detail.append(review.controls(g));
         for(const r of result.reports) {
           const item=el('details'), summary=el('summary',null,when(r.observedAt)+' · '+r.nick);
-          const config=el('pre','diag-output',JSON.stringify({configurações:r.snapshot.settings,conexões:r.snapshot.streams,histórico:r.history},null,2));
-          item.append(summary,el('p',null,r.description || 'Relato automático'),review.incident(r),config); detail.append(item);
+          const config=el('pre','diag-output',JSON.stringify({sistema:r.snapshot.platform,configurações:r.snapshot.settings,conexões:r.snapshot.streams,histórico:r.history},null,2));
+          item.append(summary,el('p',null,r.description || (r.detail ? `Relato automático: ${r.detail}` : 'Relato automático')),review.incident(r),config); detail.append(item);
         }
       }),[g.client,g.version].filter(Boolean).join(' · '),g.count,g.sessions,when(g.first),when(g.last),review.status(g)
     ])) : el('p','admin-hint','Nenhum relato encontrado.'));

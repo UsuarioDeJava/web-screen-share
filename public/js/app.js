@@ -1332,7 +1332,7 @@
       // Cancelar a escolha não é erro (no app de desktop, o cancelamento chega assim).
       const cancelled = err.name === 'NotAllowedError' || err.name === 'AbortError'
         || (window.wssDesktop && /invalid capture constraints/i.test(err.message));
-      if (!cancelled) { reporting.fault('capture_failed'); showToast(`Não foi possível compartilhar a tela: ${err.message}`); }
+      if (!cancelled) { reporting.fault('capture_failed', undefined, undefined, `${err.name || 'Erro'}: ${err.message || ''}`); showToast(`Não foi possível compartilhar a tela: ${err.message}`); }
       capturePending = false; renderShareButton();
       return;
     }
@@ -1588,6 +1588,7 @@
           const stats = await peerStats.read(o.pc);
           o.diagnosticRoute = window.WssNetworkHealth.routeFromStats(stats).kind;
           o.metrics = o.sampler.sample(stats);
+          checkSilentSender(o, stats);
           if (o.closed) return;
           await updateGpuCapacity();
           if (o.closed) return;
@@ -1764,6 +1765,7 @@
         if (s.pc !== pc) return;
         const video = [...stats.values()].filter((r) => r.type === 'inbound-rtp' && r.kind === 'video' && Number.isFinite(r.framesDecoded))
           .sort((a, b) => (b.bytesReceived || 0) - (a.bytesReceived || 0))[0];
+        checkBlackVideo(s, pc, video);
         if (!video) return;
         s.videoSampler ||= Video.createMetrics('inbound');
         s.videoMetrics = s.videoSampler.sample(stats);
@@ -1791,6 +1793,33 @@
     };
     s.healthTimer = setInterval(tick, 2000);
     tick();
+  }
+
+  // ---------- tela preta: conectado, mas sem quadros ----------
+  // Conectado há 15 s e nenhum quadro: quem assiste não vê nada (às vezes nem chega pacote
+  // de vídeo) e quem transmite não está codificando (o caso do H.264 que ficava preto).
+  // Vira um erro automático, uma vez por conexão, com o que ajuda a achar a causa.
+  const SILENT_AFTER = 15000;
+  function checkSilentSender(o, stats) {
+    if (o.silentPc !== o.pc) { o.silentPc = o.pc; o.silentSince = Date.now(); o.silentReported = false; }
+    const video = [...stats.values()].find((r) => r.type === 'outbound-rtp' && r.kind === 'video');
+    if (o.silentReported || (video && video.framesEncoded > 0) || Date.now() - o.silentSince < SILENT_AFTER) return;
+    o.silentReported = true;
+    const track = localStream && localStream.getVideoTracks()[0];
+    const set = track && track.getSettings ? track.getSettings() : {};
+    const codec = video && stats.get(video.codecId)?.mimeType;
+    reporting.fault('encode_stalled', undefined, undefined, `Conectado há ${Math.round((Date.now() - o.silentSince) / 1000)} s sem codificar quadros. `
+      + `Codec ${codec || 'não negociado'}, preferência ${captureOptions.codec || 'auto'}, codificador ${video?.encoderImplementation || 'não informado'}, `
+      + `${video ? `${video.packetsSent || 0} pacotes enviados` : 'sem envio de vídeo'}; captura ${set.width || '?'}x${set.height || '?'} a ${Math.round(set.frameRate || 0)} fps, `
+      + `faixa ${track ? track.readyState : 'ausente'}${track && track.muted ? ' (muda)' : ''}.`);
+  }
+  function checkBlackVideo(s, pc, video) {
+    if (s.blackPc !== pc) { s.blackPc = pc; s.blackSince = Date.now(); s.blackReported = false; }
+    if (s.blackReported || (video && video.framesDecoded > 0) || s.video.videoWidth > 0 || Date.now() - s.blackSince < SILENT_AFTER) return;
+    s.blackReported = true;
+    reporting.fault('video_black', undefined, undefined, `Conectado há ${Math.round((Date.now() - s.blackSince) / 1000)} s sem nenhum quadro`
+      + `${s.kind === 'obs' ? ' (transmissão do OBS)' : ''}: ${video ? `${video.bytesReceived || 0} bytes e ${video.packetsReceived || 0} pacotes de vídeo recebidos, `
+      + `decodificador ${video.decoderImplementation || 'não informado'}` : 'nenhum pacote de vídeo chegou'}.`);
   }
 
   // ---------- assistir uma transmissão do OBS (WHEP) ----------

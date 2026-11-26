@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { snapshot, codes } = require('../public/js/diagnostic-fields');
+const { snapshot, codes, detail } = require('../public/js/diagnostic-fields');
 const { createSnapshotStore } = require('./snapshot-store');
 const { createSystemSamples } = require('./system-samples');
 const DAY = 86400000;
@@ -64,6 +64,8 @@ function createDiagnostics({ directory, users, allow, countSharing, version, log
         reports.push({ serverVersion:version,timeline:review.capture(socket.id,observedAt,samples.history),id:msg.id, at, session:socket.id, nick:user.name, code:msg.code,
           observedAt,
           description:msg.code === 'manual' && typeof msg.description === 'string' ? msg.description.trim().slice(0,600) : '',
+          // Erro automático: a mensagem e onde (limpa de novo aqui: sem endereços completos).
+          detail:msg.code === 'manual' ? '' : detail(msg.detail),
           snapshot:data, history:(Array.isArray(msg.history) ? msg.history : []).slice(-6)
             .filter(s => s && Number.isFinite(s.at) && Math.abs(s.at-(msg.at || at))<=60000)
             .map(s => ({at:s.at, snapshot:snapshot(s.snapshot)})) });

@@ -328,7 +328,7 @@ function createMainWindow() {
   });
   webContents.on('render-process-gone', (event, details) => {
     if (diagnosticOrigin === config.server && ['crashed','oom','abnormal-exit'].includes(details.reason))
-      pendingDiagnosticFault = { code:'renderer_crash', at:Date.now() };
+      pendingDiagnosticFault = { code:'renderer_crash', at:Date.now(), detail:`Motivo: ${details.reason}, código ${details.exitCode}.` };
     shareWanted = false;
     log('error', `Processo da interface encerrado: ${details.reason}, código ${details.exitCode}.`, 'error');
     if (borderlessFullscreen) borderlessFullscreen.exit();
@@ -339,7 +339,7 @@ function createMainWindow() {
   webContents.on('before-input-event', (event, input) => handleShortcut(event, input));
   mainWindow.on('unresponsive', () => {
     if (diagnosticOrigin === config.server && isServerUrl(webContents.getURL()))
-      pendingDiagnosticFault = { code:'interface_stalled', at:Date.now() };
+      pendingDiagnosticFault = { code:'interface_stalled', at:Date.now(), detail:'O Electron avisou que a janela parou de responder.' };
     log('error', 'A interface deixou de responder.', 'warn');
   });
   mainWindow.on('responsive', () => log('system', 'A interface voltou a responder.'));
