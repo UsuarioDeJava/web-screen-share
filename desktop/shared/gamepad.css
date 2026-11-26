@@ -60,7 +60,6 @@
 .gpad-config-row progress::-webkit-progress-bar { background:#30384e; border-radius:3px; }
 .gpad-config-row progress::-webkit-progress-value { background:#af91ff; border-radius:3px; }
 .gpad-config-row progress::-moz-progress-bar { background:#af91ff; }
-.gamepad-extras>summary { color:#d7c8ff; font-size:13px; cursor:pointer; }.gamepad-extras[open]>summary { margin-bottom:14px; }
 
 /* Guide central e motores nos cantos; ajustes fazem parte do mesmo painel. */
 .gpad-config-layout { grid-template-rows:auto auto; align-items:start; row-gap:18px; }

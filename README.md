@@ -21,8 +21,7 @@ local ou via Tailscale, sem instalar nada além do Node.js (ou via Docker).
 - Um servidor Node.js (Express + Socket.io) serve a interface web e faz a sinalização
   WebRTC. Ele escuta em `0.0.0.0`, então fica acessível por qualquer IP da máquina
   (rede local, Tailscale, etc).
-- Todo mundo abre a mesma página (`/`), escolhe um nick e entra na sala. Quando o
-  administrador configura uma chave de acesso, ela também é solicitada na entrada.
+- Todo mundo abre a mesma página (`/`), escolhe um nick e entra na sala.
 - Quem clica em **Compartilhar tela** usa `getDisplayMedia` pra capturar a tela (e, se
   o navegador permitir, o áudio). O vídeo vai direto (peer-to-peer, via WebRTC) do
   navegador de quem transmite pro de cada pessoa que está assistindo; o servidor só
@@ -64,40 +63,6 @@ npm start
 
 Por padrão o servidor sobe na porta `3000`. Para mudar, defina a variável de ambiente
 `PORT` antes de iniciar (ex.: `PORT=8080 npm start`).
-
-### Chave de acesso opcional
-
-Defina `ROOM_ACCESS_KEY` no ambiente do servidor para exigir uma chave compartilhada
-na entrada. Sem chave compartilhada ou contas configuradas, a sala permanece aberta. Use uma chave
-aleatória de 32 a 256 caracteres ASCII sem espaços; para gerar 32 bytes em hexadecimal:
-
-```bash
-node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-```
-
-Para acesso individual, defina somente `ROOM_ACCOUNT_KEYS` no servidor como um objeto JSON que associa cada identificador de conta à sua chave aleatória exclusiva (32 a 256 caracteres ASCII sem espaços). Cada pessoa usa sua chave no campo de acesso existente. Sessões da mesma conta compartilham a cota de emissão de credenciais, inclusive nas publicações OBS individuais. Para remover ou trocar uma chave, atualize a configuração e reinicie o servidor. O reinício encerra as sessões existentes.
-
-Use HTTPS: o cookie da sessão é Secure, HttpOnly e SameSite=Strict por padrão.
-O app não salva a chave no localStorage; mantém uma sessão opaca no cookie.
-`ROOM_SESSION_TTL_SECONDS` define a duração absoluta de 60 a 86400 segundos
-(padrão: 28800, oito horas). Sair ou expirar invalida a sessão no servidor e
-desconecta os sockets associados. Reiniciar o servidor também encerra as sessões.
-Não há renovação automática nem prazo separado por inatividade.
-
-Atrás de proxy HTTPS, preserve o cabeçalho Host público e a mesma origem da página.
-Login/logout e Socket.IO verificam a origem; polling sem Origin exige o cabeçalho
-Fetch Metadata `Sec-Fetch-Site: same-origin`. `ROOM_COOKIE_SECURE=0` serve apenas
-para desenvolvimento HTTP local; mantenha o padrão `1` no uso HTTPS.
-
-A chave protege o acesso à sala, mídia e rotas privadas; não cria contas ou prova
-a identidade individual dos participantes. Para publicar pelo OBS, configure também
-um Bearer individual gerado no botão OBS da sala, sem copiar cookies. O caminho
-legado `/obs/NICK` pode usar um `OBS_PUBLISH_TOKEN` separado, sem vínculo com um PC.
-Com as contas ligadas (`ACCOUNTS=on`), a chave de acesso vem antes do login com nick e
-senha, e o endereço `/obs/NICK` usa a chave da conta como Bearer Token (o
-`OBS_PUBLISH_TOKEN` fica sem uso).
-Essas opções precisam estar presentes na versão do servidor que você executar;
-editar este checkout não atualiza uma imagem já publicada ou uma instalação em uso.
 
 ### Rodando em container (Docker / CasaOS)
 
@@ -340,26 +305,26 @@ que não compartilha o áudio (Firefox, Zen…) ou pra mandar uma cena montada n
 transmissão aparece na sala como mais uma pessoa ao vivo, com a etiqueta **OBS**, e
 todo mundo assiste normalmente (com som e volume próprios).
 
-No OBS, em **Configurações > Transmissão**:
+**Pelo app de desktop**, entre na sala e abra **Engrenagem → Conexão e testes → Transmitir pelo OBS Studio**. No OBS, selecione o serviço **WHIP**, copie o endereço local e o Bearer Token exibidos pelo app e use vídeo AV1 ou H.264 e áudio Opus. O app recebe a cena e o áudio mixado no próprio PC e encaminha os pacotes codificados para a publicação da sala. Mantenha o app aberto durante a transmissão.
+
+Quando você libera o gamepad nessa transmissão, o WSS tenta ligar o player do jogador diretamente ao seu PC. A troca ocorre após o primeiro quadro decodificado e a chegada do áudio, quando presente. O volume e o estado de mudo são preservados. Se a conexão cair ou você revogar o gamepad, o player reabre a transmissão do servidor. Os demais espectadores continuam pelo servidor. O intervalo de quadro-chave de 1 segundo no OBS ajuda quem entra no meio da transmissão.
+
+**Pelo navegador**, publique no endereço do servidor. No OBS, em **Configurações > Transmissão**:
 
 - **Serviço:** `WHIP`
 - **Servidor** e **Bearer Token:** entre na sala e clique em **OBS** no topo (abre
-  **Configurações > OBS e overlays**), que mostra os dois prontos pra copiar:
-  - sem contas (o padrão): um endereço e um token individuais, gerados pro seu
+  **Configurações > Conexão e testes**), que mostra os dois prontos pra copiar:
+  - um endereço e um token individuais, gerados pro seu
     participante. O token é obrigatório nesse endereço, vale por até 8 horas e é
     encerrado quando você sai da sala;
-  - com contas (`ACCOUNTS=on`): o endereço `https://<endereço-do-servidor>:3000/obs/SEU-NICK`
-    e a chave da sua conta, que não muda (configure uma vez). Ela diz que é você: não
-    passe pra ninguém.
 
 O identificador público da transmissão e o token privado são independentes. O nome
 não prova propriedade: apenas o participante vinculado à credencial pode usar as
 marcações locais e conceder comandos sobre aquela transmissão. Outros participantes
 não recebem o token na lista da sala, nas URLs ou no relatório de métricas.
 
-A credencial vale por até oito horas e é revogada ao sair da sala ou encerrar a
-sessão autenticada. Uma queda de transporte permite retomar por até dois minutos
-com o mesmo segredo e a mesma sessão da sala. A aba usa sessionStorage para conservar
+A credencial vale por até oito horas e é revogada ao sair da sala. Uma queda de transporte permite retomar por até dois minutos
+com o mesmo segredo. A aba usa sessionStorage para conservar
 esse segredo ao recarregar; **Sair** remove a cópia local. Após expiração, fechamento
 sem retomada ou reinício do servidor, copie a nova configuração e atualize o OBS.
 Isso revoga o vínculo/comandos e a autorização de sinalização; não promete encerrar
@@ -372,13 +337,7 @@ Para proteger essa publicação legada, configure `OBS_PUBLISH_TOKEN` no ambient
 gere 32 bytes em hexadecimal com
 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
 Use HTTPS e informe o segredo somente no campo Bearer Token, nunca na URL.
-A proteção cobre iniciar, atualizar e encerrar a sessão WHIP. Para autenticar sala e
-espectadores, configure também `ROOM_ACCESS_KEY`; o token OBS não substitui essa chave.
-Sem `OBS_PUBLISH_TOKEN`, o endereço legado não exige Bearer; com a sala protegida,
-também exige cookie, incompatível com o OBS usual. Use o endereço individual gerado
-na sala para publicar com credencial própria, sem copiar cookies. Em sala aberta,
-qualquer participante pode obter sua própria credencial; use `ROOM_ACCESS_KEY` para
-restringir a entrada. Esse vínculo é com a sessão da sala, sem cadastro de contas.
+A proteção cobre iniciar, atualizar e encerrar a sessão WHIP. A VPN controla quem alcança a sala.
 
 O coturn embutido também limita alocações simultâneas: `TURN_TOTAL_QUOTA` tem padrão
 128 e `TURN_USER_QUOTA`, 16 por credencial, limitado ao total. Uma conexão pode
@@ -393,9 +352,9 @@ ser validada.
 
 Depois é só **Iniciar transmissão**. Com a credencial individual vinculada à sala, a
 transmissão aparece na sua própria linha da lista (com a etiqueta OBS), sem criar outra
-pessoa. O botão **OBS** no topo da sala abre **Configurações > OBS e overlays**, com
+pessoa. O botão **OBS** no topo da sala abre **Configurações > Conexão e testes**, com
 esse endereço e o token prontos pra copiar, e testa se a porta UDP está liberada. Em
-**Configurações > Saída**, um codificador H.264, uns 6000 Kbps e intervalo de
+**Configurações > Saída**, um codificador AV1 ou H.264, uns 6000 Kbps e intervalo de
 quadro-chave de 1 s funcionam bem (o intervalo curto faz quem entra no meio começar a
 ver mais rápido).
 
@@ -412,86 +371,26 @@ Duas coisas precisam estar certas no servidor:
   preencha **Host** `3000`, **Container** `3478`, **Protocolo** `UDP` e salve. Se o site
   usa outra porta no host, use esse mesmo número na porta UDP.
 
-Quem assiste precisa de um navegador que decodifique **H.264**, o formato de vídeo
-que o OBS manda. Chrome, Edge e Safari decodificam. O Firefox (e derivados, como o Zen)
-depende do plugin OpenH264: se ele não estiver ativo, o quadro do OBS mostra um aviso
-explicando isso. Ative em `about:addons` > **Plugins** > **OpenH264** e reinicie o
-navegador, ou assista pelo Chrome/Edge.
+Quem assiste precisa de suporte WebRTC ao codec selecionado no OBS. Para AV1 via WHIP, use o OBS Studio 30.1 ou superior. A rota pelo servidor e a rota direta entregam o mesmo codec ao espectador.
 
 Por dentro: o servidor repassa a transmissão pra um [MediaMTX](https://github.com/bluenviron/mediamtx)
 embutido no container, e quem assiste puxa o vídeo dele (WHEP), pelo mesmo TURN. Ou
 seja, diferente do compartilhamento pelo navegador, o OBS envia uma cópia só, pro
 servidor, e o NAS manda uma cópia pra cada pessoa assistindo.
 
-## Contas e painel de administração
+## Painel de administração
 
-Por padrão a sala não tem contas: entra quem escolher um nick. Pra ligar as contas
-(só entra quem tem conta, e quem cria as contas é o dono do servidor), adicione no
-container a variável **`ACCOUNTS=on`** (no CasaOS: nas configurações do app, em
-variáveis de ambiente; no `docker-compose.yml`, descomente a linha `ACCOUNTS=on`).
+Defina `ADMIN_PASSWORD` no ambiente do servidor (no Compose, use o arquivo `.env`) e recrie o container. Abra `https://<endereço-do-servidor>:3000/admin` no navegador e informe a senha. A sessão dura oito horas ou até clicar em **Sair**. Para trocar a senha, altere a variável e recrie o container. Sem a variável, o painel fica desabilitado.
 
-1. **A conta Admin.** Na primeira vez que o servidor sobe com `ACCOUNTS=on`, ele cria a
-   conta **Admin** com uma senha aleatória e mostra no log: no CasaOS, nos **Logs** do app; no Docker, `docker logs web-screen-share`.
-   Procure a linha `Conta de administração criada: nick "Admin", senha: ...`. Ela só
-   aparece essa vez. Esqueceu? Suba o container com a variável
-   `ADMIN_RESET_PASSWORD=1`: uma senha nova aparece no log (depois tire a variável).
-2. **Entre com o Admin** na página da sala (nick `Admin` e a senha do log). No primeiro
-   acesso ela pede uma senha sua. A conta Admin não entra na sala (não aparece na lista,
-   não transmite nem assiste): ela abre direto o **painel de administração**.
-3. **No painel**, em **Contas**, crie a conta de cada pessoa: o nick e uma senha
-   provisória (o botão **Gerar** sugere uma fácil de digitar). Passe a senha pra
-   pessoa: no primeiro acesso ela troca por uma dela. Marque **Conta com
-   administração** pra quem também pode abrir o painel (pelo botão do escudo, no
-   rodapé da lista de pessoas) e **Usuário de testes** pra conta que a administração
-   controla de longe (veja [Usuário de testes](#usuário-de-testes)). Não dá pra repetir
-   nick (nem com maiúsculas diferentes).
+O painel permite configurar a sala, ver e desconectar participantes e limpar o chat. Os participantes entram em `/` com um nick. As configurações existentes em `settings.json` são reaproveitadas. Na atualização, as contas antigas e as variáveis `ACCOUNTS`, `ROOM_ACCOUNT_KEYS` e `ROOM_ACCESS_KEY` deixam de controlar a entrada. Quem alcança a sala entra por nick. Use HTTPS para acessar o painel. Para desenvolvimento HTTP local, defina `ROOM_COOKIE_SECURE=0`. Para OBS, copie o endereço e o token atuais na sala.
 
-O painel tem ainda:
+### Diagnósticos no painel
 
-- **Contas**: renomear, dar uma senha provisória nova (quem estava conectado com ela
-  sai), dar ou tirar a administração, marcar ou desmarcar **Testes** e apagar a conta
-  (a pessoa sai na hora). Só o dono (a conta Admin) marca administração e testes e
-  mexe nessas contas; as outras contas com administração criam e cuidam só das contas
-  normais (e renomeiam a própria), pra ninguém sair criando administradores.
-- **Na sala agora**: quem está na sala, transmitindo ou na voz, e o **Desconectar**.
-- **Sala**: o nome da sala (aparece na entrada e no topo da lista), um recado na tela
-  de entrada, quem pode transmitir (todo mundo ou só contas com administração), o
-  controle remoto e a transmissão pelo OBS (ligados ou desligados), um limite de
-  pessoas e quantas mensagens o chat guarda, e o botão **Apagar o histórico do chat**.
-  Tudo vale na hora e fica salvo.
-- **Minha conta** (trocar a sua senha) e **Servidor** (versão, desde quando está
-  ligado, contas e pessoas na sala).
+Em **Servidor e contêiner**, o painel registra uma amostra a cada cinco segundos e mostra os últimos dez minutos, inclusive CPU e memória do processo WSS. No Docker Linux, apresenta também uso e limites informados pelos cgroups e tráfego das interfaces do contêiner.
 
-Cada pessoa troca o próprio **nick** e a **senha** em **Configurações > Perfil**, no
-cartão **Conta**. Nick que já existe não salva: aparece o aviso em
-vermelho. A sessão fica lembrada no navegador/app: da próxima vez entra direto, até
-clicar em **Sair**.
+Em **Configurações → Log em tempo real → Relatar problema**, no app ou no navegador, o participante pode descrever uma falha, conferir os campos e enviar um único relato. A opção de análise automática começa desligada e fica salva por servidor neste navegador ou perfil do app. Quando ativada, envia métricas das conexões a cada dez segundos, configurações de vídeo, versão e falhas detectadas. Desligá-la remove as métricas ao vivo e cancela os próximos envios. Relatos já recebidos seguem o prazo do servidor.
 
-### Usuário de testes
-
-Uma conta marcada pelo dono como **Usuário de testes** é, pra quem usa, uma conta
-normal (no primeiro acesso pede a senha nova, sem selo nem aviso nenhum). Só quem tem
-administração vê, na lista de pessoas, o selo **Teste** e um botão de controlar ao lado
-dela. Esse botão abre um painel com o estado dela (app ou navegador, transmitindo, na
-voz) e os comandos, executados na sala dela como se ela tivesse clicado:
-
-- **Transmissão** (só com ela no app): a lista das telas e janelas, só pelo nome (sem
-  prévia), com ou sem o som do PC ou só o som do programa; começar e parar. No
-  navegador não dá: quem escolhe a tela é a própria pessoa.
-- **Controle remoto**: dar o controle (teclado, mouse, gamepad) pra alguém da sala e
-  tirar, como no botão 🎮 dela (precisa estar transmitindo a tela inteira pelo app).
-- **Voz**: entrar e sair, ligar e desligar o microfone e o som.
-
-O servidor só repassa os comandos dessa lista, confere na hora que quem manda tem
-administração e que o destino é de testes, e anota cada comando no log do servidor; no
-app de quem é de testes, cada comando aparece no **Log** (categoria **Usuário de
-testes**), pra depuração. Uma conta de testes que também tem administração não vê o
-próprio selo nem controla a si mesma.
-
-As contas e as configurações ficam na pasta de dados (`accounts.json` e
-`settings.json`; as senhas só como hash). Tirando a variável `ACCOUNTS` (ou deixando
-vazia), a sala volta a ser só com nick, sem senha nem painel; as contas continuam
-guardadas pra quando ligar de novo.
+O administrador vê as conexões em **Transmissões** e consulta **Erros agrupados** por tipo, cliente e versão. Cada ocorrência traz as configurações e até um minuto de amostras disponíveis. O WSS guarda até 500 relatos em `diagnostics.json` na pasta de dados, por sete dias por padrão. O painel permite escolher 1, 7 ou 30 dias ou apagar o histórico. Descrições manuais incluem o texto digitado pelo participante.
 
 ## Uso
 
@@ -557,9 +456,7 @@ da GPU. O padrão permanece Completo.
 
 1. Todo mundo abre o endereço do servidor (ex.: `https://<IP-ou-hostname>:3000/`),
    digita um nick e clica em **Entrar**. Se o nick já estiver em uso, o servidor
-   acrescenta um número (ex.: `Ana (2)`). Com as contas ligadas (`ACCOUNTS=on`), entra
-   com o nick e a senha da sua conta (veja
-   [Contas e painel de administração](#contas-e-painel-de-administração)).
+   acrescenta um número (ex.: `Ana (2)`).
 2. Pra transmitir, clique em **Compartilhar tela** no topo e escolha a tela/janela no
    prompt do navegador. Seu quadro aparece com a etiqueta **AO VIVO**, o tempo no ar e
    um contador de quantas pessoas estão assistindo (passe o mouse nele pra ver quem).
@@ -687,7 +584,7 @@ da GPU. O padrão permanece Completo.
     no chat, nos quadros, nos rabiscos e no mouse, e ficam salvas no navegador como o
     nick: na próxima vez elas já entram junto. As fotos ficam só na memória do servidor
     enquanto a pessoa está na sala.
-14. **Mouse e efeitos** (aba das **Configurações**): deixe o seu
+14. **Mouse e efeitos** (em **Configurações > Perfil**): deixe o seu
     mouse e as suas marcações do seu jeito, com uma **prévia ao vivo** pra testar do
     mesmo jeito que numa transmissão (mexer, clicar, rodinha, Alt + clique, Alt +
     arrastar, com Shift a flecha) e **pacotes prontos** (Neon,
@@ -734,16 +631,10 @@ que o navegador não faz:
 
 - **Configurações** (a engrenagem ao lado do seu nome, clique no seu avatar/nome ou
   **Ctrl+,**): abre como um popup por cima da sala (não é uma janela a mais: fecha no
-  ×, no **Esc** ou clicando fora), com **Perfil** (foto e cor, com o mesmo seletor da sala),
-  **Mouse e efeitos** (o mesmo editor do perfil, com imagem própria), **Ponteiro e
-  controle** (ver o mouse de quem assiste, sons, quem pode controlar), **Aplicativo** (modo de tela cheia, aceleração de hardware, marcações na
-  tela, registro de atividade, versões e **Verificar atualização**), **Conexão e
-  testes** (endereço do servidor e o teste de conexão), **Experimental** (opções de
-  comandos e vídeo para comparar entre PCs), **OBS e overlays** (endereço
-  do OBS e o monitor das marcações), **Log em tempo real** (quem entrou e saiu,
+  ×, no **Esc** ou clicando fora), com **Perfil** (foto, cor, estilo do nick, moldura, mouse e efeitos), **Aplicativo** (ponteiro, sons, gamepad, desempenho, tela cheia e monitor das marcações do OBS), **Conexão e testes** (servidor e publicação OBS), **Experimental** (comandos e vídeo) e **Log em tempo real** (relatos, teste de conexão, ambiente e versões, registro de atividade, quem entrou e saiu,
   transmissões, conexões e erros, com busca, filtros e exportação em JSON; nada de
   conteúdo do chat ou da mídia) e **Atalhos**. A sala continua conectada enquanto
-  você mexe; servidor, tela cheia e aceleração valem depois de **Reiniciar e aplicar**.
+  você mexe; servidor, tela cheia e aceleração valem depois de **Salvar e reiniciar**.
 - **Motor nativo experimental** (Configurações → Experimental): no app Windows x64,
   permite compartilhar uma janela em H.264/720p, com proporção preservada, um
   espectador e sem áudio do sistema. A opção fica desligada por padrão; salve
@@ -794,7 +685,7 @@ que o navegador não faz:
   não gastar internet à toa; pra ver como ela está chegando, clique em **Assistir** ao
   lado do seu nome, e o quadro "Você" mostra a etiqueta **na sua tela**.)
   Pra escolher o monitor que o OBS está capturando, ou desligar, use **Monitor das
-  marcações do OBS** em **Configurações > OBS e overlays** (o botão **OBS** da sala abre
+  marcações do OBS** em **Configurações > Aplicativo** (o botão **OBS** da sala abre
   ali), e o app lembra a escolha.
   As marcações caem no lugar certo quando a cena do OBS é a captura do monitor ocupando
   a tela toda (o normal); com a cena recortada ou montada, elas ficam na proporção da
@@ -826,11 +717,11 @@ que o navegador não faz:
   uma setinha pra cima, pra baixo ou pros lados, com Shift + rodinha ou o touchpad), ou
   o estilo que ela escolheu. Quem assiste liga
   e desliga o próprio mouse em cada transmissão, no botão da setinha em cima dela; o
-  botão embaixo da lista de pessoas abre **Configurações > Ponteiro e controle**, onde quem
+  botão embaixo da lista de pessoas abre **Configurações > Aplicativo**, onde quem
   transmite desliga o mouse de todo mundo.
 - **Controle remoto** (desligado por padrão): enquanto você transmite, cada pessoa da
   lista da sala ganha um botão 🎮; clique nele e confirme em **Permitir?** (uma pessoa
-  por vez; dá também por **Configurações > Ponteiro e controle**). A pessoa ganha o botão 🎮 em
+  por vez; dá também por **Configurações > Aplicativo**). A pessoa ganha o botão 🎮 em
   cima da sua transmissão, e o 🎮 dela na sua lista fica aceso (clicar nele tira o
   controle). Com ele ligado, o mouse dela mexe no seu mouse de verdade
   (clique, botão direito, rodinha) e, com o mouse dela em cima da transmissão, o
@@ -946,8 +837,8 @@ install && npm start`.
 - Ideias pro futuro: veja [IDEIAS.md](IDEIAS.md).
 - Desenvolvimento do app (rodar do código, testes, opções de diagnóstico): veja
   [DEVELOPMENT.md](DEVELOPMENT.md).
-- Para registrar uma partida, use **Configurações → Conexão → Copiar métricas da
-  sessão** no app. No navegador, use **Copiar métricas** no rodapé da sala. Copia JSON
+- Para registrar uma partida, use **Configurações → Conexão e testes → Copiar métricas da
+  sessão** no app ou no navegador. Copia JSON
   com FPS, codec, encoder/decoder quando informados, filas, rota e RTT dos comandos;
   sem nomes, endereços ou comandos pressionados. É uma fotografia das estatísticas
   locais, não uma medição do botão até a imagem. Não inicia transmissão ou testes

@@ -14,15 +14,11 @@ const busyError = () => Object.assign(Error('Monitor de mídia ocupado'), { code
 const pathIdFor = (nick) => PATH_PREFIX + Buffer.from(nick, 'utf8').toString('hex');
 const nickFor = (pathId) => Buffer.from(pathId.slice(PATH_PREFIX.length), 'hex').toString('utf8');
 
-// authorizePublish(req, nick): com contas, de quem é a chave do OBS ("Bearer Token" no
-// WHIP): devolve { nick } da conta, ou { status, error }. authorizeView(req): quem
-// assiste está com uma sessão aberta? Sem as duas (contas desligadas), entra quem
-// alcança a página, como antes.
 function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStreamsChanged,
   credentialLimit = (_req, _res, next) => next(), publicationAuth = (_req, _res, next) => next(),
   publisherAuth = (_req, res) => res.status(401).end(), publicationInfo = () => null,
   onStreamUpdated = () => {}, httpClient = createObsHttp(),
-  authorizePublish = (req, nick) => ({ nick }), authorizeView = () => true }) {
+  authorizePublish = (req, nick) => ({ nick }) }) {
   const sdpBody = express.text({ type: ['application/sdp', 'application/trickle-ice-sdpfrag'], limit: '512kb' });
   // A API do MediaMTX exige usuário e senha (gerados pelo entrypoint a cada início).
   const apiHeaders = apiAuth ? { Authorization: `Basic ${Buffer.from(apiAuth).toString('base64')}` } : {};
@@ -86,10 +82,6 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
       res.status(404).end();
       return;
     }
-    if (!authorizeView(req)) {
-      res.status(401).type('text/plain').send('Entre com a sua conta');
-      return;
-    }
     forward(req, res, `/${req.params.pathId}/whep`);
   });
 
@@ -112,10 +104,6 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     const { pathId } = req.params;
     if (!PATH_ID.test(pathId)) {
       res.status(404).end();
-      return;
-    }
-    if (!authorizeView(req)) {
-      res.status(401).end();
       return;
     }
     res.set('Cache-Control', 'no-store');
@@ -179,7 +167,7 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     const removed = [];
     for (const pathId of live) {
       if (streams.has(pathId)) continue;
-      const info = ownerInfo(pathId);
+      const info = pathId.startsWith('pub_') ? publicationInfo(pathId) : null;
       const stream = { id: `obs:${pathId}`, name: info?.name || (pathId.startsWith('obs_') ? cleanName(nickFor(pathId)) : '') || 'OBS',
         ownerId: info?.ownerId || null, sharing: true, kind: 'obs', stream: pathId, startedAt: Date.now() };
       streams.set(pathId, stream);
@@ -192,11 +180,6 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     }
     if (added.length || removed.length) onStreamsChanged(added, removed);
   }
-
-  // De quem é a transmissão: pub_ pela credencial individual; obs_ (o endereço antigo) só
-  // com contas, pela conta do nick (a chave dela abriu o endereço).
-  const ownerInfo = (pathId) => (pathId.startsWith('pub_') ? publicationInfo(pathId)
-    : pathId.startsWith('obs_') ? publicationInfo(pathId, cleanName(nickFor(pathId))) : null);
 
   let polling = false;
   async function tick() {
@@ -218,12 +201,10 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
       }
     },
     close() { closed = true; clearInterval(timer); httpClient.close(); },
-    // Alguém entrou ou saiu: as transmissões pelo endereço antigo (com contas) acham o dono de novo.
-    refreshOwners() { for (const pathId of streams.keys()) this.refreshOwner(pathId); },
     refreshOwner(pathId) {
       const stream = streams.get(pathId);
-      if (!stream) return;
-      const info = ownerInfo(pathId);
+      if (!stream || !pathId.startsWith('pub_')) return;
+      const info = publicationInfo(pathId);
       const ownerId = info?.ownerId || null, name = info?.name || stream.name;
       if (stream.ownerId === ownerId && stream.name === name) return;
       stream.ownerId = ownerId; stream.name = name; onStreamUpdated(stream);

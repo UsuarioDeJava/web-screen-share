@@ -63,7 +63,7 @@ async function until(check, label, timeout = 12000) {
     await until(() => inPanel('document.getElementById("profile-name").textContent === "Teste Perfil"'), 'perfil integrado');
     assert.equal(await inRoom('document.querySelectorAll("dialog[open]").length'), 0);
     console.log('OK: engrenagem ao lado do usuário, links antigos ocultos e perfil na página única.');
-    await inPanel('document.getElementById("tab-pointer").click();document.getElementById("gamepad-install").click()');
+    await inPanel('document.getElementById("tab-settings").click();document.getElementById("gamepad-install").click()');
     assert.equal(await inPanel('document.getElementById("gamepad-install").disabled'), true);
     await until(()=>inPanel('document.getElementById("gamepad-setup-status").textContent.includes("Driver e DLL preparados")'), 'preparação pelo IPC');
     assert.equal(setupCalls, 1);
@@ -73,7 +73,7 @@ async function until(check, label, timeout = 12000) {
 
     await inPanel('window.desktopSettings.roomAction({type:"color",color:"#12ab34"})');
     assert.equal(await inRoom('localStorage.getItem("wss-color")'), '#12ab34');
-    await inPanel('document.getElementById("tab-pointer").click()');
+    await inPanel('document.getElementById("tab-settings").click()');
     // O seu ponteiro liga/desliga em cada transmissão (botão em cima dela); aqui fica o dos outros.
     await until(() => inPanel('!document.getElementById("show-cursors").disabled'), 'ponteiro');
     await inPanel('document.getElementById("show-cursors").click();');
@@ -102,7 +102,7 @@ async function until(check, label, timeout = 12000) {
     assert.equal(state.photo, null);
     console.log('OK: foto enviada e removida pelo fluxo original do servidor e armazenamento da sala.');
 
-    await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").open=true; Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle de teste",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0,0,0,0]}]})');
+    await inPanel('document.getElementById("tab-settings").click(); Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle de teste",mapping:"standard",buttons:Array.from({length:17},(_,i)=>({value:i===1?1:0})),axes:[0,0,0,0]}]})');
     await until(() => inPanel('document.querySelectorAll("#gamepad-config input[type=number]").length===1'), 'editor do gamepad');
     await until(() => inPanel('document.querySelectorAll(".gpad-button").length===17 && document.querySelector(".gpad-device").textContent==="Controle de teste"'), 'visualização do gamepad');
     await inPanel('const gamepadField=document.querySelector(".gpad-output-0 select"); gamepadField.value="button:1"; gamepadField.dispatchEvent(new Event("change"));');
@@ -135,7 +135,7 @@ async function until(check, label, timeout = 12000) {
     await until(async () => (await inPanel('window.desktopSettings.readGamepadProfiles()'))['Controle de teste'].extraButtons[0].source===19, 'detectar botão extra B19');
     await until(() => inPanel('document.querySelector(".gamepad-diagnostic p").textContent.includes("RB")'), 'extra remapeado antes de enviar');
     if (outputPath) {
-      await inPanel('document.getElementById("tab-pointer").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      await inPanel('document.getElementById("tab-settings").click(); document.getElementById("gamepad-config").scrollIntoView({block:"start"}); new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(outputPath, 'gamepad-settings.png'), (await panel.webContents.capturePage()).toPNG());
       await inPanel('document.querySelector(".gamepad-extras").scrollIntoView({block:"start"});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(outputPath, 'gamepad-extras.png'), (await panel.webContents.capturePage()).toPNG());
@@ -185,7 +185,7 @@ async function until(check, label, timeout = 12000) {
     }
     console.log('OK: gamepad simulado detectado, remapeado, testado e salvo no perfil nativo compartilhado com a sala.');
 
-    await inPanel('document.getElementById("tab-connection").click()');
+    await inPanel('document.getElementById("tab-log").click()');
     await until(() => inPanel('!document.getElementById("run-diagnostics").disabled'), 'diagnóstico disponível');
     await inPanel('document.getElementById("run-diagnostics").click()');
     await until(() => inPanel('document.getElementById("diagnostic-output").textContent.includes("Fim do teste.")'), 'diagnóstico concluído');
@@ -193,11 +193,12 @@ async function until(check, label, timeout = 12000) {
     assert.equal(await inRoom('document.getElementById("app").hidden'), false);
     await inPanel('document.getElementById("tab-shortcuts").click()');
     await until(() => inPanel('document.querySelectorAll("#room-shortcuts dt").length > 5'), 'atalhos da sala');
-    await inPanel('document.getElementById("tab-settings").click();document.getElementById("check-update").click()');
+    await inPanel('document.getElementById("tab-log").click();document.getElementById("environment").closest("details").open=true;document.getElementById("check-update").click()');
     await until(() => inPanel('document.getElementById("update-status").textContent.includes("código-fonte")'), 'verificação de versões original');
     console.log('OK: diagnóstico original e atalhos dentro da página única, sem desconectar.');
-    await inPanel('document.getElementById("tab-obs").click()');
+    await inPanel('document.getElementById("tab-connection").click()');
     await until(() => inPanel('document.getElementById("obs-url").value.includes("/obs/Teste%20Perfil")'), 'endereço OBS');
+    await inPanel('document.getElementById("tab-settings").click()');
     await until(() => inPanel('!document.getElementById("obs-monitor").disabled'), 'monitores disponíveis');
     const monitors = await inPanel('window.desktopSettings.readRoom("obs")');
     assert.ok(monitors.displays.length > 0);

@@ -78,6 +78,12 @@ select.admin-input { padding-right: 8px; }
 .admin-facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; margin: 4px 0 14px; font-size: 13px; }
 .admin-facts dt { color: var(--muted); }
 .admin-facts dd { margin: 0; }
+.diagnostic-scroll { overflow-x: auto; margin: 12px 0; max-height: 25rem; }
+.diagnostic-chart { width: 100%; height: auto; display: block; }
+.diagnostic-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.diagnostic-table td, .diagnostic-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.admin-panel-errors details, .admin-panel-server details { margin: 12px 0; }
+.admin-panel-errors .admin-input { margin: 6px 12px 6px 0; }
 @media (max-width: 640px) {
   .admin-create { grid-template-columns: 1fr; }
   .admin-title { font-size: 20px; }

@@ -54,6 +54,8 @@
       "pages/**",
       "gamepad.js",
       "gamepad-setup.js",
+      "obs-local.js",
+      "obs-rtp.js",
       "native-video.js",
       "native-video-host.cjs",
       "native/bin/native-video-worker.exe"

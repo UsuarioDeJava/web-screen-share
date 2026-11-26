@@ -79,7 +79,7 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 let input; // mouse e teclado de verdade (criado na primeira vez que alguém controla)
 const gamepads = createGamepads({ directory: path.join(app.getPath('userData'), 'gamepad'), onFeedback(value) {
   const session = controlSessions.get(value.id);
-  if (controller && overlay && !overlay.isDestroyed() && controlPeople.get(value.id)?.gamepad && session && !nativeInputBudget.blocked(value.id)) {
+  if (controller && ((overlay && !overlay.isDestroyed()) || obsLocal.active()) && controlPeople.get(value.id)?.gamepad && session && !nativeInputBudget.blocked(value.id)) {
     toPage('desktop:gamepad-feedback', { from: value.id, session, strong: value.strong, weak: value.weak, duration: value.duration });
     commandReceiver.event('feedback',{from:value.id,session,strong:value.strong,weak:value.weak,duration:value.duration});
   }
@@ -123,12 +123,19 @@ const updates = createUpdates({
   icon: ICON,
 });
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
-// Usuário de testes: a tela/janela que um administrador escolheu pela sala. A próxima
-// transmissão (logo em seguida) usa ela no lugar de abrir o seletor.
-let testerChoice = null; // { choice, at }
 let picked = null; // última escolha do seletor: { kind, displayId }
 let shareWanted = false;
 let serverLoadFailed = false; // a última tentativa de abrir o servidor falhou
+let diagnosticOrigin = null;
+let pendingDiagnosticFault = null;
+ipcMain.handle('desktop:diagnostic-fault', (event, enabled) => {
+  if (!fromServer(event)) return null;
+  if (enabled !== true || diagnosticOrigin !== config.server) pendingDiagnosticFault = null;
+  diagnosticOrigin = enabled === true ? config.server : null;
+  const result = pendingDiagnosticFault;
+  pendingDiagnosticFault = null;
+  return result;
+});
 let failure = null; // { message, timer }: aviso de falha esperando a página de erro carregar
 const declined = new Set(); // certificados recusados nesta sessão
 let pendingPreferences = { ...activePreferences };
@@ -269,7 +276,7 @@ function createMainWindow() {
   });
   webContents.on('did-start-navigation', (details) => {
     if (!details.isMainFrame || details.isSameDocument) return;
-    nativeVideo.stop();
+    obsLocal.stop();nativeVideo.stop();
     lastInputBatch.delete(webContents);
     updates.pageGone();
     roomSettings?.cancel();
@@ -280,7 +287,7 @@ function createMainWindow() {
     if (borderlessFullscreen) borderlessFullscreen.exit();
     setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
-  webContents.on('render-process-gone', () => { nativeVideo.stop(); setKeyCapture(false); setController(null); });
+  webContents.on('render-process-gone', () => { obsLocal.stop();nativeVideo.stop(); setKeyCapture(false); setController(null); });
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
     serverLoadFailed = true;
@@ -317,6 +324,8 @@ function createMainWindow() {
     if (!ok) showSetup('Esse endereço abriu, mas não é um servidor do Web Screen Share.');
   });
   webContents.on('render-process-gone', (event, details) => {
+    if (diagnosticOrigin === config.server && ['crashed','oom','abnormal-exit'].includes(details.reason))
+      pendingDiagnosticFault = { code:'renderer_crash', at:Date.now() };
     shareWanted = false;
     log('error', `Processo da interface encerrado: ${details.reason}, código ${details.exitCode}.`, 'error');
     if (borderlessFullscreen) borderlessFullscreen.exit();
@@ -325,7 +334,11 @@ function createMainWindow() {
     if (details.reason !== 'clean-exit') openServer();
   });
   webContents.on('before-input-event', (event, input) => handleShortcut(event, input));
-  mainWindow.on('unresponsive', () => log('error', 'A interface deixou de responder.', 'warn'));
+  mainWindow.on('unresponsive', () => {
+    if (diagnosticOrigin === config.server && isServerUrl(webContents.getURL()))
+      pendingDiagnosticFault = { code:'interface_stalled', at:Date.now() };
+    log('error', 'A interface deixou de responder.', 'warn');
+  });
   mainWindow.on('responsive', () => log('system', 'A interface voltou a responder.'));
   webContents.on('console-message', (event) => {
     if (event.level === 'warning' || event.level === 'error') {
@@ -342,6 +355,7 @@ function createMainWindow() {
     saveConfig();
   });
   mainWindow.on('closed', () => {
+    obsLocal.stop();
     if (settingsPanel) settingsPanel.close();
     mainWindow = null;
     borderlessFullscreen = null;
@@ -445,6 +459,31 @@ function saveSettings(value) {
 }
 
 // ---------- seletor de tela/janela ----------
+function obsPublication(value){
+  if(!value || !/^pub_[a-f0-9]{32}$/.test(value.path) || !/^[a-f0-9]{64}$/.test(value.token))throw Error('Publicação OBS inválida.');
+  return {path:value.path,token:value.token,url:config.server+'/obs-publish/'+value.path.slice(4),expiresAt:Number(value.expiresAt)||0};
+}
+const obsLocal=require('./obs-local').createObsLocal({
+  fetch:(url,options)=>mainWindow.webContents.session.fetch(url,options),
+  renew:async()=>{
+    const wc=mainWindow?.webContents;
+    if(!wc || !isServerUrl(wc.getURL()))return null;
+    return obsPublication(await wc.executeJavaScript('window.wssRoomSettings.read("obs-publication")'));
+  }
+});
+ipcMain.handle('desktop:obs-local',async(event,value)=>{
+  if(!fromServer(event))throw Error('Origem não autorizada.');
+  if(!value){obsLocal.stop();return null;}
+  const publication=obsPublication(value);
+  const crypto=require('node:crypto');
+  if(!config.obsLocalSecret){config.obsLocalSecret=crypto.randomBytes(32).toString('hex');saveConfig();}
+  const localToken=crypto.createHmac('sha256',config.obsLocalSecret).update(config.server).digest('hex');
+  return obsLocal.configure({...publication,localToken});
+});
+ipcMain.handle('desktop:obs-direct',(event,value)=>{
+  if(!fromServer(event))throw Error('Origem não autorizada.');
+  return obsLocal.direct(value);
+});
 const nativeVideo = createNativeVideo({ pickSource, enabled: () => pendingPreferences.nativeVideo,
   notify: value => { if(mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:native-video',value); } });
 ipcMain.handle('desktop:native-video-caps', event => fromServer(event) ? nativeVideo.caps() : {available:false,enabled:false});
@@ -452,9 +491,6 @@ ipcMain.handle('desktop:native-video-prepare', event => { if(!fromServer(event))
 ipcMain.handle('desktop:native-video-command', (event,value) => { if(!fromServer(event))throw Error('Origem não autorizada.');return nativeVideo.command(value); });
 
 function pickSource(options = {}) {
-  const preset = testerChoice && Date.now() - testerChoice.at < 20000 ? testerChoice.choice : null;
-  testerChoice = null;
-  if (preset) return Promise.resolve(options.nativeWindow && preset.kind !== 'window' ? null : preset);
   if (picker) {
     picker.win.focus();
     return Promise.resolve(null);
@@ -532,38 +568,6 @@ ipcMain.handle('picker:sources', async (event) => {
       icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
     };
   });
-});
-
-// Usuário de testes: as telas e janelas só pelo nome (sem prévia), e a escolhida.
-// (às vezes a busca volta vazia, como no seletor: tenta mais umas vezes)
-async function testerSources(wanted = null) {
-  for (let i = 0; ; i += 1) {
-    const own = new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
-    const sources = (await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false }))
-      .filter((s) => !own.has(s.id));
-    if (i >= 5 || (sources.length && (!wanted || sources.some((s) => s.id === wanted)))) return sources;
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-}
-ipcMain.handle('desktop:tester-sources', async (event) => {
-  if (!fromServer(event)) return [];
-  const displays = screen.getAllDisplays();
-  return (await testerSources()).map((s) => {
-    const kind = s.id.startsWith('screen:') ? 'screen' : 'window';
-    return { id: s.id, kind, name: kind === 'screen' ? screenLabel(s, displays) : s.name };
-  });
-});
-ipcMain.handle('desktop:tester-preselect', async (event, choice) => {
-  if (!fromServer(event) || !choice || typeof choice.id !== 'string') return { error: 'Origem não autorizada.' };
-  const source = (await testerSources(choice.id)).find((s) => s.id === choice.id);
-  if (!source) return { error: 'Essa tela ou janela não existe mais. Atualize a lista.' };
-  const kind = source.id.startsWith('screen:') ? 'screen' : 'window';
-  testerChoice = { at: Date.now(), choice: { source, kind, displayId: source.display_id, audio: Boolean(choice.audio),
-    windowAudio: kind === 'window' && choice.windowAudio === true && windowAudio.supported } };
-  return { ok: true, kind, name: source.name };
-});
-ipcMain.on('desktop:tester-log', (event, message, level) => {
-  if (fromServer(event) && typeof message === 'string') log('test', message.slice(0, 400), level === 'warn' ? 'warn' : 'info', 'in');
 });
 
 ipcMain.on('picker:choose', (event, choice) => {
@@ -1074,7 +1078,13 @@ ipcMain.handle('desktop:caps', (event) => {
 ipcMain.handle('desktop:overlay-state', (event) => fromServer(event) ? overlayState() : null);
 
 ipcMain.on('desktop:control-state', (event, data) => {
-  if (fromServer(event)) setController(data && data.on && pendingPreferences.overlay && overlay ? data : null);
+  if(!fromServer(event))return;
+  if(data?.on && pendingPreferences.overlay && overlay) return setController(data);
+  if(data?.on && obsLocal.active() && Array.isArray(data.people)) {
+    const people=data.people.filter(p=>p.devices?.gamepad).map(p=>({...p,devices:{gamepad:true,keyboard:false,mouse:false}}));
+    if(people.length)return setController({...data,people});
+  }
+  setController(null);
 });
 // "Só o som deste programa": a página pergunta se ele está vindo (e para no fim).
 ipcMain.handle('desktop:window-audio', (event) => (fromServer(event) ? windowAudio.status() : { wanted: false }));
@@ -1113,7 +1123,8 @@ function receiveControlReset(msg) {
 }
 let lastGamepadError = 0;
 function receiveControl(msg) {
-  if (!controller || !msg || !overlay || overlay.isDestroyed()) return;
+  if (!controller || !msg) return;
+  if ((!overlay || overlay.isDestroyed()) && !(msg.kind==='gamepad' && obsLocal.active())) return;
   const allowed = controlPeople.get(msg.from);
   const kind = gamepadModel.kindDevice(msg.kind);
   if (!allowed || !kind || !allowed[kind]) return;
@@ -1462,7 +1473,7 @@ if (!app.requestSingleInstanceLock()) {
 
   let inputQuitReady = false;
   app.on('before-quit', event => {
-    nativeVideo.stop();
+    obsLocal.stop();nativeVideo.stop();
     if (process.platform !== 'linux' || !input?.settled || inputQuitReady) return;
     event.preventDefault();
     inputQuitting = true;

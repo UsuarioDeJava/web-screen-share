@@ -101,8 +101,10 @@ async function until(check, label) {
 
     const invalid = await inPanel('window.desktopSettings.save({server:"javascript:alert(1)"})');
     assert.equal(invalid.ok, false);
-    await inPanel('document.getElementById("tab-settings").click(); document.getElementById("hardware").checked=false;document.getElementById("log-limit").value="500";document.getElementById("settings-form").requestSubmit();');
-    await until(() => inPanel('document.getElementById("status").textContent.startsWith("Salvo." )'), 'salvar preferências');
+    await inPanel('document.getElementById("tab-settings").click(); document.getElementById("hardware").checked=false;document.getElementById("log-limit").value="500";document.getElementById("hardware").dispatchEvent(new Event("input"));');
+    assert.equal(await inPanel('document.getElementById("app-save").textContent'), 'Salvar e reiniciar');
+    // Valida a persistência separadamente para manter o processo de teste em execução.
+    await inPanel('window.desktopSettings.read().then(s=>window.desktopSettings.save({server:s.server,preferences:{...s.preferences,hardwareAcceleration:false,logLimit:500}}))');
     data = await state();
     assert.equal(data.active.hardwareAcceleration, true);
     assert.equal(data.preferences.hardwareAcceleration, false);

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Administração · Web Screen Share</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/admin.css">
+  <script defer src="/js/diagnostic-fields.js"></script>
+  <script defer src="/js/ice-servers.js"></script>
+  <script defer src="/js/admin-review.js"></script>
+  <script defer src="/js/admin-diagnostics.js"></script>
+  <script defer src="/js/admin.js"></script>
+</head>
+<body>
+  <section id="login" class="login">
+    <form id="admin-login" class="login-card">
+      <h1>Administração</h1>
+      <label for="password">Senha do painel</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-primary">Entrar</button>
+      <p id="error" class="login-error" role="alert"></p>
+    </form>
+  </section>
+  <div id="admin" class="admin" hidden></div>
+</body>
+</html>

@@ -13,7 +13,7 @@ services:
         protocol: udp
     environment:
       PUBLIC_PORT: ""
-      ACCOUNTS: ""
+      ADMIN_PASSWORD: ""
     volumes:
       - type: bind
         source: /DATA/AppData/$AppID/data
@@ -28,16 +28,12 @@ services:
             pt_BR: >-
               Só se você abre o app por um proxy reverso em outra porta: a porta em que
               o app está publicado no servidor (ex.: 3000), pro TURN ir direto nela
-        - container: ACCOUNTS
+        - container: ADMIN_PASSWORD
           description:
             en_US: >-
-              "on" turns on accounts: only people with an account you create in the admin
-              panel can join (the Admin password is printed in the app's logs). Empty: anyone
-              joins with a nickname
+              Password for the web panel at /admin. Leave empty to disable the panel.
             pt_BR: >-
-              "on" liga as contas: só entra quem tem conta, criada por você no painel de
-              administração (a senha do Admin aparece nos logs do app). Vazio: entra quem
-              escolher um nick
+              Senha do painel web em /admin. Deixe vazia para desabilitar o painel.
       ports:
         - container: "3000"
           description:

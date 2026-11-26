@@ -1,6 +1,10 @@
 // Adaptador para os controles da página já conectada. Usa os mesmos eventos e
 // armazenamento do perfil da sala, sem criar outra conexão ou alterar o servidor.
 async function readRoomSettings(section) {
+  if (section === 'obs-overlay') {
+    const info = await window.wssDesktop?.displays?.();
+    return { overlaySupported:Boolean(info?.overlay), displays:info?.displays || [], obsDisplay:info?.obsDisplay || 'off' };
+  }
   if (window.wssRoomSettings?.version === 1) return window.wssRoomSettings.read(section);
   const $ = (id) => document.getElementById(id);
   if (!$('app') || $('app').hidden || !$('me-name')?.textContent.trim()) {
@@ -244,6 +248,12 @@ function validateRoomAction(value) {
   // Estilo do mouse e das marcações: só valores do catálogo (o resto vira o padrão).
   if (value.type === 'style' && value.style && typeof value.style === 'object' && !Array.isArray(value.style)) return { type: value.type, style: normalizeStyle(value.style) };
   if (value.type === 'cursor' && ['share', 'show'].includes(value.field) && typeof value.enabled === 'boolean') return { type: value.type, field: value.field, enabled: value.enabled };
+  if (value.type === 'report-preview') return { type:value.type };
+  if (value.type === 'profile-look') return { type:value.type, look:require('./shared/profile-look').normalize(value.look) };
+  if (value.type === 'report-consent' && typeof value.enabled === 'boolean') return { type:value.type, enabled:value.enabled };
+  if (value.type === 'report-send' && typeof value.id === 'string' && /^[0-9a-f-]{36}$/i.test(value.id)
+    && typeof value.description === 'string' && value.description.trim() && value.description.length <= 600)
+    return { type:value.type, id:value.id, description:value.description };
   if (value.type === 'sounds' && typeof value.enabled === 'boolean') return { type: value.type, enabled: value.enabled };
   if (value.type === 'experiment' && typeof value.key === 'string' && Object.hasOwn(require('./shared/experiments').DEFAULTS, value.key) && typeof value.enabled === 'boolean') return { type: value.type, key: value.key, enabled: value.enabled };
   if (value.type === 'obs-display' && typeof value.value === 'string' && (value.value === 'off' || /^-?\d{1,20}$/.test(value.value))) return { type: value.type, value: value.value };
@@ -251,11 +261,7 @@ function validateRoomAction(value) {
   if (value.type === 'color' && (value.color === null || /^#[0-9a-f]{6}$/i.test(value.color))) {
     return { type: value.type, color: value.color === null ? null : value.color.toLowerCase(), commit: value.commit !== false };
   }
-  if (['photo-remove', 'diagnostics', 'check-updates', 'admin-open', 'obs-check', 'performance-report'].includes(value.type)) return { type: value.type };
-  // Conta (com contas no servidor): trocar o nick e a senha.
-  if (value.type === 'account-nick' && typeof value.nick === 'string' && value.nick.trim() && value.nick.length <= 80) return { type: value.type, nick: value.nick };
-  if (value.type === 'account-password' && typeof value.current === 'string' && typeof value.next === 'string'
-    && value.current.length <= 200 && value.next.length >= 6 && value.next.length <= 200) return { type: value.type, current: value.current, next: value.next };
+  if (['photo-remove', 'diagnostics', 'check-updates', 'obs-check', 'performance-report'].includes(value.type)) return { type: value.type };
   // Imagens próprias do estilo (setinha e ping): a sala lê o arquivo (.cur, .ani, PNG...) e
   // reduz; aqui só o tamanho e o formato do pedido.
   if (value.type === 'fx-image-remove' && ['cursor', 'ping'].includes(value.kind)) return { type: value.type, kind: value.kind };
@@ -305,7 +311,7 @@ function createRoomSettings({ getContents, isServer }) {
   };
   return {
     read(section) {
-      const key = ['diagnostics', 'obs', 'media'].includes(section) ? section : undefined;
+      const key = ['diagnostics', 'obs', 'obs-overlay', 'media'].includes(section) ? section : undefined;
       if (reads.has(key)) return reads.get(key);
       const pending = run(readRoomSettings, key).finally(() => {
         if (reads.get(key) === pending) reads.delete(key);
