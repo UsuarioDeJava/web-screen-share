@@ -403,3 +403,8 @@
   .wfx-ping > * { animation: none !important; }
   .wfx-click { animation: wfx-life 0.95s linear forwards !important; }
 }
+[data-nick-style="italic"] { font-style: italic; }
+[data-nick-style="mono"] { font-family: ui-monospace, Consolas, monospace; }
+[data-photo-frame="ring"] { outline: 2px solid var(--frame-color); outline-offset: 1px; }
+[data-photo-frame="double"] { outline: 4px double var(--frame-color); outline-offset: 1px; }
+[data-photo-frame="glow"] { box-shadow: 0 0 2px 2px var(--frame-color), 0 0 9px var(--frame-color); }

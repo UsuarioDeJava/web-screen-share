@@ -9,16 +9,12 @@ const express = require('express');
 const signaling = require('../public/js/signaling');
 const { Server } = require('socket.io');
 const { setupObs } = require('./obs');
-const { createAccounts } = require('./accounts');
 const { createRoomConfig } = require('./room-config');
 const { createAdmin } = require('./admin');
-const { createTesters } = require('./testers');
 const { createTurnCredentials } = require('./turn-credentials');
 const { createCredentialLimiter } = require('./credential-limiter');
 const { createObsAuth } = require('./obs-auth');
 const { createObsPublishers } = require('./obs-publishers');
-const { createRoomSessions } = require('./room-sessions');
-const { createRoomAccess } = require('./room-access');
 const { candidates: relayCandidates, createRelaySelection } = require('./relay-selection');
 const relaySelection = createRelaySelection();
 
@@ -26,15 +22,8 @@ const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const VERSION = process.env.APP_VERSION || 'dev';
 const LOCAL_TURN_SECRET = process.env.LOCAL_TURN_SECRET;
-// Contas: desligadas por padrão (entra quem escolher um nick, sem senha nem painel).
-// ACCOUNTS=on liga: só entra quem tem conta, criada pelo dono no painel.
-const ACCOUNTS_ON = /^(on|true|1|yes|sim)$/i.test((process.env.ACCOUNTS || '').trim());
 const obsAuth = createObsAuth(process.env.OBS_PUBLISH_TOKEN);
 if (process.env.ROOM_COOKIE_SECURE !== undefined && !['0', '1'].includes(process.env.ROOM_COOKIE_SECURE)) throw Error('ROOM_COOKIE_SECURE deve ser 0 ou 1.');
-const roomCookieSecure = process.env.ROOM_COOKIE_SECURE !== '0';
-const roomSessions = createRoomSessions({ accessKey: process.env.ROOM_ACCESS_KEY, accountKeys: process.env.ROOM_ACCOUNT_KEYS, secure: roomCookieSecure,
-  ttlMs: process.env.ROOM_SESSION_TTL_SECONDS === undefined ? 28800000 : Number(process.env.ROOM_SESSION_TTL_SECONDS) * 1000 });
-const roomAccess = createRoomAccess({ sessions: roomSessions, secure: roomCookieSecure, publicationProtected: obsAuth.enabled || ACCOUNTS_ON });
 const turnIssuer = LOCAL_TURN_SECRET ? createTurnCredentials({ secret: LOCAL_TURN_SECRET,
   ttlSeconds: process.env.TURN_CREDENTIAL_TTL_SECONDS === undefined ? 3600 : Number(process.env.TURN_CREDENTIAL_TTL_SECONDS) }) : null;
 const credentialLimiter = createCredentialLimiter({
@@ -50,9 +39,8 @@ const LOCAL_TURN_PORT = Number(process.env.LOCAL_TURN_PORT) || 3478;
 // numa porta diferente: o TURN não passa pelo proxy e precisa ir direto nesta porta.
 const PUBLIC_PORT = /^\d+$/.test(process.env.PUBLIC_PORT || '') ? process.env.PUBLIC_PORT : null;
 const DISPLAY_PORT = PUBLIC_PORT || PORT;
-// Pasta de dados (no container, /data): contas e configurações da sala.
+// Configurações persistentes da sala.
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
-const accounts = ACCOUNTS_ON ? createAccounts({ file: process.env.ACCOUNTS_FILE || path.join(DATA_DIR, 'accounts.json') }) : null;
 const roomConfig = createRoomConfig({ file: process.env.SETTINGS_FILE || path.join(DATA_DIR, 'settings.json') });
 const MEDIAMTX_WEBRTC_URL = process.env.MEDIAMTX_WEBRTC_URL;
 const MEDIAMTX_API_URL = process.env.MEDIAMTX_API_URL;
@@ -81,8 +69,8 @@ process.on('unhandledRejection', (err) => {
 });
 
 const app = express();
-app.use('/auth', roomAccess.router);
-app.use(roomAccess.http);
+const adminRouter = express.Router();
+app.use('/admin', adminRouter);
 app.get('/js/gamepad-view.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-view.js')));
 app.get('/js/gamepad.css', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad.css')));
 app.get('/js/gamepad-client.js', (_req, res) => res.sendFile(path.join(__dirname, '..', 'desktop', 'shared', 'gamepad-client.js')));
@@ -180,7 +168,7 @@ app.get('/avatar/:hash', (req, res) => {
     res.status(404).end();
     return;
   }
-  res.set({ 'Content-Type': entry.type, 'Cache-Control': roomSessions.enabled ? 'private, no-store' : 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+  res.set({ 'Content-Type': entry.type, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
   res.send(entry.buf);
 });
 
@@ -277,7 +265,7 @@ function limitCredentialRequests(req, res, next) {
   const publicationPath = req.params.publisherId ? 'pub_' + req.params.publisherId : req.params.pathId;
   const identity = obsPublishers.identity(publicationPath, req.get('authorization'))
     || (req.method !== 'GET' && obsAuth.enabled && obsAuth.accepts(req.get('authorization'))
-      ? obsCredentialIdentity : roomSessions.quotaIdentity(req.headers.cookie));
+      ? obsCredentialIdentity : null);
   const result = credentialLimiter.consume(req.socket.remoteAddress, identity);
   if (!result.allowed) return res.status(429).set('Retry-After', String(result.retryAfter)).json({ error: 'Muitas consultas de conexão. Tente novamente em instantes.' });
   next();
@@ -323,9 +311,8 @@ app.get('/status', (req, res) => {
       ? { names: certificate.names, expiresAt: certificate.expiresAt }
       : null,
     obs: obsOn(),
-    obsAuthRequired: obsAuth.enabled && !accounts,
+    obsAuthRequired: obsAuth.enabled,
     proxy: proxyWithoutPublicPort(req),
-    accounts: ACCOUNTS_ON,
     ...publicSettings(),
   });
 });
@@ -336,8 +323,6 @@ const webServer = useHttps
 // Compatibilidade com clientes antigos que ainda enviam imagens pelo socket.
 // Clientes atuais usam HTTP binário separado da sinalização/fallback.
 const io = new Server(webServer, { maxHttpBufferSize: 8e6 });
-io.engine.use(roomAccess.engine);
-io.use(roomSessions.authorizeSocket);
 
 // Uma porta só pra tudo, pra não precisar publicar outra no Docker/CasaOS: conexões
 // que começam com uma mensagem STUN/TURN (magic cookie nos bytes 4-7) vão pro TURN
@@ -408,7 +393,8 @@ function uniqueName(name) {
 // escolheu. color é a cor exata (#rrggbb); hue, o tom dela (o app de antes da cor livre
 // só entende o tom).
 // cursorImg/pingImg: as imagens próprias da setinha e do ping (no mesmo lugar das fotos).
-const publicUser = ({ id, name, sharing, kind, stream, ownerId, since, startedAt, voice, hue, color, avatar, style, cursorImg, pingImg }) => {
+const profileLook = require('../desktop/shared/profile-look');
+const publicUser = ({ id, name, sharing, kind, stream, ownerId, since, startedAt, voice, hue, color, avatar, style, look, cursorImg, pingImg }) => {
   const user = kind ? { id, name, sharing, kind, stream } : { id, name, sharing };
   if (kind === 'obs') user.ownerId = ownerId || null;
   if (sharing) user.since = since || startedAt || null;
@@ -417,6 +403,7 @@ const publicUser = ({ id, name, sharing, kind, stream, ownerId, since, startedAt
   if (color) user.color = color;
   if (avatar) user.avatar = `/avatar/${avatar}`;
   if (style) user.style = style;
+  if (look) user.look = look;
   if (cursorImg) user.cursorImg = `/avatar/${cursorImg}`;
   if (pingImg) user.pingImg = `/avatar/${pingImg}`;
   return user;
@@ -521,7 +508,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
     obsPublishers.close();
     server.close();
     io.disconnectSockets(true);
-    const saved = await chatStore.close();
+    const saved = (await Promise.all([chatStore.close(), diagnostics.close()])).every(Boolean);
     process.exit(saved ? 0 : 1);
   });
 }
@@ -536,11 +523,7 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
     cleanName,
     turnLink,
     authorizePublish,
-    authorizeView,
-    credentialLimit: limitCredentialRequests,
-    // Com contas, o Bearer do endereço antigo (/obs/<nick>) é a chave da conta
-    // (authorizePublish); sem contas, o OBS_PUBLISH_TOKEN, se houver.
-    publicationAuth: accounts ? (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); } : obsAuth.middleware,
+    publicationAuth: obsAuth.middleware,
     publicationInfo: path => obsPublishers.info(path),
     publisherAuth(req, res, next) {
       res.set('Cache-Control', 'no-store');
@@ -571,40 +554,21 @@ const obs = MEDIAMTX_WEBRTC_URL && MEDIAMTX_API_URL && LOCAL_TURN_SECRET
   })
   : null;
 
-// ---------- contas e configurações da sala ----------
-
-const bearer = (req) => {
-  const match = /^Bearer\s+(\S+)$/i.exec(req.get('authorization') || '');
-  return match ? match[1] : '';
-};
-// Transmitir pelo OBS: com contas, a chave da conta ("Bearer Token" no OBS) diz quem é.
 function authorizePublish(req, nick) {
   const settings = roomConfig.get();
   if (!settings.obs) return { status: 403, error: 'A transmissão pelo OBS está desligada nesta sala.' };
-  if (!accounts) return { nick };
-  const account = accounts.byObsKey(bearer(req));
-  if (!account || account.root) return { status: 401, error: 'Chave do OBS errada: no OBS, em Bearer Token, cole a chave que aparece em OBS e overlays, nas Configurações da sala.' };
-  if (settings.sharing === 'admins' && !account.admin) return { status: 403, error: 'Nesta sala só contas com administração transmitem.' };
-  return { nick: account.nick };
-}
-// Assistir uma transmissão do OBS: com contas, só com uma sessão aberta.
-function authorizeView(req) {
-  if (!accounts) return true;
-  const account = accounts.resume(bearer(req));
-  return Boolean(account && !account.root);
+  return { nick };
 }
 const obsOn = () => Boolean(obs) && roomConfig.get().obs;
-// O painel desligou o OBS, ou nesta sala só contas com administração transmitem.
 function obsRefusal(user) {
   const settings = roomConfig.get();
   if (!settings.obs) return { status: 403, error: 'A transmissão pelo OBS está desligada nesta sala.' };
-  if (settings.sharing === 'admins' && !(user && user.admin)) return { status: 403, error: 'Nesta sala só contas com administração transmitem.' };
   return null;
 }
 // O que a sala mostra (todo mundo, inclusive na tela de entrada).
 function publicSettings() {
-  const { roomName, notice, sharing, control } = roomConfig.get();
-  return { roomName, notice, sharing, control };
+  const { roomName, notice, control } = roomConfig.get();
+  return { roomName, notice, control };
 }
 
 // IP de onde o cliente chega até este servidor (ex.: o do Tailscale). Vai junto dos
@@ -617,34 +581,43 @@ function clientAddress(socket) {
 // Nome não prova propriedade. OBS só pertence ao socket vinculado à credencial.
 function ownsStream(user, id) {
   if (id === user.id) return user.sharing;
-  // Com contas, o endereço antigo (/obs/<nick>) só abre com a chave da conta: o nick prova.
-  return Boolean(obs && obs.list().some((stream) => stream.id === id && (stream.ownerId === user.id
-    || (accounts && user.account && !stream.stream.startsWith('pub_') && stream.name === user.name))));
+  return Boolean(obs && obs.list().some(stream => stream.id === id && stream.ownerId === user.id));
 }
 
 const remoteControl = require('./control').createControl({ io, users, ownsStream, allow, logEvent, enabled: () => roomConfig.get().control });
 
 // O painel mudou alguma coisa: a sala fica sabendo na hora.
 function applySettings(changed) {
-  if (changed.sharing === 'admins') {
-    for (const user of users.values()) {
-      if (user.sharing && !user.admin) io.to(user.id).emit('share:refused', { reason: 'Agora nesta sala só contas com administração transmitem.' });
-    }
+  if (changed.chatHistory !== undefined && chatHistory.length > changed.chatHistory) {
+    chatHistory.splice(0, chatHistory.length - changed.chatHistory);
+    chatStore.changed();
   }
   if (changed.control === false) for (const user of users.values()) remoteControl.revoke(user);
   io.emit('room:settings', { ...publicSettings(), obs: obsOn() });
 }
-// Usuário de testes: as contas com administração controlam de longe (só com contas).
-const testers = accounts ? createTesters({ io, users, accounts, logEvent, allow }) : null;
-const admin = accounts ? createAdmin({
-  io, accounts, config: roomConfig, users, removeUser, clearChat, onSettings: applySettings, onChanged: () => testers.broadcast(),
-  logEvent, allow, clientAddress, version: VERSION, obsAvailable: Boolean(obs),
-}) : null;
+const diagnostics = require('./diagnostics').createDiagnostics({ version: VERSION, directory: DATA_DIR, users, allow,
+  countSharing: () => [...users.values()].filter(user => user.sharing).length + (obs?.list().length || 0) });
+const guided=require('./guided-test').createGuided(io,users);
+async function checkServices() {
+  const tcp=()=>new Promise(resolve=>{
+    const probe=net.connect(LOCAL_TURN_PORT,'127.0.0.1');
+    const done=value=>{probe.destroy();resolve(value);};
+    probe.setTimeout(2000,()=>done(false));
+    probe.once('error',()=>done(false)); probe.once('connect',()=>done(true));
+  });
+  const [turn,media]=await Promise.all([LOCAL_TURN_SECRET?tcp():null,obs && obsOn()?obs.ready():null]);
+  return {room:'Respondendo',turn:turn===null?'TURN externo configurado · sem teste TCP local':turn?'Porta TCP local respondendo':'Porta TCP local sem resposta',
+    obs:!obs?'Não configurado':!obsOn()?'Desativado':media?'API do MediaMTX respondendo':'API do MediaMTX sem resposta'};
+}
+createAdmin({ guided,checkServices,router: adminRouter, password: process.env.ADMIN_PASSWORD, io, users, config: roomConfig, diagnostics,
+  removeUser, clearChat, onSettings: applySettings, logEvent, version: VERSION, obsAvailable: Boolean(obs) });
 const revokeControlFor = remoteControl.revokeFor;
 const assetUploads = require('./asset-uploads').createAssetUploads({ getOwner: socket => users.get(socket.id) });
 app.post('/asset-upload', assetUploads.http);
 
 function removeUser(socket, revokePublication = true) {
+  guided.cancel(socket.id);
+  diagnostics.forget(socket);
   relaySelection.remove(socket.id);
   obsPublishers.detach(socket.id, revokePublication);
   assetUploads.revoke(socket);
@@ -658,7 +631,6 @@ function removeUser(socket, revokePublication = true) {
   if (!users.delete(socket.id)) return;
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
-  if (admin) admin.changed();
 }
 
 function listLanAddresses() {
@@ -675,12 +647,12 @@ function listLanAddresses() {
 }
 
 io.on('connection', (socket) => {
-  if (admin) admin.attach(socket);
-  if (testers) testers.attach(socket);
+  diagnostics.attach(socket);
+  guided.attach(socket);
   socket.on('relay:probe', (_payload, ack) => {
     if (typeof ack !== 'function') return;
     if (!users.has(socket.id) || !allow(socket, 'relay-probe', 1, 60000)) return ack(null);
-    const quota = credentialLimiter.consume(socket.handshake.address, roomSessions.quotaIdentity(socket.handshake.headers.cookie));
+    const quota = credentialLimiter.consume(socket.handshake.address);
     if (!quota.allowed) return ack(null);
     const req = { get: name => socket.handshake.headers[name.toLowerCase()], secure: Boolean(socket.request.socket.encrypted) };
     ack(relaySelection.begin(socket.id, buildIceServers(req)));
@@ -691,17 +663,10 @@ io.on('connection', (socket) => {
   socket.on('join', (payload, ack) => {
     if (typeof ack !== 'function') return;
     if (users.has(socket.id)) return ack({ error: 'Você já está na sala.' });
-    // Com contas, o nick é o da conta (entrou antes com auth:login ou auth:resume).
-    const account = admin ? admin.accountOf(socket) : null;
-    if (admin) {
-      if (!account) return ack({ error: 'Entre com a sua conta.', auth: true });
-      if (account.root) return ack({ error: 'A conta Admin só abre o painel de administração.', auth: true });
-      if (account.mustChange) return ack({ error: 'Crie a sua senha primeiro.', auth: true });
-    }
-    const name = account ? account.nick : cleanName(payload && payload.name);
+    const name = cleanName(payload && payload.name);
     if (!name) return ack({ error: 'Escolha um nick.' });
     const { maxUsers } = roomConfig.get();
-    if (maxUsers && users.size >= maxUsers && !(account && account.admin)) return ack({ error: `A sala está cheia (até ${maxUsers} pessoas).` });
+    if (maxUsers && users.size >= maxUsers) return ack({ error: `A sala está cheia (até ${maxUsers} pessoas).` });
 
     // Após uma queda de rede o cliente reconecta com outro socket, mas o antigo
     // continua "vivo" aqui até o timeout de ping. Derruba esse fantasma pra
@@ -718,25 +683,20 @@ io.on('connection', (socket) => {
     }
 
     const user = { id: socket.id, name: uniqueName(name), sharing: false, clientId, joinedAt: Date.now() };
-    if (account) {
-      user.account = account.id;
-      user.admin = Boolean(account.admin);
-      user.tester = Boolean(account.tester);
-    }
     const hue = cleanHue(payload.hue);
     if (hue !== null) user.hue = hue;
     const color = cleanColor(payload.color);
     if (color) user.color = color;
     const style = cleanStyle(payload.style);
+    user.look = profileLook.normalize(payload.look);
     if (style) user.style = style;
     users.set(socket.id, user);
     logEvent(`${user.name} entrou na sala (${clientAddress(socket)})`);
     socket.join(ROOM);
     socket.to(ROOM).emit('user:joined', publicUser(user));
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
-    ack({ me: { ...publicUser(user), admin: Boolean(user.admin) }, users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION,
-      settings: { ...publicSettings(), obs: obsOn() }, assetUpload: 1, obsPublication: obs && !accounts ? 1 : 0 });
-    if (admin) admin.changed();
+    ack({ me: publicUser(user), users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION,
+      settings: { ...publicSettings(), obs: obsOn() }, assetUpload: 1, obsPublication: obs ? 1 : 0 });
   });
   socket.on('obs:credentials', (previous, ack) => {
     if (typeof ack !== 'function') return;
@@ -744,14 +704,7 @@ io.on('connection', (socket) => {
     if (!obs || !user || !allow(socket, 'obs-credentials', 8, 10000)) return ack({ error: 'Publicação OBS indisponível. Entre na sala e tente novamente.' });
     const refused = obsRefusal(user);
     if (refused) return ack({ error: refused.error });
-    const cookie = socket.handshake.headers.cookie, identity = roomSessions.identity(cookie);
-    const principal = roomSessions.account(cookie);
-    if (principal) {
-      const quota = credentialLimiter.consume(socket.handshake.address, principal);
-      if (!quota.allowed) return ack({ error: 'Muitas solicitações de credenciais.', retryAfter: quota.retryAfter });
-    }
-    ack(obsPublishers.issue({ user, identity, previous, principal,
-      authorized: () => !roomSessions.enabled || identity !== null && roomSessions.identity(cookie) === identity }));
+    ack(obsPublishers.issue({ user, previous }));
   });
 
   // startedAt: quando a pessoa começou a transmitir, pra não zerar o tempo ao vivo
@@ -759,10 +712,6 @@ io.on('connection', (socket) => {
   socket.on('share', (sharing, startedAt) => {
     const user = users.get(socket.id);
     if (!user) return;
-    if (sharing && !user.sharing && roomConfig.get().sharing === 'admins' && !user.admin) {
-      socket.emit('share:refused', { reason: 'Nesta sala só contas com administração transmitem.' });
-      return;
-    }
     user.sharing = Boolean(sharing);
     const now = Date.now();
     user.since = user.sharing
@@ -790,6 +739,7 @@ io.on('connection', (socket) => {
       if (style) user.style = style;
       else delete user.style;
     }
+    if ('look' in msg) user.look = profileLook.normalize(msg.look);
     socket.to(ROOM).emit('user:updated', publicUser(user));
   });
 
@@ -983,6 +933,19 @@ io.on('connection', (socket) => {
     socket.to(ROOM).emit('cursor', out);
   });
 
+  socket.on('obs:direct',msg=>{
+    if(!msg || !users.has(socket.id) || !allow(socket,'obs-direct',40,10000))return;
+    const ownerSide=msg.type==='offer', target=users.get(msg.to), source=users.get(socket.id);
+    if(!target)return;
+    const owner=ownerSide?source:target, player=ownerSide?target:source;
+    const grant=owner.controls?.get(player.id);
+    if(!grant?.devices.gamepad || grant.session!==msg.session || grant.stream!==msg.stream ||
+      grant.stream===owner.id || !ownsStream(owner,grant.stream))return;
+    if(!['offer','answer','watch','stop'].includes(msg.type))return;
+    if(['offer','answer'].includes(msg.type) && (typeof msg.sdp!=='string'||msg.sdp.length>65536))return;
+    io.to(target.id).emit('obs:direct',{from:socket.id,type:msg.type,stream:grant.stream,session:grant.session,
+      attempt:typeof msg.attempt==='string'?msg.attempt.slice(0,60):'',sdp:['offer','answer'].includes(msg.type)?msg.sdp:undefined});
+  });
   remoteControl.attach(socket);
 
   // "Olha aqui": um ponto na imagem (x e y de 0 a 1), pra todo mundo que está vendo.
@@ -1007,9 +970,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', reason => removeUser(socket, !['transport close', 'transport error', 'ping timeout'].includes(reason)));
 });
 
-// A conta Admin (com a senha no log), na primeira vez; ADMIN_RESET_PASSWORD=1 dá outra.
-if (accounts && obsAuth.enabled) logEvent('AVISO: com ACCOUNTS=on, o OBS usa a chave de cada conta; o OBS_PUBLISH_TOKEN fica sem uso.');
-if (accounts) accounts.ensureRoot({ reset: process.env.ADMIN_RESET_PASSWORD === '1' }).catch((err) => logEvent(`ERRO criando a conta Admin: ${err.message}`));
 
 server.listen(PORT, HOST, () => {
   const scheme = useHttps ? 'https' : 'http';

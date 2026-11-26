@@ -119,15 +119,11 @@ const frames = (win) => win.webContents.executeJavaScript(`document.querySelecto
     await evaluate(peer, 'Object.defineProperty(navigator,"getGamepads",{configurable:true,value:()=>[{index:0,id:"Controle remoto QA",mapping:"standard",buttons:Array.from({length:22},(_,i)=>({value:i===19?1:i===6?(window.qaTrigger||0):i===7?(window.qaRightTrigger||0):0})),axes:[0.75,-0.5,0,0]}]})');
     await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"))'), 'reentrada do receptor');
     const grantGamepad = (name) => evaluate(room, 'window.wssRoomSettings.action(' + JSON.stringify({ type: 'control', name, grant: true, devices: { keyboard: false, mouse: false, gamepad: true } }) + ')');
-    // Concede pelo painel que o usuário utiliza, passando pelo preload e pelo IPC.
-    await evaluate(room, 'document.getElementById("wss-settings-open").click()');
-    await until(() => { panel=settingsPopup();return panel; }, 'painel de permissões');
-    await evaluate(panel, 'document.getElementById("tab-pointer").click()');
-    await until(() => evaluate(panel, '[...document.querySelectorAll("#control-people .control-person")].some(row=>row.textContent.includes("Receptor QA"))'), 'participantes no painel');
-    await evaluate(panel, 'const row=[...document.querySelectorAll("#control-people .control-person")].find(row=>row.textContent.includes("Receptor QA"));const gamepad=row.querySelectorAll("input")[2];if(gamepad.disabled)throw Error(document.getElementById("gamepad-native-status").textContent);gamepad.click();row.querySelector("button").click()');
-    await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"&&p.devices.gamepad))'), 'Gamepad permitido pelo painel');
-    assert.equal(await evaluate(panel, '[...document.querySelectorAll("#control-people .control-person")].find(row=>row.textContent.includes("Receptor QA")).querySelectorAll("input")[2].checked'), true);
-    panel.close();
+    await evaluate(room, 'document.querySelector(".grant-btn").click()');
+    await until(() => evaluate(room, 'document.querySelector("#control-dialog").open'), 'permissões na sala');
+    await evaluate(room, 'const row=[...document.querySelectorAll("#control-list .control-person")].find(r=>r.textContent.includes("Receptor QA"));row.querySelectorAll("input")[2].click();row.querySelector("button").click()');
+    await until(() => evaluate(room, 'window.wssRoomSettings.read().then(s=>s.controlPeople.some(p=>p.name==="Receptor QA"&&p.devices.gamepad))'), 'gamepad permitido pela sala');
+    await evaluate(room,'document.getElementById("control-dialog").close()');
     await grantGamepad('Gamepad QA');
     assert.equal(nativeGamepads.ids.size, 2);
     await evaluate(room, 'document.getElementById("btn-sharing-details").click()');

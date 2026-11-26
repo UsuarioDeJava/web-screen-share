@@ -21,13 +21,13 @@ window.WssGamepadClient = {
     const preview = make('p'); preview.className = 'dialog-sub'; preview.setAttribute('aria-live', 'off');
     const monitor = make('div'); const view = window.WssGamepadView.create(monitor, { onChange: (change) => { const next = getProfile(); change(next); next.triggerLimits = [1, 1]; save(next); editor(); } });
     const remap = make('section'); remap.className = 'gamepad-remap'; remap.append(mapping);
-    const extras = make('details'); extras.className = 'gamepad-extras'; extras.hidden = true;
+    const extras = make('section'); extras.className = 'gamepad-extras'; extras.hidden = true;
     const extraInfo = make('p'); extraInfo.className = 'dialog-sub'; const extraReadings = make('div'); extraReadings.className = 'gpad-physical-extras';
     const extraBindings = make('div'); extraBindings.className = 'gpad-extra-bindings';
     const addExtra = make('button', 'Adicionar botão extra'); addExtra.type = 'button'; addExtra.className = 'btn gamepad-add-extra';
     const layoutLabel = make('label', 'Aparência do controle'); const layoutSelect = make('select'); layoutSelect.setAttribute('aria-label', 'Aparência do controle personalizado');
     for (const [id, label] of [['xbox', 'Xbox'], ['playstation', 'PlayStation']]) { const option = make('option', label); option.value = id; layoutSelect.append(option); } layoutLabel.append(layoutSelect);
-    extras.append(make('summary', 'Botões extras · GameSir e outros'), extraInfo, layoutLabel, extraReadings, extraBindings, addExtra);
+    extras.append(make('h4', 'Botões extras · GameSir e outros'), extraInfo, layoutLabel, extraReadings, extraBindings, addExtra);
     const vibrationStatus = make('p'); vibrationStatus.className = 'gamepad-vibration-status'; vibrationStatus.setAttribute('role', 'status');
     const vibrationButtons = ['esquerda', 'direita'].map((side, i) => {
       const button = make('button', '〰 ' + (i ? 'D' : 'E')); button.type = 'button'; button.className = 'gamepad-vibrate gamepad-vibrate-' + side;
@@ -57,7 +57,7 @@ window.WssGamepadClient = {
     }));
     window.addEventListener('blur', stopVibration);
     document.addEventListener('visibilitychange', () => { if (document.hidden) stopVibration(); });
-    panel.addEventListener('toggle', () => { if (!panel.open) stopVibration(); });
+    const panelVisible = () => !panel.closest('[hidden],details:not([open]),dialog:not([open])');
     const diagnostic = make('section'); diagnostic.className = 'gamepad-diagnostic'; diagnostic.append(make('h4', 'Leituras técnicas'), preview, vibrationStatus);
     presetHint.textContent = 'Escolha o modelo e teste os comandos. Os ajustes são salvos automaticamente.';
     view.mapping.append(extras, remap);
@@ -144,7 +144,7 @@ window.WssGamepadClient = {
     const unsubscribeProfiles = bridge?.onGamepadProfiles?.(acceptProfiles);
     const timer = setInterval(() => {
       if (!bridge?.onGamepadProfiles && bridge?.readGamepadProfiles && !profileReading && !document.hidden
-        && ((panel.open && !panel.closest('[hidden]')) || canSend()) && performance.now() - profilePoll > 2000) {
+        && (panelVisible() || canSend()) && performance.now() - profilePoll > 2000) {
         profilePoll = performance.now(); profileReading = true;
         bridge.readGamepadProfiles().then(acceptProfiles).catch(() => {}).finally(() => { profileReading = false; });
       }
@@ -166,7 +166,7 @@ window.WssGamepadClient = {
         select.replaceChildren(...options); select.value = selected; select.hidden = pads.length <= 1; editor();
       }
       const pad = current(), sending = canSend() && Boolean(pad), time = performance.now();
-      const paint = panel.open && !document.hidden && time - lastPaint > 33 && !panel.closest('[hidden]');
+      const paint = !document.hidden && time - lastPaint > 33 && panelVisible();
       // Só remapeia/aloca o estado quando será enviado ou desenhado. Descoberta
       // de dispositivos, presença, neutralização e relógio do envio continuam ativos.
       const config = sending || paint ? getProfile() : null;

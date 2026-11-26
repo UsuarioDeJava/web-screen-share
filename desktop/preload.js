@@ -20,6 +20,15 @@ ipcRenderer.on('desktop:overlay-state', (_event, state) => {
 
 window.addEventListener('DOMContentLoaded', () => {
   if (receiverPage) return;
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    const changeServer = document.createElement('button');
+    changeServer.type = 'button';
+    changeServer.className = 'link-btn';
+    changeServer.textContent = 'Voltar e trocar servidor';
+    changeServer.addEventListener('click', () => ipcRenderer.send('desktop:change-server'));
+    loginForm.append(changeServer);
+  }
   const button = document.createElement('button');
   button.type = 'button';
   button.id = 'wss-settings-open'; button.title = 'Configurações (Ctrl+,)';
@@ -107,6 +116,8 @@ if (receiverPage) {
   contextBridge.exposeInMainWorld('wssDesktop', {
     version: ipcRenderer.sendSync('desktop:version'),
     platform: process.platform,
+    obsLocal: value=>ipcRenderer.invoke('desktop:obs-local',value),
+    obsDirect: value=>ipcRenderer.invoke('desktop:obs-direct',value),
     nativeVideoCaps: () => ipcRenderer.invoke('desktop:native-video-caps'),
     nativeVideoPrepare: () => ipcRenderer.invoke('desktop:native-video-prepare'),
     nativeVideoCommand: value => ipcRenderer.invoke('desktop:native-video-command', value),
@@ -122,16 +133,10 @@ if (receiverPage) {
     // Mensagem nova com a janela sem foco: pisca na barra de tarefas.
     attention: () => ipcRenderer.send('desktop:attention'),
     changeServer: () => ipcRenderer.send('desktop:change-server'),
+    diagnosticFault: enabled => ipcRenderer.invoke('desktop:diagnostic-fault', enabled === true),
     // As Configurações do app, numa aba (perfil, OBS, atalhos...): a sala abre elas no
     // lugar dos diálogos dela, pra ficar igual no navegador e no app.
     openSettings: (section) => ipcRenderer.send('desktop:settings-open', typeof section === 'string' ? section : 'profile'),
-    // Usuário de testes (um administrador manda pela sala): as telas e janelas só pelo
-    // nome, a escolhida pra próxima transmissão (sem abrir o seletor) e o Log do app.
-    testerSources: () => ipcRenderer.invoke('desktop:tester-sources'),
-    testerPreselect: (choice) => ipcRenderer.invoke('desktop:tester-preselect', {
-      id: String((choice && choice.id) || ''), audio: Boolean(choice && choice.audio), windowAudio: Boolean(choice && choice.windowAudio),
-    }),
-    testerLog: (message, level) => ipcRenderer.send('desktop:tester-log', String(message || '').slice(0, 400), level === 'warn' ? 'warn' : 'info'),
     // Transmissão pelo OBS: os monitores, ligar/desligar a camada e em qual monitor.
     displays: () => ipcRenderer.invoke('desktop:displays'),
     obs: (on) => ipcRenderer.invoke('desktop:obs', Boolean(on)),

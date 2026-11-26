@@ -23,16 +23,8 @@ services:
       # - /caminho/no/host/seu-dominio.key:/certs/cert.key:ro
     environment:
       - PORT=3000
-      # Contas (nick e senha, criadas por você no painel de administração). Sem esta
-      # linha, entra quem escolher um nick, como sempre.
-      # - ACCOUNTS=on
-      # Acesso opcional à sala: chave aleatória, 32 a 256 caracteres ASCII sem espaços.
-      # Sem chave (ou vazia), a sala permanece aberta. Requer versão com esta opção.
-      # Contas individuais (JSON), como alternativa à chave compartilhada:
-      # - ROOM_ACCOUNT_KEYS
-      # - ROOM_ACCESS_KEY=SUBSTITUA_POR_UMA_CHAVE_ALEATORIA
-      # Prazo absoluto da sessão: 60 a 86400 s, padrão oito horas.
-      # - ROOM_SESSION_TTL_SECONDS=28800
+      # Senha do painel /admin, definida no ambiente do Compose ou no .env.
+      - ADMIN_PASSWORD
       # Cookie Secure exige HTTPS; 0 somente para desenvolvimento HTTP local.
       # - ROOM_COOKIE_SECURE=1
       # Token opcional de publicação OBS: segredo aleatório, 32 a 256 caracteres sem espaços.

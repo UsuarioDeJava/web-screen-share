@@ -14,15 +14,11 @@ const busyError = () => Object.assign(Error('Monitor de mídia ocupado'), { code
 const pathIdFor = (nick) => PATH_PREFIX + Buffer.from(nick, 'utf8').toString('hex');
 const nickFor = (pathId) => Buffer.from(pathId.slice(PATH_PREFIX.length), 'hex').toString('utf8');
 
-// authorizePublish(req, nick): com contas, de quem é a chave do OBS ("Bearer Token" no
-// WHIP): devolve { nick } da conta, ou { status, error }. authorizeView(req): quem
-// assiste está com uma sessão aberta? Sem as duas (contas desligadas), entra quem
-// alcança a página, como antes.
 function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStreamsChanged,
   credentialLimit = (_req, _res, next) => next(), publicationAuth = (_req, _res, next) => next(),
   publisherAuth = (_req, res) => res.status(401).end(), publicationInfo = () => null,
   onStreamUpdated = () => {}, httpClient = createObsHttp(),
-  authorizePublish = (req, nick) => ({ nick }), authorizeView = () => true }) {
+  authorizePublish = (req, nick) => ({ nick }) }) {
   const sdpBody = express.text({ type: ['application/sdp', 'application/trickle-ice-sdpfrag'], limit: '512kb' });
   // A API do MediaMTX exige usuário e senha (gerados pelo entrypoint a cada início).
   const apiHeaders = apiAuth ? { Authorization: `Basic ${Buffer.from(apiAuth).toString('base64')}` } : {};
@@ -86,10 +82,6 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
       res.status(404).end();
       return;
     }
-    if (!authorizeView(req)) {
-      res.status(401).type('text/plain').send('Entre com a sua conta');
-      return;
-    }
     forward(req, res, `/${req.params.pathId}/whep`);
   });
 
@@ -112,10 +104,6 @@ function setupObs({ app, webrtcUrl, apiUrl, apiAuth, cleanName, turnLink, onStre
     const { pathId } = req.params;
     if (!PATH_ID.test(pathId)) {
       res.status(404).end();
-      return;
-    }
-    if (!authorizeView(req)) {
-      res.status(401).end();
       return;
     }
     res.set('Cache-Control', 'no-store');

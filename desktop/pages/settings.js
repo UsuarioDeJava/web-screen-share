@@ -5,8 +5,30 @@ let paused = false;
 let initialized = false;
 let pendingRestart = false;
 let dirty = false;
+let savedForm, runtime, saving=false;
+const preferenceFields=['server','fullscreen','hardware','overlay','visual-mode','native-video','logging','log-limit'];
+function formValues(){
+  return Object.fromEntries(preferenceFields.map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value]));
+}
+function needsRestart(values){
+  let origin;
+  try {origin=new URL(values.server.includes('://')?values.server:'https://'+values.server).origin;} catch {origin=values.server;}
+  return origin!==runtime.activeServer || values.fullscreen!==runtime.active.fullscreen || values.hardware!==runtime.active.hardwareAcceleration;
+}
+function updateSaveActions(){
+  if(!savedForm)return;
+  const values=formValues(), changed=preferenceFields.filter(id=>values[id]!==savedForm[id]);
+  dirty=changed.length>0;
+  for(const [id,show] of [['app-save',dirty],['server-save',changed.includes('server')],['log-save',changed.some(k=>k==='logging'||k==='log-limit')],['native-video-save',changed.includes('native-video')]]){
+    const button=$(id);
+    button.hidden=!show;button.disabled=saving;
+    button.textContent=needsRestart(values)?'Salvar e reiniciar':'Salvar';
+    button.title=needsRestart(values)?'Salvar as configurações e reiniciar o aplicativo. A transmissão atual será encerrada.':'Aplicar as configurações agora.';
+  }
+  updateRestartButton();
+}
 // No navegador (settings-web.js), as abas só do app vêm escondidas e saem da navegação.
-const tabs = ['profile', 'fx', 'pointer', 'settings', 'connection', 'experimental', 'obs', 'log', 'shortcuts'].filter((name) => !document.getElementById(`tab-${name}`).hidden);
+const tabs = ['profile', 'settings', 'connection', 'experimental', 'log', 'shortcuts'].filter((name) => !document.getElementById(`tab-${name}`).hidden);
 let activeTab = 'profile';
 let diagnosticTimer;
 let diagnosticsRunning = false;
@@ -17,7 +39,7 @@ const categories = { people: 'Pessoas', stream: 'Transmissões', connection: 'Co
 const directions = { in: 'Recebido', out: 'Enviado', local: 'Local' };
 const levels = { info: 'Info', warn: 'Aviso', error: 'Erro' };
 function status(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
-function updateRestartButton() { $('restart').hidden = !(pendingRestart || roomState.experiments?.pendingReload); }
+function updateRestartButton() { $('restart').hidden = dirty || !(pendingRestart || roomState.experiments?.pendingReload); }
 
 const logNodes = new Map();
 function renderLog(reset = false) {
@@ -48,6 +70,7 @@ function renderLog(reset = false) {
 }
 
 function selectTab(name, focus = false) {
+  name = ({fx:'profile', pointer:'settings', obs:'connection'})[name] || name;
   if (!tabs.includes(name)) name = 'profile';
   activeTab = name;
   diagnosticGeneration++;
@@ -59,10 +82,14 @@ function selectTab(name, focus = false) {
     $(`panel-${id}`).hidden = !active;
   }
   if (name === 'log') renderLog();
-  if (['profile', 'fx', 'pointer', 'shortcuts', 'experimental'].includes(name)) refreshRoom();
+  if (['profile', 'settings', 'shortcuts', 'experimental'].includes(name)) refreshRoom();
   if (name === 'shortcuts') api.readShortcuts().then(renderShortcuts).catch(error => status(error.message, true));
-  if (name === 'connection') pollDiagnostics();
-  if (name === 'obs') refreshObs();
+  if (name === 'connection') refreshObs();
+  if (name === 'log') {
+    pollDiagnostics();
+    if (!reportBusy) reportAction({type:'report-preview'});
+  }
+  if (name === 'settings' && !api.web) refreshOverlay();
   updateLogSubscription();
   if (focus) $(`tab-${name}`).focus();
 }
@@ -109,6 +136,7 @@ async function load() {
   }
   renderShortcuts(value.shortcuts);
   $('gamepad-client-path').textContent = `Componente para receber gamepads: ${value.gamepadClientPath || 'indisponível'}. Reinicie o aplicativo após configurar o driver e a DLL.`;
+  runtime=value;
   if (!initialized || !dirty) {
     $('server').value = value.server || '';
     $('fullscreen').value = value.preferences.fullscreen;
@@ -119,13 +147,14 @@ async function load() {
     $('native-video').disabled = !value.nativeVideo?.available;
     $('logging').checked = value.preferences.logging;
     $('log-limit').value = value.preferences.logLimit;
+    savedForm=formValues();
   }
   // Os modos "sem bordas" e "vídeo ampliado na janela" só existem no Windows.
   const windows = /^win32/.test(value.environment.platform);
   $('gamepad-install').hidden = value.environment.platform !== 'win32 x64';
   for (const option of $('fullscreen').options) option.hidden = option.disabled = !windows && option.value !== 'native';
   pendingRestart = value.restartRequired;
-  updateRestartButton();
+  updateSaveActions();
   $('version').textContent = `App ${value.environment.app}`;
   $('environment').textContent = `Electron ${value.environment.electron} · Chromium ${value.environment.chrome}\n${value.environment.platform}\nModo ativo: ${value.active.fullscreen} · aceleração ${value.active.hardwareAcceleration ? 'habilitada' : 'desabilitada'}\nServidor ativo: ${value.activeServer || 'não configurado'}\n${value.environment.displays.join('\n')}`;
   snapshot = value.log;
@@ -170,12 +199,11 @@ for (const [id, action] of [['shortcut-retry', 'retry'], ['shortcut-draw', 'draw
     }
   });
 }
-$('settings-form').addEventListener('input', () => { dirty = true; });
-$('native-video').addEventListener('input', () => { dirty = true; });
-$('native-video-save').addEventListener('click', () => $('settings-form').requestSubmit());
-$('server').addEventListener('input', () => { dirty = true; });
+for(const id of preferenceFields) $(id).addEventListener('input',updateSaveActions);
 $('settings-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if(!dirty || saving)return;
+  saving=true;updateSaveActions();
   try {
     const result = await api.save({ server: $('server').value, preferences: {
       fullscreen: $('fullscreen').value, hardwareAcceleration: $('hardware').checked,
@@ -186,8 +214,9 @@ $('settings-form').addEventListener('submit', async (event) => {
     if (!result.ok) throw new Error(result.error);
     dirty = false;
     await load();
-    status(pendingRestart ? 'Salvo. Reinicie o app para aplicar as mudanças de conexão ou vídeo.' : 'Configurações salvas e aplicadas.');
-  } catch (error) { status(error.message, true); }
+    if(pendingRestart) await api.restart();
+    else status('Configurações salvas e aplicadas.');
+  } catch (error) { status(error.message, true); } finally {saving=false;updateSaveActions();}
 });
 $('restart').addEventListener('click', async () => {
   try { await api.restart(); } catch (error) { status(error.message, true); }
@@ -240,12 +269,15 @@ async function refreshRoom() {
   renderFx();
   if (!roomState.available) return;
   $('profile-name').textContent = roomState.name;
-  // Conta (servidor com contas): nick e senha; com administração, o botão do painel.
-  $('account-card').hidden = !roomState.account;
-  if (roomState.account) {
-    if (document.activeElement !== $('account-nick')) $('account-nick').value = roomState.account.nick;
-    $('account-admin').hidden = !roomState.account.admin;
+  const look = window.WssProfileLook.normalize(roomState.look);
+  $('nick-style').value = $('profile-name').dataset.nickStyle = look.nick;
+  $('photo-frame').value = look.frame;
+  $('nick-style').disabled = $('photo-frame').disabled = !roomState.look;
+  for (const node of [$('profile-initial'), $('profile-photo')]) {
+    node.dataset.photoFrame = look.frame;
+    node.style.setProperty('--frame-color', roomState.markColor || '#5363ae');
   }
+  pickerFrom(roomState.markColor || '#4d8dff');
   $('profile-initial').textContent = [...roomState.name][0] || '?';
   const fill = roomState.color || (roomState.legacyHue !== null && roomState.legacyHue !== undefined ? `hsl(${roomState.legacyHue} 45% 42%)` : roomState.autoFill) || '#5363ae';
   $('profile-initial').style.backgroundColor = fill;
@@ -259,27 +291,6 @@ async function refreshRoom() {
   $('room-sounds').checked = roomState.sounds;
   $('show-cursors').disabled = !roomState.controlsAvailable;
   renderColor();
-  $('gamepad-native-status').textContent = roomState.gamepad?.available ? 'Gamepad virtual disponível. Até quatro participantes com gamepad.' : roomState.gamepad?.reason || 'Atualize o aplicativo e o servidor para receber gamepads.';
-  $('control-note').textContent = roomState.controlNote || 'Escolha quem pode controlar seu mouse e teclado.';
-  const people = document.createDocumentFragment();
-  for (const person of roomState.controlPeople || []) {
-    const row = document.createElement('div'); row.className = 'control-person';
-    const label = document.createElement('span'); label.textContent = `${person.name}${person.active ? ' · controlando' : ''}`;
-    if (person.active) label.className = 'active';
-    const devices = {};
-    row.append(label);
-    for (const [key, title] of [['keyboard', 'Teclado'], ['mouse', 'Mouse'], ['gamepad', 'Gamepad']]) {
-      const field = document.createElement('label'); field.textContent = title + ' '; const input = document.createElement('input'); input.type = 'checkbox'; input.checked = person.devices?.[key] === true;
-      input.disabled = person.disabled || (key === 'gamepad' && !roomState.gamepad?.available); devices[key] = input; field.append(input); row.append(field);
-    }
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'btn';
-    button.textContent = person.active ? 'Aplicar permissões' : 'Permitir'; button.disabled = person.disabled;
-    button.addEventListener('click', () => roomAction({ type: 'control', name: person.name, grant: true, devices: Object.fromEntries(Object.entries(devices).map(([k, input]) => [k, input.checked])) }));
-    row.append(button);
-    if (person.active) { const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'btn'; revoke.textContent = 'Revogar'; revoke.addEventListener('click', () => roomAction({ type: 'control', name: person.name, grant: false })); row.append(revoke); }
-    people.append(row);
-  }
-  $('control-people').replaceChildren(people);
   const keys = document.createDocumentFragment();
   for (const shortcut of roomState.shortcuts || []) {
     const dt = document.createElement('dt'); dt.textContent = shortcut.keys;
@@ -289,42 +300,6 @@ async function refreshRoom() {
   $('room-shortcuts').replaceChildren(keys);
 }
 
-function accountMessage(id, text, ok = false) {
-  $(id).textContent = text;
-  $(id).classList.toggle('is-bad', Boolean(text) && !ok);
-  $(id).classList.toggle('is-ok', Boolean(text) && ok);
-}
-// Nick repetido: o aviso vermelho vem do servidor, na hora de salvar.
-$('account-nick-save').addEventListener('click', async () => {
-  const nick = $('account-nick').value.replace(/\s+/g, ' ').trim();
-  if (!nick) return accountMessage('account-nick-msg', 'Digite um nick.');
-  $('account-nick-save').disabled = true;
-  try {
-    const res = await api.roomAction({ type: 'account-nick', nick });
-    accountMessage('account-nick-msg', `Pronto: agora você é ${res && res.nick ? res.nick : nick}.`, true);
-    setTimeout(refreshRoom, 1500); // a sala entra de novo com o nick novo
-  } catch (error) { accountMessage('account-nick-msg', error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
-  $('account-nick-save').disabled = false;
-});
-$('account-pass-save').addEventListener('click', async () => {
-  const next = $('account-pass-new').value;
-  if (next.length < 6) return accountMessage('account-pass-msg', 'A senha nova precisa de pelo menos 6 caracteres.');
-  if (next !== $('account-pass-new2').value) return accountMessage('account-pass-msg', 'As duas senhas novas não estão iguais.');
-  $('account-pass-save').disabled = true;
-  try {
-    await api.roomAction({ type: 'account-password', current: $('account-pass-current').value, next });
-    for (const id of ['account-pass-current', 'account-pass-new', 'account-pass-new2']) $(id).value = '';
-    accountMessage('account-pass-msg', 'Senha trocada. As outras sessões da sua conta foram desconectadas.', true);
-  } catch (error) { accountMessage('account-pass-msg', error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
-  $('account-pass-save').disabled = false;
-});
-// O painel de administração abre na sala (no lugar dela): as Configurações fecham.
-$('account-admin').addEventListener('click', async () => {
-  try {
-    await api.roomAction({ type: 'admin-open' });
-    if (typeof api.close === 'function') api.close();
-  } catch (error) { status(error.message, true); }
-});
 
 async function roomAction(command) {
   try {
@@ -377,10 +352,53 @@ $('profile-file').addEventListener('change', async (event) => {
   finally { $('choose-photo').disabled = !roomState.available; }
 });
 
+for (const id of ['nick-style','photo-frame']) {
+  $(id).addEventListener('change', async()=>{
+    const look={nick:$('nick-style').value,frame:$('photo-frame').value};
+    $('profile-name').dataset.nickStyle=look.nick;
+    for(const node of [$('profile-initial'),$('profile-photo')]) node.dataset.photoFrame=look.frame;
+    await roomAction({type:'profile-look',look});
+  });
+}
+let reportDraft = null;
+let reportBusy = false;
+function showReportDraft(result) {
+  if (!result?.id || !result.data) throw Error('Atualize o app e o servidor para enviar relatos.');
+  reportDraft = result.id;
+  $('report-consent').checked = result.enabled;
+  $('report-preview').textContent = JSON.stringify(result.data, null, 2);
+}
+async function reportAction(command) {
+  reportBusy = true;
+  $('report-send').disabled = $('report-consent').disabled = true;
+  const status = $('report-status');
+  status.textContent = '';
+  try {
+    showReportDraft(await api.roomAction(command));
+    if (command.type === 'report-send') {
+      $('report-description').value = '';
+      status.textContent = 'Relato enviado ao administrador.';
+    }
+  } catch (error) {
+    status.textContent = error.message;
+    if (command.type !== 'report-send') reportDraft = null;
+  } finally {
+    reportBusy = false;
+    $('report-send').disabled = $('report-consent').disabled = !reportDraft;
+  }
+}
+$('report-consent').addEventListener('change', () => reportAction({ type:'report-consent', enabled:$('report-consent').checked }));
+$('report-send').addEventListener('click', () => {
+  const description = $('report-description').value.trim();
+  if (description) return reportAction({ type:'report-send', id:reportDraft, description });
+  $('report-status').textContent = 'Descreva o problema antes de enviar.';
+  $('report-description').focus();
+});
+
 async function pollDiagnostics() {
   clearTimeout(diagnosticTimer);
   diagnosticTimer = null;
-  if (activeTab !== 'connection' || document.hidden) return;
+  if (activeTab !== 'log' || document.hidden) return;
   // Compartilha a consulta em voo, mas só a chamada mais recente pode pintar
   // ou agendar outra consulta após troca de aba/visibilidade.
   const request = ++diagnosticGeneration;
@@ -388,13 +406,13 @@ async function pollDiagnostics() {
   let available = false;
   try {
     const data = await diagnosticRead;
-    if (request !== diagnosticGeneration || activeTab !== 'connection' || document.hidden) return;
+    if (request !== diagnosticGeneration || activeTab !== 'log' || document.hidden) return;
     available = data.available;
     $('run-diagnostics').disabled = !data.available || diagnosticsRunning;
     $('diagnostic-output').textContent = data.diagnostics || data.reason || 'Nenhum teste executado nesta sessão.';
     if (data.diagnostics?.trim().endsWith('Fim do teste.')) diagnosticsRunning = false;
   } catch (error) {
-    if (request !== diagnosticGeneration || activeTab !== 'connection' || document.hidden) return;
+    if (request !== diagnosticGeneration || activeTab !== 'log' || document.hidden) return;
     $('diagnostic-output').textContent = error.message; diagnosticsRunning = false;
   }
   $('run-diagnostics').disabled = !available || diagnosticsRunning;
@@ -431,7 +449,7 @@ for (const id of ['copy-session-metrics', 'copy-trial-metrics']) {
     } finally { button.disabled = !roomState.available; }
   });
 }
-document.addEventListener('visibilitychange', () => { diagnosticGeneration++; if (activeTab === 'connection') pollDiagnostics(); updateLogSubscription(); });
+document.addEventListener('visibilitychange', () => { diagnosticGeneration++; if (activeTab === 'log') pollDiagnostics(); updateLogSubscription(); });
 api.onSection((name) => { document.body.classList.remove('closing'); selectTab(name); });
 
 // Popup: fecha no X, no Esc ou clicando fora do painel (o clique tem que começar e
@@ -456,26 +474,9 @@ document.addEventListener('click', (event) => {
   downOutside = false;
 });
 
-async function refreshObs() {
-  $('obs-url').value = ''; $('obs-token').value = ''; $('obs-token-field').hidden = true;
-  $('obs-monitor').disabled = true;
-  $('copy-obs-url').disabled = true;
+async function refreshOverlay() {
   try {
-    const data = await api.readRoom('obs');
-    $('obs-status').textContent = !data.available ? data.reason : data.supported ? `Transmissão OBS para ${data.name}.` : 'O servidor atual não está com a integração OBS habilitada. Você ainda pode configurar o monitor das marcações.';
-    $('obs-url').value = data.url || '';
-    // Com contas: a chave da conta (fixa) no Bearer Token. Sem contas: o token individual
-    // deste participante, ou o token geral do servidor, ou nada.
-    $('obs-token').value = data.token || '';
-    $('obs-token-field').hidden = !data.token;
-    $('obs-token-hint').textContent = !data.available || !data.supported
-      ? 'Consulte a configuração do servidor antes de publicar pelo OBS.'
-      : data.account ? 'Em Bearer Token, no OBS, cole a sua chave abaixo: ela diz que é você, então não passe pra ninguém. Ela não muda: configure uma vez e pronto.'
-        : data.individual ? 'Cole o token privado abaixo no Bearer Token do OBS. Ele vincula a transmissão ao seu participante; não o compartilhe.'
-        : data.authRequired ? 'Preencha o Bearer Token do OBS com o token de publicação fornecido pelo administrador.'
-        : 'Este servidor não exige Bearer Token de publicação. O campo pode ficar em branco.';
-    $('copy-obs-url').disabled = !data.available || !data.supported;
-    $('obs-certificate').hidden = !data.certificateWarning;
+    const data = await api.readRoom('obs-overlay');
     const options = (data.displays || []).map((display) => {
       const option = document.createElement('option'); option.value = String(display.id); option.textContent = display.label; return option;
     });
@@ -483,9 +484,28 @@ async function refreshObs() {
     $('obs-monitor').replaceChildren(...options, off);
     $('obs-monitor').value = data.obsDisplay || 'off';
     $('obs-monitor').disabled = !data.overlaySupported;
+  } catch (error) { $('obs-monitor').disabled = true; status(error.message,true); }
+}
+
+async function refreshObs() {
+  $('obs-url').value = ''; $('obs-token').value = ''; $('obs-token-field').hidden = true;
+  $('copy-obs-url').disabled = true;
+  try {
+    const data = await api.readRoom('obs');
+    $('obs-status').textContent = !data.available ? data.reason : data.supported ? (data.local ? 'Fonte local do WSS. Cole no OBS o endereço deste PC e o token abaixo. Use AV1 ou H.264 para vídeo e Opus para áudio.' : `Transmissão OBS para ${data.name}.`) : 'O servidor atual não está com a integração OBS habilitada. Você ainda pode configurar o monitor das marcações.';
+    $('obs-url').value = data.url || '';
+    $('obs-token').value = data.token || '';
+    $('obs-token-field').hidden = !data.token;
+    $('obs-token-hint').textContent = !data.available || !data.supported
+      ? 'Consulte a configuração do servidor antes de publicar pelo OBS.'
+        : data.individual ? 'Cole o token privado abaixo no Bearer Token do OBS. Ele vincula a transmissão ao seu participante; não o compartilhe.'
+        : data.authRequired ? 'Preencha o Bearer Token do OBS com o token de publicação fornecido pelo administrador.'
+        : 'Este servidor não exige Bearer Token de publicação. O campo pode ficar em branco.';
+    $('copy-obs-url').disabled = !data.available || !data.supported;
+    $('obs-certificate').hidden = !data.certificateWarning;
     // As marcações na tela só existem no app (no navegador a opção nem aparece).
     if (data.available && !data.overlaySupported && !api.web) $('obs-status').textContent += ' As marcações não estão disponíveis neste sistema.';
-    if (data.available && data.supported) checkObsPort();
+    if (data.available && data.supported && !data.local) checkObsPort();
   } catch (error) { $('obs-status').textContent = error.message; }
 }
 // A porta UDP por onde o OBS manda o vídeo (o teste roda na sala, que tem o TURN).
@@ -507,7 +527,7 @@ $('obs-monitor').addEventListener('change', async () => {
   $('obs-monitor').disabled = true;
   try { await api.roomAction({ type: 'obs-display', value }); status('Monitor das marcações salvo e aplicado.'); }
   catch (error) { status(error.message, true); }
-  await refreshObs();
+  await refreshOverlay();
 });
 $('copy-obs-token').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText($('obs-token').value); status('Chave do OBS copiada.'); }
@@ -615,12 +635,6 @@ function renderColor() {
   renderPicker();
 }
 
-function setPickerOpen(open) {
-  $('color-picker').hidden = !open;
-  $('color-custom').setAttribute('aria-expanded', String(open));
-  if (open) pickerFrom(roomState.markColor || roomState.color || '#4d8dff');
-  renderPicker(true);
-}
 
 // Manda a cor pra sala. commit: confirmar (na hora; entra nas recentes). Sem, "ao vivo":
 // só a última de cada ~120 ms vai, uma de cada vez.
@@ -653,7 +667,7 @@ async function sendColor(color, commit) {
 }
 
 $('color-auto').addEventListener('click', () => roomAction({ type: 'color', color: null }));
-$('color-custom').addEventListener('click', () => setPickerOpen($('color-picker').hidden));
+$('color-custom').addEventListener('click', () => $('cp-hex').focus());
 
 function dragSlider(node, apply) {
   const move = (e) => {
