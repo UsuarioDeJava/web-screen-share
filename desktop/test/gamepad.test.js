@@ -225,3 +225,31 @@ test('gatilhos em eixos independentes ou compartilhados preservam curso, invers�
   assert.deepEqual(invalid.triggers[0],{type:'axis',source:6,min:-1,max:1});
   assert.deepEqual(invalid.triggers[1],{type:'button',source:6,min:0,max:1});
 });
+test('Nenhum bloqueia a saída e o Guide (Xbox/PS) vem bloqueado, inclusive em perfis antigos', () => {
+  const pressed = { buttons: Array.from({ length: 17 }, () => ({ value: 1 })), axes: [0, 0, 0, 0] };
+  const fresh = model.profile();
+  assert.equal(fresh.buttons[model.GUIDE], model.NONE);
+  assert.equal(report(model.sample(pressed, fresh)).wButtons & 0x400, 0, 'Guide não chega ao XInput');
+  assert.equal(model.profile({ buttons: Array.from({ length: 17 }, (_, i) => i) }).buttons[model.GUIDE], model.NONE, 'perfil salvo antes da versão 2');
+  assert.equal(model.applyPreset('playstation', fresh).buttons[model.GUIDE], model.NONE, 'restaurar preset mantém bloqueado');
+  const released = model.profile({ ...fresh, buttons: fresh.buttons.map((b, i) => (i === model.GUIDE ? 16 : b)) });
+  assert.equal(released.buttons[model.GUIDE], 16, 'quem liberou continua liberado');
+  assert.ok(report(model.sample(pressed, released)).wButtons & 0x400);
+  const blocked = model.profile({ v: 2, buttons: [model.NONE], triggers: [{ type: 'none' }, { type: 'axis', source: 2 }] });
+  const state = model.sample({ ...pressed, axes: [0, 0, 1, 0] }, blocked);
+  assert.equal(state.buttons[0], 0, 'A como Nenhum');
+  assert.equal(state.buttons[1], 1, 'os outros continuam');
+  assert.equal(state.buttons[6], 0, 'LT como Nenhum');
+  assert.equal(state.buttons[7], 1, 'RT pelo eixo');
+  assert.equal(report(state).bLeftTrigger, 0);
+  assert.equal(model.profile({ v: 2, buttons: [-2] }).buttons[0], 0, 'índice inválido volta ao padrão');
+});
+test('o controle Xbox sem fio não é confundido com o PlayStation (os dois dizem "Wireless Controller")', () => {
+  const preset = (id) => model.defaultProfile({ id }).preset;
+  assert.equal(preset('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)'), 'xbox');
+  assert.equal(preset('045e-0b13-Xbox Wireless Controller'), 'xbox');
+  assert.equal(preset('Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)'), 'playstation');
+  assert.equal(preset('DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)'), 'playstation');
+  assert.equal(preset('GameSir-T4 Kaleid'), 'custom');
+  assert.equal(preset('Controle genérico'), 'xbox');
+});

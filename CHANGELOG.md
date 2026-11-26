@@ -5,6 +5,19 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.1.1 — 2026-11-26
+
+- **"Nenhum" no mapeamento do controle**: em **Configurações > Aplicativo > Meu
+  gamepad**, cada botão e gatilho pode ficar como **Nenhum**: ele deixa de ser enviado
+  pra quem transmite. No desenho do controle, o que está bloqueado aparece tracejado.
+- **Botão Xbox/PS bloqueado**: o Guide vem como Nenhum, porque no PC de quem transmite
+  ele abria a Game Bar ou a Steam. Pra liberar, escolha o botão em Guide. No seu próprio
+  PC o app não consegue segurar esse botão (o Windows e a Steam leem o controle direto):
+  o painel do controle explica onde desligar.
+- **Controle Xbox sem fio reconhecido**: ele aparecia como PlayStation (com ✕ ○ □ △),
+  porque o nome dele também tem "Wireless Controller", o mesmo do DualShock. Agora vem
+  como Xbox.
+
 ## 2.1.0 — 2026-11-26
 
 Junto com as novidades do **Paolinho**

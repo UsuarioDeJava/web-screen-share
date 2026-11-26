@@ -15,6 +15,9 @@ window.WssGamepadClient = {
     for (const item of model.presets) { const option = make('option', item.name); option.value = item.id; presetSelect.append(option); } presetLabel.append(presetSelect);
     const presetHint = make('p', 'Xbox e PlayStation aplicam o mapeamento padrão e seus símbolos. GameSir / personalizado permite combinar botões extras com os comandos do controle virtual.'); presetHint.className = 'dialog-sub';
     presetRow.append(presetLabel, presetHint);
+    // O Guide (Xbox/PS) vem bloqueado; no próprio PC, quem abre a Game Bar/Steam é o sistema.
+    const guideHint = make('p', 'O botão Xbox/PS (Guide) vem como "Nenhum": no PC de quem transmite ele abriria a Game Bar ou a Steam. Pra liberar, escolha o botão em Guide. No seu próprio PC o app não consegue segurar esse botão, porque o Windows e a Steam leem o controle direto: desligue em Configurações do Windows > Jogos > Xbox Game Bar (a opção de abrir com o botão do controle) e, na Steam, em Configurações > Controle (o botão Guia abrir a Steam).');
+    guideHint.className = 'dialog-sub hint gamepad-guide-hint';
     const status = make('p', 'Conecte o gamepad e pressione um botão para detectá-lo.'); status.className = 'dialog-sub';
     const feedback = make('p'); feedback.className = 'gamepad-feedback'; feedback.setAttribute('role', 'status');
     const mapping = make('div'); mapping.className = 'gamepad-mapping';
@@ -61,7 +64,7 @@ window.WssGamepadClient = {
     const diagnostic = make('section'); diagnostic.className = 'gamepad-diagnostic'; diagnostic.append(make('h4', 'Leituras técnicas'), preview, vibrationStatus);
     presetHint.textContent = 'Escolha o modelo e teste os comandos. Os ajustes são salvos automaticamente.';
     view.mapping.append(extras, remap);
-    panel.append(select, presetRow, status, feedback, monitor, diagnostic);
+    panel.append(select, presetRow, guideHint, status, feedback, monitor, diagnostic);
     const pads = [];
     let knownDevices = [], selected = '', lastSent = null, sentAt = 0, wasSending = false, lastPaint = 0;
     let lastView = null;

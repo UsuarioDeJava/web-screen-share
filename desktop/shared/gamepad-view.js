@@ -17,8 +17,9 @@ window.WssGamepadView = {
       const learn = make('button', '', 'Detectar'); learn.type = 'button'; learn.className = 'gpad-learn'; learn.setAttribute('aria-label', 'Detectar entrada para ' + label);
       source.addEventListener('change', () => {
         const [type, index] = source.value.split(':'); onChange(p => {
-          if (i === 6 || i === 7) p.triggers[i - 6] = { type, source: Number(index), min: type === 'axis' ? -1 : 0, max: 1 };
-          else p.buttons[i] = Number(index);
+          // "Nenhum": essa saída não vai pro controle de quem transmite.
+          if (i === 6 || i === 7) p.triggers[i - 6] = type === 'none' ? { type: 'none', source: 0, min: 0, max: 1 } : { type, source: Number(index), min: type === 'axis' ? -1 : 0, max: 1 };
+          else p.buttons[i] = type === 'none' ? window.WssGamepad.NONE : Number(index);
         });
       });
       learn.addEventListener('click', () => {
@@ -124,10 +125,16 @@ window.WssGamepadView = {
           buttonNodes.forEach((node,i)=>{
             node.source.replaceChildren();
             const add=(text,value)=>{const option=make('option','',text);option.value=value;node.source.append(option);};
+            add('Nenhum · não envia','none:-1');
             if(i===6||i===7)add('Automático · B'+profile.buttons[i],'mapped:'+i);
             for(let b=0;b<(pad?.buttons.length||17);b++)add('Botão '+b,'button:'+b);
             if(i===6||i===7)for(let a=0;a<(pad?.axes.length||0);a++)add('Eixo '+a+' · analógico','axis:'+a);
-            const t=profile.triggers[i-6];node.source.value=i===6||i===7 ? t.type+':'+(t.type==='mapped'?i:t.source) : 'button:'+profile.buttons[i];
+            const t=profile.triggers[i-6];
+            const blocked=i===6||i===7 ? t.type==='none' : profile.buttons[i]<0;
+            node.source.value=blocked ? 'none:-1' : i===6||i===7 ? t.type+':'+(t.type==='mapped'?i:t.source) : 'button:'+profile.buttons[i];
+            node.tile.classList.toggle('is-blocked',blocked);
+            node.tile.title=labels[i]+(blocked?' · não é enviado':'');
+            figure.querySelector('[data-button="'+i+'"],[data-trigger="'+i+'"]')?.classList.toggle('is-blocked',blocked);
           });drawWires();
         }
         buttonNodes.forEach(node=>{node.source.disabled=node.learn.disabled=!pad;});

@@ -97,3 +97,8 @@
   .gpad-center .gpad-sticks { grid-template-columns:1fr 1fr; }
   .gpad-config-side { grid-column:1; grid-row:4; }.gpad-config-side:last-child { grid-column:2; }
 }
+/* Saída marcada como "Nenhum": não vai pro controle de quem transmite. */
+.gpad-button.is-blocked { opacity:.55; border-left-style:dashed; }
+.gpad-button.is-blocked strong { text-decoration:line-through; }
+.gpad-control.is-blocked { stroke-dasharray:4 3; opacity:.5; }
+.gamepad-guide-hint { margin:0; }
