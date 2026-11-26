@@ -5,6 +5,46 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.1.0 — 2026-11-26
+
+Junto com as novidades do **Paolinho**
+([PR #6](https://github.com/UsuarioDeJava/web-screen-share/pull/6)). Atualize o
+servidor e o app juntos.
+
+- **OBS pelo app, com AV1**: no app, o OBS transmite pro próprio app (o endereço local
+  e o token ficam em **Configurações > Conexão e testes**), e o app leva a cena e o som
+  pra sala com a sua credencial: a transmissão aparece na sua linha, ligada a você. No
+  OBS, use AV1 (OBS 30.1 ou mais novo) ou H.264, e áudio Opus. Deixe o app aberto
+  enquanto transmite.
+- **Gamepad direto pelo OBS**: liberando o gamepad numa transmissão do OBS, o jogador
+  passa a ver direto do seu PC (menos atraso), e volta pelo servidor se a ligação cair.
+  Sem a camada de marcações, o OBS ainda deixa liberar só o gamepad.
+- **Configurações reorganizadas**: Mouse e efeitos foi pro **Perfil**, Ponteiro e
+  controle pra **Aplicativo** e o OBS pra **Conexão e testes**. Aplicativo e Log também
+  aparecem no navegador. Os botões de mouse, sons e os links do rodapé da sala saíram:
+  tudo isso fica nas Configurações (a engrenagem).
+- **Estilo do nick e moldura da foto**: em **Configurações > Perfil**, o nick pode ser
+  itálico ou monoespaçado, e a foto ganha anel, anel duplo ou brilho, na cor do seu
+  perfil.
+- **Relatar problema**: em **Configurações > Log**, descreva o que aconteceu, confira
+  os dados e envie pra quem administra o servidor. Na primeira vez que você entra na
+  sala, uma tela pergunta se você quer ligar a **análise automática**, mostrando o que
+  é e o que não é enviado (nunca a imagem, o som ou o chat). Ela começa desligada e
+  pode ser desligada quando quiser.
+- **Erros que chegam sozinhos** (com a análise ligada): erro no código, falha na
+  captura, interface travada (no app também), a interface do app que caiu e a **tela
+  preta**: conectado há 15 segundos sem nenhum quadro, tanto em quem assiste quanto em
+  quem transmite (o caso do H.264 que ficava preto). Cada um vai com o detalhe que
+  ajuda a achar a causa (a mensagem do erro, o motivo da falha, o codec e o codificador
+  usados, o sistema e o navegador).
+- **Teste guiado**: quem administra o servidor pode te convidar pra um teste de conexão
+  de 10 segundos, com vídeo sintético. Você confirma cada vez.
+- **O app fecha direito**: depois de transmitir pelo OBS pelo app, ele não fechava (o
+  processo ficava aberto). Corrigido.
+- **Chave de acesso da sala**: as variáveis `ROOM_ACCESS_KEY` e `ROOM_ACCOUNT_KEYS`
+  deixaram de existir e não protegem mais a entrada. Se você usava, limite quem alcança
+  o servidor pela VPN (ex.: Tailscale).
+
 ## 2.0.1 — 2026-11-25
 
 - **Abas das Configurações numa linha só**: com a aba Experimental, elas quebravam em
