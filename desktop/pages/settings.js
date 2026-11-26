@@ -69,6 +69,26 @@ function renderLog(reset = false) {
   if ($('follow').checked && !paused) $('log-wrap').scrollTop = $('log-wrap').scrollHeight;
 }
 
+// Copiar: no app quem copia é o próprio app (a página não tem a permissão do navegador).
+const copyText = (text) => (typeof api.copyText === 'function' ? api.copyText(text) : navigator.clipboard.writeText(text));
+
+// Fileira de abas maior que a janela: esmaece a borda do lado que ainda tem aba.
+const tabNav = document.querySelector('nav');
+function markTabOverflow() {
+  const left = tabNav.scrollLeft > 1;
+  const right = tabNav.scrollLeft + tabNav.clientWidth < tabNav.scrollWidth - 1;
+  tabNav.dataset.more = left && right ? 'both' : left ? 'left' : right ? 'right' : '';
+}
+tabNav.addEventListener('scroll', markTabOverflow, { passive: true });
+window.addEventListener('resize', markTabOverflow);
+// Rodinha em cima das abas: rola a fileira de lado.
+tabNav.addEventListener('wheel', (event) => {
+  if (tabNav.scrollWidth <= tabNav.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+  event.preventDefault();
+  tabNav.scrollLeft += event.deltaY;
+}, { passive: false });
+requestAnimationFrame(markTabOverflow);
+
 function selectTab(name, focus = false) {
   name = ({fx:'profile', pointer:'settings', obs:'connection'})[name] || name;
   if (!tabs.includes(name)) name = 'profile';
@@ -81,6 +101,9 @@ function selectTab(name, focus = false) {
     $(`tab-${id}`).tabIndex = active ? 0 : -1;
     $(`panel-${id}`).hidden = !active;
   }
+  // Janela estreita: a fileira de abas rola até a escolhida.
+  $(`tab-${name}`).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  markTabOverflow();
   if (name === 'log') renderLog();
   if (['profile', 'settings', 'shortcuts', 'experimental'].includes(name)) refreshRoom();
   if (name === 'shortcuts') api.readShortcuts().then(renderShortcuts).catch(error => status(error.message, true));
@@ -424,7 +447,7 @@ $('run-diagnostics').addEventListener('click', async () => {
   catch (error) { status(error.message, true); $('run-diagnostics').disabled = false; }
 });
 $('copy-diagnostics').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('diagnostic-output').textContent); status('Resultado copiado.'); }
+  try { await copyText($('diagnostic-output').textContent); status('Resultado copiado.'); }
   catch (error) { status(error.message, true); }
 });
 for (const id of ['copy-session-metrics', 'copy-trial-metrics']) {
@@ -440,7 +463,7 @@ for (const id of ['copy-session-metrics', 'copy-trial-metrics']) {
         throw Error('Assista à transmissão e aguarde a primeira amostra de vídeo.');
       }
       const payload = trial ? { condition, report: value.report } : value.report;
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      await copyText(JSON.stringify(payload, null, 2));
       if (trial) $('trial-result').textContent = 'Amostra copiada para ' + condition + '.';
       else status('Métricas da sessão copiadas.');
     } catch (error) {
@@ -529,16 +552,12 @@ $('obs-monitor').addEventListener('change', async () => {
   catch (error) { status(error.message, true); }
   await refreshOverlay();
 });
-$('copy-obs-token').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('obs-token').value); status('Chave do OBS copiada.'); }
-  catch (error) { status(error.message, true); }
-});
 $('copy-obs-url').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('obs-url').value); status('Endereço do OBS copiado.'); }
+  try { await copyText($('obs-url').value); status('Endereço do OBS copiado.'); }
   catch (error) { status(error.message, true); }
 });
 $('copy-obs-token').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText($('obs-token').value); status('Token OBS copiado.'); }
+  try { await copyText($('obs-token').value); status('Token OBS copiado.'); }
   catch (error) { status(error.message, true); }
 });
 load().catch((error) => status(error.message, true));
