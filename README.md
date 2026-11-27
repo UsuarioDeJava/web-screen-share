@@ -1,7 +1,7 @@
 # WSS Câmera (Android)
 
 App Android que usa a câmera do celular como uma transmissão da sala do
-[Web Screen Share](https://github.com/nescauquente/web-screen-share), do mesmo jeito que o OBS:
+[Web Screen Share](https://github.com/UsuarioDeJava/web-screen-share), do mesmo jeito que o OBS:
 o celular manda o vídeo pro **app do PC** pela rede local, e o app do PC publica na sala com
 as suas credenciais. A transmissão aparece na sua linha da sala.
 

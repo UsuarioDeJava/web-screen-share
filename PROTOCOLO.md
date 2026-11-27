@@ -66,7 +66,7 @@ um `needs` a mais no `release` (o `download-artifact` com `merge-multiple` já p
 
 ```yaml
   camera-apk:
-    uses: nescauquente/web-screen-share/.github/workflows/android.yml@mobile-camera-app
+    uses: UsuarioDeJava/web-screen-share/.github/workflows/android.yml@mobile-camera-app
     with:
       version: <versão do desktop/package.json>
       ref: mobile-camera-app
