@@ -23,6 +23,12 @@ function section(version) {
   return changelog.slice(start, end).trim();
 }
 
+function atLeast(version, min) {
+  const a = version.split('.').map(Number); const b = min.split('.').map(Number);
+  for (let i = 0; i < 3; i += 1) if (a[i] !== b[i]) return a[i] > b[i];
+  return true;
+}
+
 function install(version) {
   return [
     'App de desktop do Web Screen Share: abre a sala do seu servidor e acrescenta o seletor de tela com o som do PC e as marcações (apontar, desenhar, reagir) aparecendo na sua tela de verdade enquanto você transmite.',
@@ -31,6 +37,8 @@ function install(version) {
     '',
     `**Linux**: \`Web-Screen-Share-${version}.AppImage\` (dê permissão de execução). No Linux não tem o som do PC nem as marcações na tela.`,
     '',
+    // O APK do WSS Câmera sai junto a partir da 2.4.0.
+    ...(atLeast(version, '2.4.0') ? [`**Android**: \`WSS-Camera-${version}.apk\` (câmera do celular, conecta no app do PC).`, ''] : []),
     'Na primeira vez, o app pede o endereço do servidor (o mesmo que vocês abrem no navegador).',
     '',
     'Quando sair versão nova, o app avisa: a versão instalada (Setup ou AppImage) se atualiza pelo botão **Atualizar**; a portátil mostra o link pra baixar. O que muda na sala chega com a atualização do servidor (imagem `ghcr.io/usuariodejava/web-screen-share`).',

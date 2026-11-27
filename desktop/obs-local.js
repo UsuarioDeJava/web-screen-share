@@ -75,15 +75,23 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected}) {
       }
       return reply(204);
     }
-    if(current)return reply(409);
+    const started=await start(body,{bindAddress:'127.0.0.1'},info);
+    if(!started)return reply(409);
+    if(res.destroyed){end(started.row);return;}
+    res.writeHead(201,{'Content-Type':'application/sdp',Location:'/session/'+started.row.id,ETag:'"'+started.row.id+'"','Accept-Patch':'application/trickle-ice-sdpfrag'}).end(started.answer);
+  }
+  // Recebe a oferta (do OBS ou da câmera do celular) e republica na sala. Uma publicação por
+  // vez: com outra no ar, devolve null. input: opções da conexão de entrada (endereço/portas).
+  async function start(body,input,info=settings,source='obs'){
+    if(current || !info)return null;
     if(renew && Date.now()+30000>=info.expiresAt) {
       const fresh=await renew();
-      if(info!==settings || current || !fresh)return reply(409);
+      if(info!==settings || current || !fresh)return null;
       Object.assign(info,fresh);
     }
     const tracks=formats(body);
-    const pc=new (rtc().PeerConnection)('obs-input',{iceServers:[],disableAutoNegotiation:true,forceMediaTransport:true,bindAddress:'127.0.0.1'});
-    row=current={pc,info,id:crypto.randomUUID(),formats:tracks,inputs:[],outputs:new Map()};
+    const pc=new (rtc().PeerConnection)(source+'-input',{iceServers:[],disableAutoNegotiation:true,forceMediaTransport:true,...input});
+    const row=current={pc,info,id:crypto.randomUUID(),source,formats:tracks,inputs:[],outputs:new Map()};
     try {
       pc.onStateChange(state=>{if(state==='failed' || state==='closed')end(row);});
       for(const f of tracks){
@@ -103,9 +111,9 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected}) {
       }
       const answer=await negotiate(pc,'answer',body);
       await publish(row);
-      if(current!==row || res.destroyed)throw Error('Publicação cancelada.');
-      res.writeHead(201,{'Content-Type':'application/sdp',Location:'/session/'+row.id,ETag:'"'+row.id+'"','Accept-Patch':'application/trickle-ice-sdpfrag'}).end(answer);
+      if(current!==row)throw Error('Publicação cancelada.');
       const timer=setTimeout(()=>{if(current===row && pc.state()!=='connected')end(row);},30000);timer.unref();
+      return {row,answer};
     }catch(e){end(row);throw e;}
   }
   async function configure(info){
@@ -138,6 +146,11 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected}) {
     }catch(e){if(row.outputs.get(key)===dest)drop(row,key);throw e;}
   }
   function stop(){end(current);settings=null;listener?.close();listener?.closeAllConnections();listener=null;}
-  return {configure,direct,stop,active:()=>Boolean(current?.location)};
+  return {configure,direct,stop,active:()=>Boolean(current?.location),
+    // Câmera do celular (camera-local.js): a mesma publicação, entrando por outra porta.
+    ready:()=>Boolean(settings),
+    start:(body,input)=>start(body,input,settings,'camera'),
+    session:()=>current?{id:current.id,source:current.source}:null,
+    endSession:(id)=>{if(current && current.id===id){end(current);return true;}return false;}};
 }
 module.exports={createObsLocal};

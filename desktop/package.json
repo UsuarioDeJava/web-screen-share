@@ -1,7 +1,7 @@
 {
   "name": "web-screen-share-desktop",
   "productName": "Web Screen Share",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "description": "App de desktop do Web Screen Share: a sala do seu servidor, com as marcações na tela de verdade e o som do PC.",
   "author": {
     "name": "Web Screen Share"
@@ -55,6 +55,7 @@
       "gamepad.js",
       "gamepad-setup.js",
       "obs-local.js",
+      "camera-local.js",
       "obs-rtp.js",
       "native-video.js",
       "native-video-host.cjs",
@@ -102,6 +103,7 @@
   "dependencies": {
     "electron-updater": "6.8.12",
     "koffi": "3.3.6",
-    "node-datachannel": "0.33.6"
+    "node-datachannel": "0.33.6",
+    "qrcode-generator": "1.4.4"
   }
 }

@@ -294,7 +294,7 @@ function createMainWindow() {
   });
   webContents.on('did-start-navigation', (details) => {
     if (!details.isMainFrame || details.isSameDocument) return;
-    obsLocal.stop();nativeVideo.stop();
+    obsLocal.stop();cameraLocal.close();nativeVideo.stop();
     lastInputBatch.delete(webContents);
     updates.pageGone();
     roomSettings?.cancel();
@@ -305,7 +305,7 @@ function createMainWindow() {
     if (borderlessFullscreen) borderlessFullscreen.exit();
     setKeyCapture(false); // a sala vai recarregar: o teclado volta a ser seu
   });
-  webContents.on('render-process-gone', () => { obsLocal.stop();nativeVideo.stop(); setKeyCapture(false); setController(null); });
+  webContents.on('render-process-gone', () => { obsLocal.stop();cameraLocal.close();nativeVideo.stop(); setKeyCapture(false); setController(null); });
   webContents.on('did-fail-load', (event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || !isServerUrl(url)) return; // -3: carregamento interrompido
     serverLoadFailed = true;
@@ -373,7 +373,7 @@ function createMainWindow() {
     saveConfig();
   });
   mainWindow.on('closed', () => {
-    obsLocal.stop();
+    obsLocal.stop();cameraLocal.close();
     if (settingsPanel) settingsPanel.close();
     mainWindow = null;
     borderlessFullscreen = null;
@@ -490,14 +490,39 @@ const obsLocal=require('./obs-local').createObsLocal({
     return obsPublication(await wc.executeJavaScript('window.wssRoomSettings.read("obs-publication")'));
   }
 });
+function qrImage(text){
+  const qr=require('qrcode-generator')(0,'M');
+  qr.addData(text);qr.make();
+  const svg=qr.createSvgTag({cellSize:4,margin:4,scalable:true});
+  return 'data:image/svg+xml;base64,'+Buffer.from(svg).toString('base64');
+}
+// WSS Câmera (celular): a mesma entrada do OBS local, por uma porta na rede (38219).
+const cameraLocal=require('./camera-local').createCameraLocal({
+  obs:obsLocal,
+  devices:{
+    list:()=>Array.isArray(config.cameraDevices)?config.cameraDevices:[],
+    save:(list)=>{config.cameraDevices=list;saveConfig();},
+  },
+  // Pareamento pelo IP digitado: o PC pergunta. signal fecha a pergunta (60 s ou o celular desistiu).
+  ask:async(device,signal)=>{
+    const options={type:'question',title:'WSS Câmera',message:`Conectar a câmera "${device}"?`,buttons:['Conectar','Recusar'],defaultId:0,cancelId:1,noLink:true,signal};
+    const win=mainWindow&&!mainWindow.isDestroyed()?mainWindow:null;
+    if(win){if(win.isMinimized())win.restore();win.show();win.focus();}
+    const {response}=await (win?dialog.showMessageBox(win,options):dialog.showMessageBox(options));
+    return response===0&&!signal.aborted;
+  },
+  onChange:()=>settingsPanel?.cameraChanged?.(),
+});
 ipcMain.handle('desktop:obs-local',async(event,value)=>{
   if(!fromServer(event))throw Error('Origem não autorizada.');
-  if(!value){obsLocal.stop();return null;}
+  if(!value){obsLocal.stop();cameraLocal.close();return null;}
   const publication=obsPublication(value);
   const crypto=require('node:crypto');
   if(!config.obsLocalSecret){config.obsLocalSecret=crypto.randomBytes(32).toString('hex');saveConfig();}
   const localToken=crypto.createHmac('sha256',config.obsLocalSecret).update(config.server).digest('hex');
-  return obsLocal.configure({...publication,localToken});
+  const endpoint=await obsLocal.configure({...publication,localToken});
+  cameraLocal.room(true);
+  return endpoint;
 });
 ipcMain.handle('desktop:obs-direct',(event,value)=>{
   if(!fromServer(event))throw Error('Origem não autorizada.');
@@ -1428,6 +1453,11 @@ if (!app.requestSingleInstanceLock()) {
         return { ok: true };
       },
       // Procura direto (o aviso chega na sala sozinho) e responde aqui mesmo.
+      camera: {
+        pairing: () => { const value = cameraLocal.pairing(); return { ...value, qr: qrImage(value.url) }; },
+        devices: () => cameraLocal.devices(),
+        remove: (id) => { cameraLocal.remove(String(id || '')); return cameraLocal.devices(); },
+      },
       checkUpdate: async () => {
         const found = await updates.check();
         return { message: (UPDATE_MESSAGES[found.result] || UPDATE_MESSAGES.error)(found) };
@@ -1490,7 +1520,7 @@ if (!app.requestSingleInstanceLock()) {
 
   let inputQuitReady = false;
   app.on('before-quit', event => {
-    obsLocal.stop();nativeVideo.stop();
+    obsLocal.stop();cameraLocal.close();nativeVideo.stop();
     if (process.platform !== 'linux' || !input?.settled || inputQuitReady) return;
     event.preventDefault();
     inputQuitting = true;

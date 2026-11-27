@@ -89,8 +89,30 @@ jobs:
           path: ${{ matrix.files }}
           if-no-files-found: error
 
+  # O APK do WSS Câmera (celular) sai junto, com a mesma versão. O app Android fica na
+  # branch mobile-camera-app; se o build dele falhar, o release do app do PC sai mesmo assim.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: App version
+        id: version
+        run: echo "value=$(node -p "require('./desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+
+  camera-apk:
+    needs: version
+    uses: UsuarioDeJava/web-screen-share/.github/workflows/android.yml@mobile-camera-app
+    with:
+      version: ${{ needs.version.outputs.value }}
+      ref: mobile-camera-app
+    secrets: inherit
+
   release:
-    needs: build
+    needs: [build, camera-apk]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -120,6 +142,8 @@ jobs:
             **Windows**: baixe `Web-Screen-Share-Setup-${{ steps.version.outputs.value }}.exe` (instala e cria o atalho) ou `Web-Screen-Share-Portable-${{ steps.version.outputs.value }}.exe` (roda sem instalar). O app não é assinado: se aparecer "O Windows protegeu o computador", clique em **Mais informações** e depois em **Executar assim mesmo**.
 
             **Linux**: `Web-Screen-Share-${{ steps.version.outputs.value }}.AppImage` (dê permissão de execução). No Linux não tem o som do PC nem as marcações na tela.
+
+            **Android**: `WSS-Camera-${{ steps.version.outputs.value }}.apk` (câmera do celular, conecta no app do PC).
 
             Na primeira vez, o app pede o endereço do servidor (o mesmo que vocês abrem no navegador).
 

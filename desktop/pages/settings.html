@@ -91,6 +91,17 @@
     <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection" hidden>
       <section class="card" data-app-only><h2>Servidor da sala</h2><label for="server">Endereço</label><input id="server" form="settings-form" type="url" required placeholder="https://meu-servidor:3100"><p class="hint">Alterar o servidor exige reiniciar o app. A sala atual continua aberta até você reiniciar.</p><button hidden class="btn btn-primary" id="server-save" type="submit" form="settings-form">Salvar</button></section>
       <section class="card"><h2>Transmitir pelo OBS Studio</h2><p id="obs-status" class="hint" role="status"></p><p class="hint">No OBS, abra Configurações → Transmissão e selecione o serviço WHIP.</p><label for="obs-url">Endereço do servidor para o OBS</label><input id="obs-url" readonly><div class="actions"><button id="copy-obs-url" type="button" class="btn btn-primary" disabled>Copiar endereço</button></div><p id="obs-token-hint" class="hint">Se o servidor exigir Bearer Token, use o token de publicação fornecido pelo administrador.</p><div id="obs-token-field" hidden><label for="obs-token">Bearer Token privado</label><input id="obs-token" type="password" readonly autocomplete="off"><div class="actions"><button id="copy-obs-token" type="button" class="btn">Copiar token</button></div></div><p id="obs-check" class="obs-check" role="status" hidden></p><p class="hint">Em <b>Saída</b>, no OBS: codificador AV1 ou H.264, uns 6000 Kbps e intervalo de quadro-chave de 1 s (quem entra no meio começa a ver mais rápido).</p><p id="obs-certificate" class="hint" hidden>O servidor usa um certificado não reconhecido pelo OBS. Configure um certificado válido no servidor para conectar.</p></section>
+      <section class="card camera-card" data-app-only><h2>Conectar câmera</h2>
+        <div class="camera-pair">
+          <img id="camera-qr" class="camera-qr" alt="QR pra parear o WSS Câmera" width="168" height="168" hidden>
+          <div class="camera-info">
+            <p class="hint">No app WSS Câmera do celular, leia o QR ou digite o IP.</p>
+            <p class="camera-ip">IP: <b id="camera-ip">—</b></p>
+            <p id="camera-status" class="hint" role="status"></p>
+          </div>
+        </div>
+        <ul id="camera-devices" class="camera-devices" aria-label="Câmeras pareadas"></ul>
+      </section>
     </section>
     <section id="panel-experimental" data-app-only role="tabpanel" aria-labelledby="tab-experimental" hidden>
       <p class="room-unavailable hint" hidden></p>

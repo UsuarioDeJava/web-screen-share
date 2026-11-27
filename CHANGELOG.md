@@ -5,6 +5,14 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.4.0 — 2026-11-27
+
+- **WSS Câmera**: a câmera do celular entra na sala como o OBS. Instale o
+  `WSS-Camera-<versão>.apk` e, em **Configurações > Conexão e testes > Conectar câmera**,
+  leia o QR (ou digite o IP: o PC pergunta se pode conectar). As câmeras pareadas ficam
+  na lista, com **Remover**. Precisa do OBS ligado no servidor e do celular na mesma rede
+  do PC.
+
 ## 2.3.1 — 2026-11-27
 
 - **Usuário de testes removido**, por segurança: ninguém mais controla a sala ou o app

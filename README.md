@@ -397,6 +397,21 @@ O painel permite configurar a sala, ver e desconectar participantes e limpar o c
 configurações ficam em `settings.json` na pasta de dados. As variáveis `ROOM_ACCESS_KEY`
 e `ROOM_ACCOUNT_KEYS` deixam de controlar a entrada.
 
+### Câmera do celular (WSS Câmera)
+
+O app Android **WSS Câmera** (`WSS-Camera-<versão>.apk`, nos releases do app de desktop)
+transmite a câmera do celular pra sala, entrando como o OBS: precisa do OBS ligado no
+servidor e do app de desktop aberto na sala, com o celular na mesma rede do PC.
+
+No PC, abra **Configurações > Conexão e testes > Conectar câmera**. No celular, leia o QR
+ou digite o IP mostrado; pelo IP, o PC pergunta se pode conectar. As câmeras pareadas
+ficam na lista, com **Remover** (a câmera removida volta pro pareamento).
+
+O app do PC recebe a câmera na porta TCP 38219 e o vídeo pelas UDP 38220–38230. Essa
+porta só abre com o app na sala e com uma câmera pareada ou o QR aberto. Na primeira vez,
+o Windows pergunta se o app pode usar a rede: permita em **Redes privadas**. Uma
+transmissão por vez: com o OBS no ar, a câmera espera (e vice-versa).
+
 ### Contas (opcional)
 
 Pra ligar as contas (só entra quem tem conta, e quem cria as contas é o dono do

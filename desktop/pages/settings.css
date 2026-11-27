@@ -147,3 +147,14 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .switch input:checked + .switch-track::after { transform: translateX(18px); background: #fff; }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 .switch:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+/* Conectar câmera: o QR (preto no branco, pro celular ler) ao lado do IP. */
+.camera-pair { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.camera-qr { width: 168px; height: 168px; padding: 6px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
+.camera-info { flex: 1; min-width: 200px; }
+.camera-info p { margin: 0 0 6px; }
+.camera-ip { font-size: 15px; color: #e3e7f4; }
+.camera-ip b { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.camera-info #camera-status:empty { display: none; }
+.camera-devices { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
+.camera-devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid #252a3c; border-radius: 10px; background: #0d1120; }
+.camera-devices li span::before { content: '📷 '; }

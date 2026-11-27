@@ -107,7 +107,7 @@ function selectTab(name, focus = false) {
   if (name === 'log') renderLog();
   if (['profile', 'settings', 'shortcuts', 'experimental'].includes(name)) refreshRoom();
   if (name === 'shortcuts') api.readShortcuts().then(renderShortcuts).catch(error => status(error.message, true));
-  if (name === 'connection') refreshObs();
+  if (name === 'connection') { refreshObs(); refreshCamera(); }
   if (name === 'log') {
     pollDiagnostics();
     if (!reportBusy) reportAction({type:'report-preview'});
@@ -283,6 +283,37 @@ $('check-update').addEventListener('click', async () => {
   catch (error) { $('update-status').textContent = error.message; }
   finally { button.disabled = false; }
 });
+// Conectar câmera (WSS Câmera): QR novo a cada vez que a aba abre (o código vale 10 min e
+// é de uso único), o IP pra digitar e as câmeras pareadas.
+let cameraTimer = null;
+function renderCameraDevices(list) {
+  const ul = $('camera-devices');
+  ul.replaceChildren(...(Array.isArray(list) ? list : []).map((device) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span'); name.textContent = device.name;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn'; remove.textContent = 'Remover';
+    remove.setAttribute('aria-label', `Remover a câmera ${device.name}`);
+    remove.addEventListener('click', async () => { remove.disabled = true; renderCameraDevices(await api.cameraRemove(device.id).catch(() => list)); });
+    li.append(name, remove);
+    return li;
+  }));
+  ul.hidden = !ul.children.length;
+}
+async function refreshCamera() {
+  if (!api.cameraPairing) return;
+  clearTimeout(cameraTimer);
+  try {
+    const value = await api.cameraPairing();
+    $('camera-qr').src = value.qr; $('camera-qr').hidden = !value.inRoom;
+    $('camera-ip').textContent = value.ips[0] || 'sem rede';
+    $('camera-status').textContent = value.inRoom ? '' : 'Entre na sala pra parear (o servidor precisa do OBS ligado).';
+    renderCameraDevices(value.devices);
+  } catch (error) { $('camera-status').textContent = error.message; }
+  // O código vence em 10 min: com a aba aberta, troca antes.
+  cameraTimer = setTimeout(() => { if (activeTab === 'connection' && !document.hidden) refreshCamera(); }, 9 * 60 * 1000);
+}
+// Pareou ou removeu: o código do QR na tela já foi usado; mostra a lista e um QR novo.
+api.onCameraChanged?.(() => { if (activeTab === 'connection' && !document.hidden) refreshCamera(); });
 // Atualizações automáticas: salva na hora (não entra no "Salvar" do formulário).
 $('auto-update').addEventListener('change', async () => {
   const input = $('auto-update'); input.disabled = true;
