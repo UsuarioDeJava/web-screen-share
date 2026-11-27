@@ -305,7 +305,7 @@ que não compartilha o áudio (Firefox, Zen…) ou pra mandar uma cena montada n
 transmissão aparece na sala como mais uma pessoa ao vivo, com a etiqueta **OBS**, e
 todo mundo assiste normalmente (com som e volume próprios).
 
-**Pelo app de desktop**, entre na sala e abra **Engrenagem → Conexão e testes → Transmitir pelo OBS Studio**. No OBS, selecione o serviço **WHIP**, copie o endereço local e o Bearer Token exibidos pelo app e use vídeo AV1 ou H.264 e áudio Opus. O app recebe a cena e o áudio mixado no próprio PC e encaminha os pacotes codificados para a publicação da sala. Mantenha o app aberto durante a transmissão.
+**Pelo app de desktop**, entre na sala e abra **Engrenagem → Conexão e testes → Transmitir pelo OBS Studio**. No OBS, selecione o serviço **WHIP**, copie o endereço local e o Bearer Token exibidos pelo app e use vídeo AV1 ou H.264 e áudio Opus. O vídeo precisa ser de 8 bits (em **Avançado**, Formato de cor **NV12**): AV1 de 10 bits (P010 ou HDR, comum na NVENC) chega, mas nenhum navegador mostra; o app avisa quando isso acontece. O app recebe a cena e o áudio mixado no próprio PC e encaminha os pacotes codificados para a publicação da sala. Mantenha o app aberto durante a transmissão.
 
 Quando você libera o gamepad nessa transmissão, o WSS tenta ligar o player do jogador diretamente ao seu PC. A troca ocorre após o primeiro quadro decodificado e a chegada do áudio, quando presente. O volume e o estado de mudo são preservados. Se a conexão cair ou você revogar o gamepad, o player reabre a transmissão do servidor. Os demais espectadores continuam pelo servidor. O intervalo de quadro-chave de 1 segundo no OBS ajuda quem entra no meio da transmissão.
 

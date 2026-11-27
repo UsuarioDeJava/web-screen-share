@@ -367,11 +367,11 @@
     if (result && result.catch) result.catch(() => {});
   }
 
-  function showToast(text) {
+  function showToast(text, ms = 5000) {
     toastEl.textContent = text;
     toastEl.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 5000);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms);
   }
 
   // ---------- login / sala ----------
@@ -1756,8 +1756,17 @@
         if (s.pc !== pc) return;
         const video = [...stats.values()].filter((r) => r.type === 'inbound-rtp' && r.kind === 'video' && Number.isFinite(r.framesDecoded))
           .sort((a, b) => (b.bytesReceived || 0) - (a.bytesReceived || 0))[0];
-        checkBlackVideo(s, pc, video);
+        const codec = video && stats.get(video.codecId)?.mimeType;
+        checkBlackVideo(s, pc, video, codec);
         if (!video) return;
+        // AV1 que chega e não decodifica nunca (10 bits: o decodificador do navegador só
+        // aceita 8): mostra o motivo e não fica reconectando à toa.
+        if (/av1/i.test(codec || '') && !video.framesDecoded && (video.framesReceived || 0) >= 60) {
+          if (s.undecodablePc !== pc) { s.undecodablePc = pc; setStatus(s, AV1_UNDECODABLE, false); }
+          health.reset();
+          return;
+        }
+        if (s.undecodablePc === pc) { s.undecodablePc = null; setStatus(s, ''); }
         s.videoSampler ||= Video.createMetrics('inbound');
         s.videoMetrics = s.videoSampler.sample(stats);
         s.diagnosticRoute = window.WssNetworkHealth.routeFromStats(stats).kind;
@@ -1804,12 +1813,14 @@
       + `${video ? `${video.packetsSent || 0} pacotes enviados` : 'sem envio de vídeo'}; captura ${set.width || '?'}x${set.height || '?'} a ${Math.round(set.frameRate || 0)} fps, `
       + `faixa ${track ? track.readyState : 'ausente'}${track && track.muted ? ' (muda)' : ''}.`);
   }
-  function checkBlackVideo(s, pc, video) {
+  const AV1_UNDECODABLE = 'Sem imagem: este AV1 não toca no navegador (10 bits). No OBS, use o formato de cor NV12.';
+  function checkBlackVideo(s, pc, video, codec) {
     if (s.blackPc !== pc) { s.blackPc = pc; s.blackSince = Date.now(); s.blackReported = false; }
     if (s.blackReported || (video && video.framesDecoded > 0) || s.video.videoWidth > 0 || Date.now() - s.blackSince < SILENT_AFTER) return;
     s.blackReported = true;
     reporting.fault('video_black', undefined, undefined, `Conectado há ${Math.round((Date.now() - s.blackSince) / 1000)} s sem nenhum quadro`
       + `${s.kind === 'obs' ? ' (transmissão do OBS)' : ''}: ${video ? `${video.bytesReceived || 0} bytes e ${video.packetsReceived || 0} pacotes de vídeo recebidos, `
+      + `${video.framesReceived || 0} quadros recebidos, codec ${codec || 'não informado'}, `
       + `decodificador ${video.decoderImplementation || 'não informado'}` : 'nenhum pacote de vídeo chegou'}.`);
   }
 
@@ -5361,7 +5372,7 @@
       positions.clear(); visuals.clear(); // Movimento anterior não reaparece após o clique.
       mirrorCursor(s, e);
       socket.emit('cursor', { stream: s.id, x: round4(point.x), y: round4(point.y), click });
-      if (s.mirrorOn) showMyClick(s, e, click);
+      showMyClick(s, e, click); // o mesmo efeito que os outros veem, mesmo sem a sua setinha desenhada aqui
     };
     s.media.addEventListener('pointerdown', (e) => {
       if (e.button > 2 || e.pointerType === 'touch' || e.target.closest(TILE_CONTROLS)) return;
@@ -5522,9 +5533,9 @@
     Fx.trail(s.media, s, x, y, myFull, markFill(toneOf(me.name)), 'px');
   }
 
-  // O seu clique/rolagem: a animaçãozinha fica onde você clicou (como os outros veem).
+  // O seu clique/rolagem: a animaçãozinha fica onde você clicou (como os outros veem). Não
+  // depende da sua setinha estar desenhada por cima (antes, sem ela, o efeito sumia só aqui).
   function showMyClick(s, e, kind) {
-    if (!s.myBadge || s.myBadge.hidden) return;
     const rect = s.media.getBoundingClientRect();
     showClick(s.media, `${e.clientX - rect.left}px`, `${e.clientY - rect.top}px`, kind, me.name);
   }
@@ -5909,6 +5920,11 @@
   });
 
   if (desktop && typeof desktop.onControlRevoke === 'function') desktop.onControlRevoke(revokeControl);
+  // O app repassando o OBS viu AV1 de 10 bits (ou 4:4:4): ninguém vai ver a imagem.
+  desktop?.onObsWarning?.((value) => {
+    if (value?.type !== 'av1') return;
+    showToast(`O OBS está mandando AV1 de ${value.bitDepth} bits${value.profile ? ' (4:4:4)' : ''}: ninguém vê a imagem. No OBS: Configurações > Avançado > Formato de cor: NV12.`, 20000);
+  });
   desktop?.onControlBlocked?.(value => {
     const grant = controlGrants.get(value?.from);
     if (!grant || (grant.session || '') !== value.session) return;

@@ -488,7 +488,12 @@ const obsLocal=require('./obs-local').createObsLocal({
     const wc=mainWindow?.webContents;
     if(!wc || !isServerUrl(wc.getURL()))return null;
     return obsPublication(await wc.executeJavaScript('window.wssRoomSettings.read("obs-publication")'));
-  }
+  },
+  // O vídeo do OBS não vai aparecer pra ninguém (AV1 de 10 bits): a sala avisa quem transmite.
+  onWarning:(value)=>{
+    log('stream',`OBS mandando AV1 perfil ${value.profile}, ${value.bitDepth} bits: o navegador não decodifica (só 8 bits).`,'warn');
+    toPage('desktop:obs-warning',value);
+  },
 });
 function qrImage(text){
   const qr=require('qrcode-generator')(0,'M');

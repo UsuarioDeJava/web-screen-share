@@ -1,0 +1,95 @@
+// AV1 de 10 bits (NVENC com o OBS em P010/HDR) não aparece no navegador: o decodificador
+// AV1 do WebRTC só aceita 8 bits. Daqui sai o perfil e a profundidade de cor do cabeçalho
+// de sequência (AV1, seção 5.5), lido nos pacotes RTP que passam pelo app.
+
+function reader(bytes) {
+  let pos = 0; // em bits
+  const bit = () => {
+    if (pos >= bytes.length * 8) throw Error('fim');
+    const value = (bytes[pos >> 3] >> (7 - (pos & 7))) & 1;
+    pos += 1;
+    return value;
+  };
+  const f = (n) => { let v = 0; for (let i = 0; i < n; i += 1) v = v * 2 + bit(); return v; };
+  const uvlc = () => { let zeros = 0; while (!bit()) { zeros += 1; if (zeros >= 32) return 2 ** 32 - 1; } return zeros ? f(zeros) + (2 ** zeros - 1) : 0; };
+  return { f, uvlc };
+}
+
+// Corpo do OBU de cabeçalho de sequência -> { profile, bitDepth } (null se não der pra ler).
+function sequenceHeader(body) {
+  try {
+    const { f, uvlc } = reader(body);
+    const profile = f(3);
+    f(1); // still_picture
+    const reduced = f(1);
+    let decoderModel = 0, delayLength = 0;
+    if (reduced) f(5);
+    else {
+      if (f(1)) { // timing_info
+        f(32); f(32);
+        if (f(1)) uvlc();
+        decoderModel = f(1);
+        if (decoderModel) { delayLength = f(5) + 1; f(32); f(5); f(5); }
+      }
+      const initialDelay = f(1);
+      const points = f(5) + 1;
+      for (let i = 0; i < points; i += 1) {
+        f(12);
+        if (f(5) > 7) f(1);
+        if (decoderModel && f(1)) { f(delayLength); f(delayLength); f(1); }
+        if (initialDelay && f(1)) f(4);
+      }
+    }
+    const widthBits = f(4) + 1, heightBits = f(4) + 1;
+    f(widthBits); f(heightBits);
+    if (!reduced && f(1)) { f(4); f(3); } // frame_id_numbers
+    f(1); f(1); f(1); // 128x128, filter_intra, intra_edge
+    if (!reduced) {
+      f(1); f(1); f(1); f(1); // interintra, masked, warped, dual_filter
+      const orderHint = f(1);
+      if (orderHint) { f(1); f(1); }
+      const screen = f(1) ? 2 : f(1);
+      if (screen > 0 && !f(1)) f(1);
+      if (orderHint) f(3);
+    }
+    f(1); f(1); f(1); // superres, cdef, restoration
+    const high = f(1);
+    const bitDepth = profile === 2 && high ? (f(1) ? 12 : 10) : high ? 10 : 8;
+    return { profile, bitDepth };
+  } catch { return null; }
+}
+
+function leb128(bytes, start) {
+  let value = 0, i = start;
+  for (let n = 0; n < 8 && i < bytes.length; n += 1, i += 1) {
+    value += (bytes[i] & 127) * 2 ** (7 * n);
+    if (!(bytes[i] & 128)) return { value, next: i + 1 };
+  }
+  return null;
+}
+
+// Carga útil de um pacote RTP AV1 (RFC do AV1 em RTP): o cabeçalho de sequência vem como
+// o primeiro OBU de um pacote que começa um OBU (Z=0). Devolve { profile, bitDepth } ou null.
+function rtpSequenceHeader(payload) {
+  if (!payload || payload.length < 3) return null;
+  const agg = payload[0];
+  if (agg & 0x80) return null; // continua um OBU do pacote anterior
+  const count = (agg >> 4) & 3;
+  let start = 1, end = payload.length;
+  if (count !== 1) {
+    const len = leb128(payload, 1);
+    if (!len) return null;
+    start = len.next; end = Math.min(payload.length, start + len.value);
+  }
+  const header = payload[start];
+  if (header === undefined || ((header >> 3) & 15) !== 1) return null; // 1: OBU_SEQUENCE_HEADER
+  let i = start + 1 + ((header >> 2) & 1);
+  if (header & 2) { // obu_has_size_field
+    const size = leb128(payload, i);
+    if (!size) return null;
+    i = size.next; end = Math.min(end, i + size.value);
+  }
+  return sequenceHeader(payload.subarray(i, end));
+}
+
+module.exports = { sequenceHeader, rtpSequenceHeader };

@@ -118,6 +118,7 @@ if (receiverPage) {
     platform: process.platform,
     obsLocal: value=>ipcRenderer.invoke('desktop:obs-local',value),
     obsDirect: value=>ipcRenderer.invoke('desktop:obs-direct',value),
+    onObsWarning: (callback) => ipcRenderer.on('desktop:obs-warning', (_event, value) => callback(value)),
     nativeVideoCaps: () => ipcRenderer.invoke('desktop:native-video-caps'),
     nativeVideoPrepare: () => ipcRenderer.invoke('desktop:native-video-prepare'),
     nativeVideoCommand: value => ipcRenderer.invoke('desktop:native-video-command', value),

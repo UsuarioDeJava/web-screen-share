@@ -5,6 +5,14 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.4.1 — 2026-11-27
+
+- **OBS com AV1 em tela preta**: o AV1 de 10 bits (NVENC com o OBS em P010 ou HDR) chega,
+  mas o navegador só mostra 8 bits. Agora o app avisa quem transmite (**Formato de cor:
+  NV12** no OBS), e quem assiste vê o motivo no quadro em vez da tela preta.
+- O efeito do clique e da rodinha aparece também pra quem clica, mesmo quando a setinha
+  dela não está desenhada por cima da transmissão.
+
 ## 2.4.0 — 2026-11-27
 
 - **WSS Câmera**: a câmera do celular entra na sala como o OBS. Instale o

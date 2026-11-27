@@ -2,8 +2,10 @@ const http=require('node:http');
 const crypto=require('node:crypto');
 const {formats,packet,media,negotiate}=require('./obs-rtp');
 const {cleanIce}=require('./native-video');
+const {rtpSequenceHeader}=require('./av1-info');
 
-function createObsLocal({fetch,renew,port=47981,rtc:injected}) {
+// onWarning: o vídeo que chega não vai aparecer pra quem assiste (ex.: AV1 de 10 bits).
+function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) {
   let listener,opening,current,settings;
   const rtc=()=>injected || require('node-datachannel');
   function drop(row,key) {
@@ -103,6 +105,12 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected}) {
           const out=packet(bytes,f);
           if(!out)return;
           if(f.kind==='video')row.videoSeen=true;
+          // AV1: o primeiro cabeçalho de sequência diz a profundidade de cor. O navegador só
+          // decodifica 8 bits (perfil 0): 10 bits (NVENC com o OBS em P010/HDR) fica preto.
+          if(f.codec==='AV1' && !row.av1){
+            const info=rtpSequenceHeader(out.subarray(12));
+            if(info){row.av1=info;if(info.bitDepth!==8 || info.profile!==0)onWarning({type:'av1',source:row.source,...info});}
+          }
           for(const dest of row.outputs.values()){
             const t=dest.tracks.get(f.mid);
             if(t?.track.isOpen()){t.config.timestamp=out.readUInt32BE(4);try{t.track.sendMessageBinary(out);}catch{/* A conexão pode fechar com um pacote em trânsito. */}}
