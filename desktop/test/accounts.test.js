@@ -81,21 +81,21 @@ test('contas: reset de senha pelo painel, sessões, chave do OBS e limite de ten
   assert.equal((await acc.login('Caio', 'provisoria', 'outro-ip')).ok, true, 'outro endereço continua podendo');
 });
 
-test('contas: usuário de testes (marca guardada, o Admin nunca é de testes)', async () => {
+test('contas: o "Usuário de testes" saiu (a marca antiga some e não volta)', async () => {
   const file = tempFile();
   const acc = createAccounts({ file, log: quiet });
   await acc.ensureRoot();
   const tess = await acc.create({ nick: 'Tess', password: 'senha-tess', tester: true });
-  assert.equal(tess.account.tester, true);
-  assert.equal(tess.account.admin, false, 'de testes não é administração');
-  assert.equal((await acc.create({ nick: 'Comum', password: 'senha-comum' })).account.tester, false);
-  assert.equal((await acc.update(tess.account.id, { admin: true })).account.tester, true, 'dar administração não tira a marca');
-  assert.equal((await acc.update(tess.account.id, { tester: false })).account.tester, false);
-  await acc.update(tess.account.id, { tester: true });
-  const root = acc.list().find((a) => a.root);
-  assert.equal((await acc.update(root.id, { tester: true })).account.tester, false, 'o Admin nunca é de testes');
+  assert.equal('tester' in tess.account, false, 'criar ignora a marca');
+  assert.equal('tester' in (await acc.update(tess.account.id, { tester: true })).account, false, 'mudar também');
   acc.flush();
+  // Arquivo de antes (com a marca): ao abrir, ela some de tudo, inclusive do arquivo.
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  data.accounts.find((x) => x.nick === 'Tess').tester = true;
+  fs.writeFileSync(file, JSON.stringify(data));
   const again = createAccounts({ file, log: quiet });
-  assert.equal(again.byNick('tess').tester, true, 'a marca fica salva no arquivo');
-  assert.equal((await again.login('Tess', 'senha-tess', 'ip')).account.tester, true);
+  assert.equal('tester' in again.byNick('tess'), false);
+  assert.equal('tester' in (await again.login('Tess', 'senha-tess', 'ip')).account, false);
+  again.flush();
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).accounts.some((x) => 'tester' in x), false);
 });

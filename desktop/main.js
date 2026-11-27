@@ -144,9 +144,6 @@ let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no selet
 let picked = null; // última escolha do seletor: { kind, displayId }
 let shareWanted = false;
 let serverLoadFailed = false; // a última tentativa de abrir o servidor falhou
-// Usuário de testes: a tela/janela que um administrador escolheu pela sala. A próxima
-// transmissão (logo em seguida) usa ela no lugar de abrir o seletor.
-let testerChoice = null; // { choice, at }
 let diagnosticOrigin = null;
 let pendingDiagnosticFault = null;
 ipcMain.handle('desktop:diagnostic-fault', (event, enabled) => {
@@ -513,9 +510,6 @@ ipcMain.handle('desktop:native-video-prepare', event => { if(!fromServer(event))
 ipcMain.handle('desktop:native-video-command', (event,value) => { if(!fromServer(event))throw Error('Origem não autorizada.');return nativeVideo.command(value); });
 
 function pickSource(options = {}) {
-  const preset = testerChoice && Date.now() - testerChoice.at < 20000 ? testerChoice.choice : null;
-  testerChoice = null;
-  if (preset) return Promise.resolve(options.nativeWindow && preset.kind !== 'window' ? null : preset);
   if (picker) {
     picker.win.focus();
     return Promise.resolve(null);
@@ -593,38 +587,6 @@ ipcMain.handle('picker:sources', async (event) => {
       icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
     };
   });
-});
-
-// Usuário de testes: as telas e janelas só pelo nome (sem prévia), e a escolhida.
-// (às vezes a busca volta vazia, como no seletor: tenta mais umas vezes)
-async function testerSources(wanted = null) {
-  for (let i = 0; ; i += 1) {
-    const own = new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
-    const sources = (await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false }))
-      .filter((s) => !own.has(s.id));
-    if (i >= 5 || (sources.length && (!wanted || sources.some((s) => s.id === wanted)))) return sources;
-    await new Promise((resolve) => setTimeout(resolve, 300));
-  }
-}
-ipcMain.handle('desktop:tester-sources', async (event) => {
-  if (!fromServer(event)) return [];
-  const displays = screen.getAllDisplays();
-  return (await testerSources()).map((s) => {
-    const kind = s.id.startsWith('screen:') ? 'screen' : 'window';
-    return { id: s.id, kind, name: kind === 'screen' ? screenLabel(s, displays) : s.name };
-  });
-});
-ipcMain.handle('desktop:tester-preselect', async (event, choice) => {
-  if (!fromServer(event) || !choice || typeof choice.id !== 'string') return { error: 'Origem não autorizada.' };
-  const source = (await testerSources(choice.id)).find((s) => s.id === choice.id);
-  if (!source) return { error: 'Essa tela ou janela não existe mais. Atualize a lista.' };
-  const kind = source.id.startsWith('screen:') ? 'screen' : 'window';
-  testerChoice = { at: Date.now(), choice: { source, kind, displayId: source.display_id, audio: Boolean(choice.audio),
-    windowAudio: kind === 'window' && choice.windowAudio === true && windowAudio.supported } };
-  return { ok: true, kind, name: source.name };
-});
-ipcMain.on('desktop:tester-log', (event, message, level) => {
-  if (fromServer(event) && typeof message === 'string') log('test', message.slice(0, 400), level === 'warn' ? 'warn' : 'info', 'in');
 });
 
 ipcMain.on('picker:choose', (event, choice) => {

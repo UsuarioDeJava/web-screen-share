@@ -5,6 +5,12 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.3.1 — 2026-11-27
+
+- **Usuário de testes removido**, por segurança: ninguém mais controla a sala ou o app
+  de outra pessoa de longe (nem escolhe a tela que ela transmite). Contas marcadas como
+  de testes viram contas normais sozinhas.
+
 ## 2.3.0 — 2026-11-27
 
 - **Atualizações automáticas**: em **Configurações > Aplicativo > Atualizações**. Ligado

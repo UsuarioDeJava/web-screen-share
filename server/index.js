@@ -13,7 +13,6 @@ const { createAccounts } = require('./accounts');
 const { createAccountAuth } = require('./account-auth');
 const { createRoomConfig } = require('./room-config');
 const { createAdmin } = require('./admin');
-const { createTesters } = require('./testers');
 const { createTurnCredentials } = require('./turn-credentials');
 const { createCredentialLimiter } = require('./credential-limiter');
 const { createObsAuth } = require('./obs-auth');
@@ -660,10 +659,7 @@ async function checkServices() {
   return {room:'Respondendo',turn:turn===null?'TURN externo configurado · sem teste TCP local':turn?'Porta TCP local respondendo':'Porta TCP local sem resposta',
     obs:!obs?'Não configurado':!obsOn()?'Desativado':media?'API do MediaMTX respondendo':'API do MediaMTX sem resposta'};
 }
-// Usuário de testes: as contas com administração controlam de longe (só com contas).
-const testers = accounts ? createTesters({ io, users, accounts, logEvent, allow }) : null;
-const accountAuth = accounts ? createAccountAuth({ io, accounts, users, removeUser, logEvent, allow, clientAddress,
-  onChanged: () => testers.broadcast() }) : null;
+const accountAuth = accounts ? createAccountAuth({ io, accounts, users, removeUser, logEvent, allow, clientAddress }) : null;
 createAdmin({ guided,checkServices,router: adminRouter, password: process.env.ADMIN_PASSWORD, io, users, config: roomConfig, diagnostics,
   removeUser, clearChat, onSettings: applySettings, logEvent, version: VERSION, obsAvailable: Boolean(obs), accounts, accountAuth });
 const revokeControlFor = remoteControl.revokeFor;
@@ -687,7 +683,6 @@ function removeUser(socket, revokePublication = true) {
   socket.leave(ROOM);
   io.to(ROOM).emit('user:left', { id: socket.id });
   if (obs && user && user.account) obs.refreshOwners();
-  if (testers) testers.broadcast();
 }
 
 function listLanAddresses() {
@@ -707,7 +702,6 @@ io.on('connection', (socket) => {
   diagnostics.attach(socket);
   guided.attach(socket);
   if (accountAuth) accountAuth.attach(socket);
-  if (testers) testers.attach(socket);
   socket.on('relay:probe', (_payload, ack) => {
     if (typeof ack !== 'function') return;
     if (!users.has(socket.id) || !allow(socket, 'relay-probe', 1, 60000)) return ack(null);
@@ -752,7 +746,6 @@ io.on('connection', (socket) => {
     if (account) {
       user.account = account.id;
       user.admin = Boolean(account.admin);
-      user.tester = Boolean(account.tester);
     }
     const hue = cleanHue(payload.hue);
     if (hue !== null) user.hue = hue;
@@ -769,7 +762,6 @@ io.on('connection', (socket) => {
     const everyone = [...users.values(), ...(obs ? obs.list() : [])];
     ack({ me: { ...publicUser(user), admin: Boolean(user.admin) }, users: everyone.map(publicUser), chat: chatHistory, now: Date.now(), version: VERSION,
       settings: { ...publicSettings(), obs: obsOn() }, assetUpload: 1, obsPublication: obs ? 1 : 0 });
-    if (testers) testers.broadcast();
   });
   socket.on('obs:credentials', (previous, ack) => {
     if (typeof ack !== 'function') return;

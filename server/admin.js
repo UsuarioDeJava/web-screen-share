@@ -94,8 +94,8 @@ function createAdmin({ router, password, io, users, config, diagnostics, removeU
   router.get('/api/state', (req, res) => res.json({
     settings: config.get(), changes:config.history?.(), services, guided:guided?.state(),
     diagnostics: diagnostics?.state(),
-    online: [...users.values()].map(({ id, name, sharing, voice, joinedAt, admin, tester }) => ({ id, name, sharing, voice: Boolean(voice), since: joinedAt,
-      admin: Boolean(admin), tester: Boolean(tester) })),
+    online: [...users.values()].map(({ id, name, sharing, voice, joinedAt, admin }) => ({ id, name, sharing, voice: Boolean(voice), since: joinedAt,
+      admin: Boolean(admin) })),
     server: { startedAt, version, obs: obsAvailable },
     ...(accounts ? { accounts: accountAuth.list(), me: { id: req.by.id, nick: req.by.nick, root: Boolean(req.by.root) } } : {}),
   }));

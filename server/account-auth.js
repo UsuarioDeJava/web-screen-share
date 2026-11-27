@@ -2,31 +2,27 @@
 // e as operações do painel /admin sobre as contas. Sem ACCOUNTS=on nada disso existe e
 // a sala é só com nick (e o painel /admin abre com o ADMIN_PASSWORD).
 //
-// Só o dono (a conta Admin) marca "Conta com administração" e "Usuário de testes" e mexe
-// nessas contas. As outras contas com administração criam e mexem só em contas normais
+// Só o dono (a conta Admin) marca "Conta com administração" e mexe nessas contas. As outras contas com administração criam e mexem só em contas normais
 // (e renomeiam a própria), pra ninguém sair criando administradores.
-const ADMINS = 'admins'; // sockets com administração (recebem a lista de usuários de testes)
 
 function createAccountAuth({ io, accounts, users, removeUser, logEvent = () => {}, allow, clientAddress, onChanged = () => {} }) {
   const accountOf = (socket) => socket.data.account || null;
   const socketsOf = (id) => [...io.sockets.sockets.values()].filter((s) => s.data.account && s.data.account.id === id);
   // A própria pessoa vê também a chave do OBS dela.
   const selfInfo = (account) => ({ ...account, obsKey: accounts.obsKeyOf(account.id) });
-  // Conta normal: sem administração, não é de testes nem a do dono.
-  const plain = (account) => !account.root && !account.admin && !account.tester;
+  // Conta normal: sem administração e não é a do dono.
+  const plain = (account) => !account.root && !account.admin;
   const canManage = (by, target) => Boolean(by.root) || plain(target);
-  const OWNER_ONLY = 'Só o dono do servidor (a conta Admin) mexe em contas com administração ou de testes.';
+  const OWNER_ONLY = 'Só o dono do servidor (a conta Admin) mexe em contas com administração.';
   const reply = (ack) => (typeof ack === 'function' ? ack : () => {});
   const str = (value, max = 200) => (typeof value === 'string' ? value.slice(0, max) : '');
 
   function setAccount(socket, account, token) {
     socket.data.account = account || null;
     if (token !== undefined) socket.data.token = token || null;
-    if (account && account.admin) socket.join(ADMINS);
-    else socket.leave(ADMINS);
   }
 
-  // A conta mudou (administração, testes, nick) ou acabou (apagada, senha resetada): avisa
+  // A conta mudou (administração, nick) ou acabou (apagada, senha resetada): avisa
   // quem está com ela aberta. kick: a sessão não vale mais (volta pra tela de entrada).
   function refreshAccount(id, { kick = false, reason = '' } = {}) {
     const account = accounts.get(id);
@@ -39,10 +35,7 @@ function createAccountAuth({ io, accounts, users, removeUser, logEvent = () => {
       }
       setAccount(s, account);
       const user = users.get(s.id);
-      if (user) {
-        user.admin = account.admin;
-        user.tester = account.tester;
-      }
+      if (user) user.admin = account.admin;
       s.emit('auth:account', selfInfo(account));
     }
     onChanged();
@@ -120,12 +113,10 @@ function createAccountAuth({ io, accounts, users, removeUser, logEvent = () => {
 
   async function create(by, msg) {
     const admin = msg.admin === true;
-    const tester = msg.tester === true;
-    if ((admin || tester) && !by.root) return { error: 'Só o dono do servidor cria contas com administração ou de testes.' };
-    const res = await accounts.create({ nick: msg.nick, password: str(msg.password, 400), admin, tester });
+    if (admin && !by.root) return { error: 'Só o dono do servidor cria contas com administração.' };
+    const res = await accounts.create({ nick: msg.nick, password: str(msg.password, 400), admin });
     if (!res.ok) return res;
-    const marks = [res.account.admin && 'com administração', res.account.tester && 'de testes'].filter(Boolean);
-    logEvent(`${by.nick} criou a conta ${res.account.nick}${marks.length ? ` (${marks.join(', ')})` : ''}`);
+    logEvent(`${by.nick} criou a conta ${res.account.nick}${res.account.admin ? ' (com administração)' : ''}`);
     onChanged();
     return res;
   }
@@ -140,10 +131,6 @@ function createAccountAuth({ io, accounts, users, removeUser, logEvent = () => {
       if (target.id === by.id && !msg.admin) return { error: 'Você não pode tirar a sua própria administração.' };
       patch.admin = msg.admin;
     }
-    if (typeof msg.tester === 'boolean') {
-      if (!by.root) return { error: OWNER_ONLY };
-      patch.tester = msg.tester;
-    }
     if (typeof msg.password === 'string') patch.password = str(msg.password, 400);
     const res = await accounts.update(target.id, patch);
     if (!res.ok) return res;
@@ -152,7 +139,6 @@ function createAccountAuth({ io, accounts, users, removeUser, logEvent = () => {
       refreshAccount(target.id, { kick: target.id !== by.id, reason: 'O administrador deu uma senha nova pra sua conta.' });
     } else {
       if (patch.admin !== undefined) logEvent(`${by.nick} ${patch.admin ? 'deu' : 'tirou'} a administração de ${target.nick}`);
-      if (patch.tester !== undefined) logEvent(`${by.nick} ${patch.tester ? 'marcou' : 'desmarcou'} ${target.nick} como usuário de testes`);
       refreshAccount(target.id);
     }
     return res;
@@ -197,4 +183,4 @@ function createAccountAuth({ io, accounts, users, removeUser, logEvent = () => {
   return { attach, accountOf, refreshAccount, list, create, update, rename, remove, password };
 }
 
-module.exports = { createAccountAuth, ADMINS };
+module.exports = { createAccountAuth };

@@ -416,10 +416,8 @@ administração, e o `ADMIN_PASSWORD` fica sem uso.
 3. **No painel**, em **Contas**, crie a conta de cada pessoa: o nick e uma senha
    provisória (o botão **Gerar** sugere uma fácil de digitar). Passe a senha pra
    pessoa: no primeiro acesso ela troca por uma dela. Marque **Conta com
-   administração** pra quem também pode abrir o painel e **Usuário de testes** pra
-   conta que a administração controla de longe (veja
-   [Usuário de testes](#usuário-de-testes)). Não dá pra repetir nick (nem com
-   maiúsculas diferentes).
+   administração** pra quem também pode abrir o painel. Não dá pra repetir nick (nem
+   com maiúsculas diferentes).
 
 Quem tem administração abre o painel pelo botão do escudo, ao lado do seu nome na
 sala: no navegador, o `/admin` abre numa aba nova e já entra com a sua conta; no app,
@@ -428,9 +426,8 @@ abre no navegador do sistema, que pede o nick e a senha.
 Com contas, o painel tem ainda:
 
 - **Contas**: renomear, dar uma senha provisória nova (quem estava conectado com ela
-  sai), dar ou tirar a administração, marcar ou desmarcar **Testes** e apagar a conta
-  (a pessoa sai na hora). Só o dono (a conta Admin) marca administração e testes e
-  mexe nessas contas; as outras contas com administração criam e cuidam só das contas
+  sai), dar ou tirar a administração e apagar a conta (a pessoa sai na hora). Só o
+  dono (a conta Admin) marca administração e mexe nessas contas; as outras contas com administração criam e cuidam só das contas
   normais (e renomeiam a própria), pra ninguém sair criando administradores.
 - **Sala**: além do resto, quem pode transmitir (todo mundo ou só contas com
   administração). Vale pra sala, pro app e pro OBS.
@@ -444,27 +441,6 @@ clicar em **Sair**.
 As contas ficam em `accounts.json`, na pasta de dados (as senhas só como hash).
 Tirando a variável `ACCOUNTS` (ou deixando vazia), a sala volta a ser só com nick; as
 contas continuam guardadas pra quando ligar de novo.
-
-### Usuário de testes
-
-Uma conta marcada pelo dono como **Usuário de testes** é, pra quem usa, uma conta
-normal (no primeiro acesso pede a senha nova, sem selo nem aviso nenhum). Só quem tem
-administração vê, na lista de pessoas, o selo **Teste** e um botão de controlar ao lado
-dela. Esse botão abre um painel com o estado dela (app ou navegador, transmitindo, na
-voz) e os comandos, executados na sala dela como se ela tivesse clicado:
-
-- **Transmissão** (só com ela no app): a lista das telas e janelas, só pelo nome (sem
-  prévia), com ou sem o som do PC ou só o som do programa; começar e parar. No
-  navegador não dá: quem escolhe a tela é a própria pessoa.
-- **Controle remoto**: dar o controle (teclado, mouse, gamepad) pra alguém da sala e
-  tirar, como no botão 🎮 dela (precisa estar transmitindo a tela inteira pelo app).
-- **Voz**: entrar e sair, ligar e desligar o microfone e o som.
-
-O servidor só repassa os comandos dessa lista, confere na hora que quem manda tem
-administração e que o destino é de testes, e anota cada comando no log do servidor; no
-app de quem é de testes, cada comando aparece no **Log** (categoria **Usuário de
-testes**), pra depuração. Uma conta de testes que também tem administração não vê o
-próprio selo nem controla a si mesma. Precisa das contas ligadas (`ACCOUNTS=on`).
 
 ### Diagnósticos no painel
 

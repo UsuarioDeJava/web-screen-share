@@ -35,7 +35,7 @@ let diagnosticsRunning = false;
 let diagnosticRead = null;
 let diagnosticGeneration = 0;
 let roomState = { available: false };
-const categories = { people: 'Pessoas', stream: 'Transmissões', connection: 'Conexões', test: 'Testes', error: 'Erros', system: 'Aplicativo' };
+const categories = { people: 'Pessoas', stream: 'Transmissões', connection: 'Conexões', error: 'Erros', system: 'Aplicativo' };
 const directions = { in: 'Recebido', out: 'Enviado', local: 'Local' };
 const levels = { info: 'Info', warn: 'Aviso', error: 'Erro' };
 function status(message, error = false) { $('status').textContent = message; $('status').classList.toggle('error', error); }
