@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('desktopSettings', {
   subscribeLog: (value) => ipcRenderer.invoke('settings:log-subscribe', value),
   exportLog: () => ipcRenderer.invoke('settings:export-log'),
   checkUpdate: () => ipcRenderer.invoke('settings:check-update'),
+  setAutoUpdate: (value) => ipcRenderer.invoke('settings:auto-update', value === true),
   readRoom: (section) => ipcRenderer.invoke('settings:room-read', section),
   roomAction: (value) => ipcRenderer.invoke('settings:room-action', value),
   close: () => ipcRenderer.invoke('settings:close'),

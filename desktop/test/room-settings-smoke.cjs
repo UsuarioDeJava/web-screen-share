@@ -193,8 +193,9 @@ async function until(check, label, timeout = 12000) {
     assert.equal(await inRoom('document.getElementById("app").hidden'), false);
     await inPanel('document.getElementById("tab-shortcuts").click()');
     await until(() => inPanel('document.querySelectorAll("#room-shortcuts dt").length > 5'), 'atalhos da sala');
-    await inPanel('document.getElementById("tab-log").click();document.getElementById("environment").closest("details").open=true;document.getElementById("check-update").click()');
-    await until(() => inPanel('document.getElementById("update-status").textContent.includes("código-fonte")'), 'verificação de versões original');
+    await inPanel('document.getElementById("tab-settings").click();document.getElementById("check-update").click()');
+    await until(() => inPanel('document.getElementById("update-status").textContent.includes("código-fonte")'), 'verificação de versões em Aplicativo');
+    assert.equal(await inPanel('document.getElementById("auto-update").disabled'), true, 'código-fonte: sem atualização automática');
     console.log('OK: diagnóstico original e atalhos dentro da página única, sem desconectar.');
     await inPanel('document.getElementById("tab-connection").click()');
     await until(() => inPanel('document.getElementById("obs-url").value.includes("/obs/Teste%20Perfil")'), 'endereço OBS');

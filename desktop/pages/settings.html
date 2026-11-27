@@ -73,6 +73,10 @@
 
 
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <section class="card update-card" data-app-only><h2>Atualizações</h2>
+        <div class="update-controls"><label class="switch"><input id="auto-update" type="checkbox" role="switch"><span class="switch-track" aria-hidden="true"></span>Atualizações automáticas</label><button class="btn" id="check-update" type="button">Verificar atualização</button></div>
+        <p id="update-status" class="hint" role="status"></p>
+      </section>
       <form data-app-only id="settings-form">
         <section class="card"><h2>Desempenho visual</h2><label for="visual-mode">Efeitos da interface</label><select id="visual-mode"><option value="normal">Completo</option><option value="economy">Econômico</option><option value="auto">Automático</option></select><p class="hint">O modo econômico reduz partículas, brilhos e desfoques. O automático reduz esses efeitos quando a interface fica sobrecarregada. Vídeo, áudio, ponteiros e comandos continuam ativos. Aplicado ao salvar, sem reiniciar.</p></section>
         <section class="card"><h2>Vídeo e tela cheia</h2><label for="fullscreen">Modo de tela cheia</label><select id="fullscreen"><option value="borderless">Sem bordas — ocupa o monitor inteiro</option><option value="native">Nativa do Electron</option><option value="windowed">Vídeo ampliado dentro da janela</option></select><label class="check"><input id="hardware" type="checkbox"> Usar aceleração de hardware</label><p class="hint">Modo de tela cheia e aceleração são aplicados ao reiniciar. No Windows, o modo sem bordas mantém o caminho de renderização em janela.</p><label class="check"><input id="overlay" type="checkbox"> Mostrar marcações na minha tela ao transmitir</label><p class="hint">Qualidade, volume, microfone e dispositivos de voz continuam nos controles da sala e de cada transmissão.</p></section>
@@ -128,7 +132,7 @@
     </section>
 
     <section id="panel-log" role="tabpanel" aria-labelledby="tab-log" hidden>
-      <details data-app-only class="card log-options"><summary>Ambiente e versões</summary><pre id="environment"></pre><button class="btn" id="check-update" type="button">Verificar atualização</button><p id="update-status" class="hint"></p></details>
+      <details data-app-only class="card log-options"><summary>Ambiente e versões</summary><pre id="environment"></pre></details>
       <details data-app-only class="card log-options"><summary>Registro de atividade</summary><label class="check"><input id="logging" type="checkbox"> Registrar eventos neste aplicativo</label><label for="log-limit">Máximo de eventos na memória</label><select id="log-limit"><option>500</option><option>1000</option><option>2000</option><option>5000</option></select><p class="hint">Pessoas, transmissões, conexões e erros observados por este app. O log começa nesta execução e pode ser exportado. Eventos anteriores à conexão não são recuperados.</p><button hidden class="btn btn-primary" id="log-save" type="submit" form="settings-form">Salvar</button></details>
       <div data-app-only>
       <p class="hint">Em tempo real. A sala continua conectada. Entradas e saídas são os eventos recebidos/enviados por este cliente; não é o histórico completo do servidor.</p>

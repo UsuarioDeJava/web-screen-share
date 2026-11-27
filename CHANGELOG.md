@@ -5,6 +5,15 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.3.0 — 2026-11-27
+
+- **Atualizações automáticas**: em **Configurações > Aplicativo > Atualizações**. Ligado
+  (vem assim), o app baixa a versão nova sozinho e avisa quando está pronta: **Reiniciar**
+  aplica na hora, ou ela entra ao fechar o app.
+- **Verificar atualização** voltou pra um lugar fácil: no mesmo card.
+- O app procura versão nova a cada 15 minutos e ao voltar pra ele (antes era a cada 6
+  horas); sem internet, tenta de novo em 1 minuto.
+
 ## 2.2.2 — 2026-11-26
 
 - O círculo dos analógicos em **Meu gamepad** não anda mais pro lado quando o valor

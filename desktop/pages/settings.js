@@ -179,6 +179,12 @@ async function load() {
   pendingRestart = value.restartRequired;
   updateSaveActions();
   $('version').textContent = `App ${value.environment.app}`;
+  // Só a versão instalada se atualiza sozinha (a portátil e o código-fonte só avisam).
+  if (value.update) {
+    $('auto-update').checked = value.update.mode === 'install' && value.update.auto;
+    $('auto-update').disabled = value.update.mode !== 'install';
+    $('auto-update').closest('.switch').title = value.update.mode === 'install' ? '' : 'Só na versão instalada';
+  }
   $('environment').textContent = `Electron ${value.environment.electron} · Chromium ${value.environment.chrome}\n${value.environment.platform}\nModo ativo: ${value.active.fullscreen} · aceleração ${value.active.hardwareAcceleration ? 'habilitada' : 'desabilitada'}\nServidor ativo: ${value.activeServer || 'não configurado'}\n${value.environment.displays.join('\n')}`;
   snapshot = value.log;
   $('log-count').textContent = snapshot.total;
@@ -272,8 +278,17 @@ $('export').addEventListener('click', async () => {
   catch (error) { status(error.message, true); }
 });
 $('check-update').addEventListener('click', async () => {
+  const button = $('check-update'); button.disabled = true; $('update-status').textContent = 'Verificando…';
   try { const value = await api.checkUpdate(); $('update-status').textContent = value.message; }
-  catch (error) { status(error.message, true); }
+  catch (error) { $('update-status').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+// Atualizações automáticas: salva na hora (não entra no "Salvar" do formulário).
+$('auto-update').addEventListener('change', async () => {
+  const input = $('auto-update'); input.disabled = true;
+  try { const value = await api.setAutoUpdate(input.checked); input.checked = value.auto; if (value.error) $('update-status').textContent = value.error; }
+  catch (error) { $('update-status').textContent = error.message; input.checked = !input.checked; }
+  finally { input.disabled = runtime?.update?.mode !== 'install'; }
 });
 let roomReadGeneration = 0;
 async function refreshRoom() {

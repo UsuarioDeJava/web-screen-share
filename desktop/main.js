@@ -121,7 +121,25 @@ const updates = createUpdates({
   getWindow: () => mainWindow,
   send: (state) => toPage('desktop:update', state),
   icon: ICON,
+  getAuto: () => autoUpdateOn(),
 });
+// Atualizações automáticas (Configurações > Aplicativo): ligadas se nunca mexeram.
+function autoUpdateOn() { return config.autoUpdate !== false; }
+function setAutoUpdate(value) {
+  const previous = config.autoUpdate;
+  config.autoUpdate = value === true;
+  if (!saveConfig()) { config.autoUpdate = previous; return { ok: false, auto: autoUpdateOn(), error: 'Não foi possível salvar.' }; }
+  updates.autoChanged();
+  return { ok: true, auto: autoUpdateOn() };
+}
+const UPDATE_MESSAGES = {
+  off: () => 'Rodando do código-fonte: aqui não tem atualização automática.',
+  available: (r) => `Saiu a versão ${r.version}: o aviso está no topo da sala.`,
+  ready: (r) => `A versão ${r.version} está pronta: reinicie pelo aviso da sala pra aplicar.`,
+  busy: (r) => `Baixando a versão ${r.version}…`,
+  current: (r) => `O app está atualizado (versão ${r.current}).`,
+  error: () => 'Não deu pra verificar agora (sem internet?).',
+};
 let lastSources = new Map(); // id -> fonte do desktopCapturer mostrada no seletor
 let picked = null; // última escolha do seletor: { kind, displayId }
 let shareWanted = false;
@@ -434,6 +452,7 @@ function settingsState() {
     server: config.pendingServer || config.server, activeServer: config.server,
     gamepadClientPath: path.join(app.getPath('userData'), 'gamepad', process.arch, 'ViGEmClient.dll'),
     preferences: pendingPreferences, active: activePreferences, restartRequired, log: activity.snapshot(), shortcuts: shortcutState(),
+    update: { mode: updates.mode, auto: autoUpdateOn() },
     environment: {
       app: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome,
       platform: `${process.platform} ${process.arch}`,
@@ -1446,14 +1465,12 @@ if (!app.requestSingleInstanceLock()) {
         setImmediate(() => { app.relaunch(); app.quit(); });
         return { ok: true };
       },
+      // Procura direto (o aviso chega na sala sozinho) e responde aqui mesmo.
       checkUpdate: async () => {
-        const roomState = await roomSettings.read().catch(() => null);
-        if (roomState?.available) return roomSettings.action({ type: 'check-updates' });
-        if (!updates.mode) return { message: 'Executando pelo código-fonte. Atualizações automáticas estão desativadas.' };
-        await updates.check();
-        const state = updates.listen();
-        return { message: state.state === 'available' ? `Versão ${state.version} disponível. Use o aviso da sala para atualizar.` : state.state === 'error' ? 'Não foi possível verificar atualização. Consulte o aviso da sala.' : 'Verificação concluída. Consulte o aviso de atualização da sala.' };
+        const found = await updates.check();
+        return { message: (UPDATE_MESSAGES[found.result] || UPDATE_MESSAGES.error)(found) };
       },
+      setAutoUpdate,
     });
     log('system', `App ${app.getVersion()} iniciado · Electron ${process.versions.electron} · tela cheia ${activePreferences.fullscreen} · aceleração ${activePreferences.hardwareAcceleration ? 'ativada' : 'desativada'}.`);
     if (SELF_TEST) {

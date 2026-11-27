@@ -853,15 +853,15 @@ que o navegador não faz:
 - A transmissão e a voz continuam firmes com o app minimizado, e a barra de tarefas
   pisca quando chega mensagem no chat com o app em segundo plano.
 - Ao compartilhar uma janela no Windows, mantenha a janela capturada restaurada. No ensaio com quatro espectadores, minimizar a fonte reduziu a captura para 1 FPS; restaurá-la recuperou cerca de 60 FPS na mesma transmissão.
-- **Aviso de versão nova**: o app procura atualização ao abrir e a cada 6 horas. Na
-  versão instalada (Setup), o aviso no topo da sala tem o botão **Atualizar**: ele
-  baixa a versão nova (com o progresso no aviso e na barra de tarefas), instala e abre
-  o app de novo sozinho. Na versão portátil, o aviso traz o link pra baixar a nova.
-  **Depois** esconde o aviso até o app abrir de novo (fica o link **Atualizar o app**
-  no rodapé da lista). Pra procurar na hora, sem reabrir o app: **Verificar atualização**,
-  no rodapé da lista (ele também avisa se o servidor já tem versão nova e a página
-  precisa ser recarregada). A 1.4.0 é a primeira com isso: de uma versão anterior, baixe a
-  nova na mão uma última vez.
+- **Aviso de versão nova**: o app procura atualização ao abrir, a cada 15 minutos e ao
+  voltar pra ele. Na versão instalada (Setup), com **Atualizações automáticas** ligado
+  (Configurações > Aplicativo, vem ligado), ele baixa sozinho e o aviso no topo da sala
+  aparece já pronto: **Reiniciar** aplica na hora; se fechar o app, aplica ao fechar.
+  Desligado, o aviso tem **Atualizar**, que baixa, instala e abre o app de novo. Na
+  versão portátil, o aviso traz o link pra baixar a nova. **Depois** esconde o aviso até
+  o app abrir de novo (fica o link no rodapé da lista). Pra procurar na hora:
+  **Verificar atualização**, em Configurações > Aplicativo (ou no rodapé da lista). A
+  1.4.0 é a primeira com isso: de uma versão anterior, baixe a nova na mão uma última vez.
 
 Instalação: baixe o `Web-Screen-Share-Setup-<versão>.exe` (ou o `Portable`, que roda
 sem instalar) na [página de Releases](https://github.com/UsuarioDeJava/web-screen-share/releases/latest)

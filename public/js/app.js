@@ -4379,9 +4379,10 @@
 
   // ---------- aviso de versão nova do app ----------
 
-  // O app procura versão nova ao abrir e a cada 6 horas. Instalado: "Atualizar" baixa,
-  // instala e reabre o app. Portátil: "Baixar" abre a página da versão nova. "Depois"
-  // esconde o aviso até o app abrir de novo (fica o link no rodapé da lista).
+  // O app procura versão nova ao abrir, a cada 15 minutos e ao voltar pra ele. Instalado:
+  // "Atualizar" baixa, instala e reabre o app; com as atualizações automáticas, ele baixa
+  // sozinho e o aviso só aparece pronto ("Reiniciar"). Portátil: "Baixar" abre a página da
+  // versão nova. "Depois" esconde o aviso até o app abrir de novo (fica o link no rodapé).
   const appUpdateEl = $('app-update');
   const APP_UPDATE_LATER = 'wss-app-update-later';
   let appUpdate = null;
@@ -4390,18 +4391,28 @@
     try { return sessionStorage.getItem(APP_UPDATE_LATER); } catch { return null; }
   }
 
+  // "Depois" vale pra versão e pro estado: depois de esconder "Saiu a versão X", o "X está
+  // pronta" aparece mesmo assim.
+  const laterKey = (u) => (u.state === 'ready' ? `ready:${u.version}` : u.version);
+
   function renderAppUpdate() {
     const u = appUpdate;
-    const pending = Boolean(u) && (u.state === 'available' || u.state === 'error');
-    const busy = Boolean(u) && (u.state === 'downloading' || u.state === 'installing');
-    const later = pending && appUpdateLater() === u.version;
+    const pending = Boolean(u) && (u.state === 'available' || u.state === 'error' || u.state === 'ready');
+    // Baixando sozinho (atualizações automáticas): não mostra nada até ficar pronta.
+    const busy = Boolean(u) && ((u.state === 'downloading' && !u.background) || u.state === 'installing');
+    const later = pending && appUpdateLater() === laterKey(u);
     appUpdateEl.hidden = !(pending || busy) || later;
     $('btn-app-update-link').hidden = !later;
+    $('btn-app-update-link').textContent = u?.state === 'ready' ? 'Reiniciar e atualizar' : 'Atualizar o app';
     if (!u || appUpdateEl.hidden) return;
     const button = $('btn-app-update');
     const bar = $('app-update-bar');
     let text;
-    if (u.state === 'available' && u.mode === 'install') {
+    if (u.state === 'ready') {
+      text = `A versão ${u.version} do app está pronta. Reinicie pra aplicar.`;
+      button.textContent = 'Reiniciar';
+      button.title = 'Fecha e abre o app de novo, já na versão nova';
+    } else if (u.state === 'available' && u.mode === 'install') {
       text = `Saiu a versão ${u.version} do app (você está na ${u.current}).`;
       button.textContent = 'Atualizar';
       button.title = 'Baixa a versão nova, instala e abre o app de novo';
@@ -4427,10 +4438,11 @@
 
   function runAppUpdate() {
     if (!appUpdate) return;
-    if (appUpdate.state === 'available' && appUpdate.mode === 'install') {
-      const busyWith = localStream ? 'transmitindo' : voice.joined ? 'na voz' : null;
-      if (busyWith && !window.confirm(`Você está ${busyWith}. Pra atualizar, o app fecha e abre de novo quando terminar de baixar. Atualizar agora?`)) return;
-    }
+    const busyWith = localStream ? 'transmitindo' : voice.joined ? 'na voz' : null;
+    if (busyWith && appUpdate.state === 'ready'
+      && !window.confirm(`Você está ${busyWith}. O app fecha e abre de novo pra aplicar a versão nova. Reiniciar agora?`)) return;
+    if (busyWith && appUpdate.state === 'available' && appUpdate.mode === 'install'
+      && !window.confirm(`Você está ${busyWith}. Pra atualizar, o app fecha e abre de novo quando terminar de baixar. Atualizar agora?`)) return;
     try { sessionStorage.removeItem(APP_UPDATE_LATER); } catch {}
     desktop.update().catch(() => {});
   }
@@ -4456,6 +4468,10 @@
       try { sessionStorage.removeItem(APP_UPDATE_LATER); } catch {} // mesmo se tinha clicado em "Depois"
       renderAppUpdate();
       text = `Saiu a versão ${found.version} do app: o aviso está no topo.`;
+    } else if (found.result === 'ready') {
+      try { sessionStorage.removeItem(APP_UPDATE_LATER); } catch {}
+      renderAppUpdate();
+      text = `A versão ${found.version} do app está pronta: reinicie pelo aviso no topo.`;
     } else if (found.result === 'busy') {
       text = 'A versão nova do app já está sendo baixada.';
     } else if (found.result === 'current') {
@@ -4483,7 +4499,7 @@
     $('btn-app-update').addEventListener('click', runAppUpdate);
     $('btn-app-update-link').addEventListener('click', runAppUpdate);
     $('btn-app-update-later').addEventListener('click', () => {
-      try { sessionStorage.setItem(APP_UPDATE_LATER, appUpdate.version); } catch {}
+      try { sessionStorage.setItem(APP_UPDATE_LATER, laterKey(appUpdate)); } catch {}
       if (!appUpdateLater()) appUpdateEl.hidden = true; // sem sessionStorage: só esconde
       else renderAppUpdate();
     });

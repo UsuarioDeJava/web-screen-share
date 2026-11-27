@@ -8,7 +8,7 @@ const { pathToFileURL } = require('node:url');
 // desenha o fundo escurecido e o cartão). Fecha no X, no Esc, clicando fora ou no Ctrl+,;
 // minimiza, muda de tamanho e fecha junto com a janela. `getInset` é a altura da barra de
 // título própria (janela sem bordas), que continua de fora pra minimizar e fechar.
-function createSettingsPanel({ getParent, getInset = () => 0, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, room, activity, getShortcuts, shortcutAction }) {
+function createSettingsPanel({ getParent, getInset = () => 0, getState, readGamepadProfiles, saveGamepadProfile, prepareGamepad, save, restart, checkUpdate, setAutoUpdate, room, activity, getShortcuts, shortcutAction }) {
   let view = null;
   let parent = null;
   let timer = null;
@@ -87,6 +87,7 @@ function createSettingsPanel({ getParent, getInset = () => 0, getState, readGame
     'settings:restart': restart,
     'settings:clear-log': () => { activity.clear(); return { ok: true }; },
     'settings:check-update': checkUpdate,
+    'settings:auto-update': (value) => setAutoUpdate(value === true),
     'settings:room-read': (section) => room.read(section),
     'settings:room-action': (value) => room.action(value),
     'settings:export-log': async () => {
