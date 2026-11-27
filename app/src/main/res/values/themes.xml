@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FF111214</color>
+    <color name="panel">#CC1E1F22</color>
+    <color name="text">#FFF2F3F5</color>
+    <color name="muted">#FF9A9CA3</color>
+    <color name="accent">#FF5865F2</color>
+    <color name="live">#FFE5484D</color>
+
+    <style name="Theme.Camera" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:textColorHint">@color/muted</item>
+    </style>
+
+    <style name="Btn" parent="Widget.AppCompat.Button.Borderless">
+        <item name="android:textColor">@color/text</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:background">@drawable/btn</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+    </style>
+
+    <style name="Btn.Primary">
+        <item name="android:background">@drawable/btn_primary</item>
+    </style>
+</resources>

@@ -1,0 +1,62 @@
+name: App da câmera (Android)
+
+# Roda a cada push nesta branch e também pode ser chamado pelo workflow de release do
+# main (workflow_call), que passa a versão e anexa o APK no release.
+on:
+  push:
+    branches:
+      - mobile-camera-app
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: false
+      ref:
+        type: string
+        required: false
+        default: mobile-camera-app
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Chave de assinatura (opcional)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || exit 0
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          [ -n "$ANDROID_KEYSTORE_PASSWORD" ] || unset ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD
+          VERSION="${{ inputs.version }}"
+          ./gradlew --no-daemon assembleRelease ${VERSION:+-PappVersion=$VERSION}
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk "out/WSS-Camera${VERSION:+-$VERSION}.apk"
+          ls -la out
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: camera-apk
+          path: out/*.apk
+          if-no-files-found: error

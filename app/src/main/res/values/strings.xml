@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WSS Câmera</string>
+    <string name="scan">Ler QR code</string>
+    <string name="ip_hint">IP do PC</string>
+    <string name="connect">Conectar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="or">ou</string>
+    <string name="start">Transmitir</string>
+    <string name="stop">Parar</string>
+    <string name="back_cam">Traseira</string>
+    <string name="front_cam">Frontal</string>
+    <string name="mic_on">Mic ligado</string>
+    <string name="mic_off">Mic desligado</string>
+    <string name="forget">Esquecer PC</string>
+    <string name="live">AO VIVO</string>
+    <string name="ready">Pronto</string>
+    <string name="connecting">Conectando…</string>
+    <string name="waiting_pc">Aceite no PC</string>
+    <string name="no_camera">Sem permissão da câmera</string>
+</resources>

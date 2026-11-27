@@ -1,15 +1,6 @@
-node_modules/
-npm-debug.log*
-.env
-*.crt
-*.key
-desktop/dist/
-local-server/desktop-profile/
-local-server/*.log
-
-# Contas e configurações do servidor rodando local (fora do container)
-data/
-desktop/native/bin/
-
-# Arquivos de investigação, testes e documentação histórica organizados fora do app
-/testes/
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
