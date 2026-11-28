@@ -2,8 +2,11 @@
   const create = factory();
   if (typeof module === 'object' && module.exports) module.exports = create;
   else root.createVideoHealth = create;
-})(globalThis, () => function createVideoHealth({ stallMs = 12000, cooldownMs = 60000 } = {}) {
+})(globalThis, () => function createVideoHealth({ stallMs = 12000, cooldownMs = 60000, firstFrameMs = 45000 } = {}) {
   let previous = null, stuckSince = null, retryAt = -Infinity, minRtt = null, congestedAt = null, debtSamples = 0;
+  // Antes do primeiro quadro desta conexão, o vídeo pode estar só esperando um quadro-chave
+  // (o OBS manda um a cada N s e não atende pedido): reconectar aí só recomeça a espera.
+  let waitingSince = null, decodedOnce = false;
   const bufferBaseline = [];
   function reset() { previous = null; stuckSince = null; minRtt = congestedAt = null; debtSamples = 0; bufferBaseline.length = 0; }
   return {
@@ -21,7 +24,10 @@
       const progress = previous && bytesReceived > previous.bytes && framesDecoded === previous.frames;
       if (progress) stuckSince ??= previous.at;
       else stuckSince = null; // tela estática ou chegada de novos quadros: não reconectar
-      const stalled = stuckSince !== null && now - stuckSince >= stallMs && now >= retryAt;
+      if (framesDecoded > 0) decodedOnce = true;
+      else if (bytesReceived > 0) waitingSince ??= now;
+      const stalled = (decodedOnce ? stuckSince !== null && now - stuckSince >= stallMs
+        : waitingSince !== null && now - waitingSince >= firstFrameMs) && now >= retryAt;
       if (stalled) retryAt = now + cooldownMs;
       const rtt = Number.isFinite(metrics?.rttMs) && metrics.rttMs >= 0 ? metrics.rttMs : null;
       const buffer = Number.isFinite(metrics?.jitterBufferMs) && metrics.jitterBufferMs >= 0 ? metrics.jitterBufferMs : null;
@@ -43,7 +49,8 @@
       if (latencyRecovery) { retryAt = now + cooldownMs; debtSamples = 0; }
       previous = { bytes: bytesReceived, frames: framesDecoded, at: now, id: stats.id, timestamp: stats.timestamp,
         packets: stats.packetsReceived, lost: stats.packetsLost };
-      return { stalled, latencyRecovery, bufferBaselineMs: baseline, recentLoss: loss, framesDecoded, framesDropped,
+      return { stalled, latencyRecovery, waitingKeyframe: !decodedOnce && waitingSince !== null && now - waitingSince >= 3000,
+        bufferBaselineMs: baseline, recentLoss: loss, framesDecoded, framesDropped,
         decodeMs: framesDecoded && Number.isFinite(totalDecodeTime) ? totalDecodeTime * 1000 / framesDecoded : null };
     },
   };

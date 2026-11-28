@@ -1774,6 +1774,9 @@
         s.healthStats = health.sample(video, performance.now(), { metrics: s.videoMetrics,
           lowLatency: transportExperiments.videoOptions.recoverDelayedVideo && recoveryAllowed && s.kind !== 'obs'
             && (controlling === s.id || s.quality === 'jogo720' || s.quality === 'jogo1080') });
+        // Conectado e chegando vídeo, mas ainda sem um quadro-chave pra começar a imagem.
+        if (s.healthStats.waitingKeyframe && !s.waitingKeyframe) { s.waitingKeyframe = true; setStatus(s, 'Esperando a imagem…', true); }
+        else if (!s.healthStats.waitingKeyframe && s.waitingKeyframe) { s.waitingKeyframe = false; setStatus(s, ''); }
         if ((s.healthStats.stalled || s.healthStats.latencyRecovery) && recoveryAllowed) {
           s.lastHealthRecovery = Date.now();
           if (s.healthStats.latencyRecovery) {
@@ -1820,7 +1823,7 @@
     s.blackReported = true;
     reporting.fault('video_black', undefined, undefined, `Conectado há ${Math.round((Date.now() - s.blackSince) / 1000)} s sem nenhum quadro`
       + `${s.kind === 'obs' ? ' (transmissão do OBS)' : ''}: ${video ? `${video.bytesReceived || 0} bytes e ${video.packetsReceived || 0} pacotes de vídeo recebidos, `
-      + `${video.framesReceived || 0} quadros recebidos, codec ${codec || 'não informado'}, `
+      + `${video.framesReceived || 0} quadros recebidos (${video.keyFramesDecoded || 0} quadros-chave decodificados, ${video.pliCount || 0} pedidos de quadro-chave), codec ${codec || 'não informado'}, `
       + `decodificador ${video.decoderImplementation || 'não informado'}` : 'nenhum pacote de vídeo chegou'}.`);
   }
 
@@ -5922,8 +5925,8 @@
   if (desktop && typeof desktop.onControlRevoke === 'function') desktop.onControlRevoke(revokeControl);
   // O app repassando o OBS viu AV1 de 10 bits (ou 4:4:4): ninguém vai ver a imagem.
   desktop?.onObsWarning?.((value) => {
-    if (value?.type !== 'av1') return;
-    showToast(`O OBS está mandando AV1 de ${value.bitDepth} bits${value.profile ? ' (4:4:4)' : ''}: ninguém vê a imagem. No OBS: Configurações > Avançado > Formato de cor: NV12.`, 20000);
+    if (value?.type === 'av1') showToast(`O OBS está mandando AV1 de ${value.bitDepth} bits${value.profile ? ' (4:4:4)' : ''}: ninguém vê a imagem. No OBS: Configurações > Avançado > Formato de cor: NV12.`, 20000);
+    else if (value?.type === 'keyframe') showToast(`${value.seconds ? `O OBS manda quadro-chave a cada ${value.seconds} s` : 'O OBS passou mais de 10 s sem mandar quadro-chave'}: quem entra fica esse tempo sem imagem. No OBS: Saída > Intervalo de quadro-chave: 1.`, 20000);
   });
   desktop?.onControlBlocked?.(value => {
     const grant = controlGrants.get(value?.from);

@@ -58,4 +58,30 @@ function negotiate(pc,type,remote){
     try {if(remote)pc.setRemoteDescription(remote,'offer');pc.setLocalDescription(type);}catch(e){finish(e);}
   });
 }
-module.exports={formats,packet,media,negotiate};
+// O pacote começa um quadro-chave? AV1: o cabeçalho de sequência vem antes de cada um (o
+// primeiro OBU de um pacote com Z=0). H.264: IDR (5) ou SPS (7), sozinho, em STAP-A ou no
+// primeiro fragmento FU-A. payload: a carga útil RTP (sem o cabeçalho de 12 bytes).
+function keyframeStart(payload,codec){
+  if(!payload || payload.length<2)return false;
+  if(codec==='AV1'){
+    if(payload[0]&0x80)return false;
+    const count=(payload[0]>>4)&3;let i=1;
+    if(count!==1){let n=0;while(i<payload.length && payload[i]&0x80 && n<8){i++;n++;}i++;}
+    return i<payload.length && ((payload[i]>>3)&15)===1;
+  }
+  const type=payload[0]&0x1f;
+  if(type===5 || type===7)return true;
+  if(type===24)return payload.length>3 && [5,7].includes(payload[3]&0x1f);
+  if(type===28)return (payload[1]&0x80)!==0 && [5,7].includes(payload[1]&0x1f);
+  return false;
+}
+// RTCP (talvez composto) com pedido de quadro-chave: PLI (206/1) ou FIR (206/4).
+function keyframeRequest(bytes){
+  for(let i=0;i+4<=bytes.length;){
+    if(bytes[i]>>6!==2)return false;
+    if(bytes[i+1]===206 && ((bytes[i]&31)===1 || (bytes[i]&31)===4))return true;
+    i+=4*(bytes.readUInt16BE(i+2)+1);
+  }
+  return false;
+}
+module.exports={formats,packet,media,negotiate,keyframeStart,keyframeRequest};

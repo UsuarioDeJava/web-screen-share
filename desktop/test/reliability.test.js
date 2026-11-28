@@ -53,6 +53,22 @@ test('monitor distingue tela estática de dados sem quadros e limita reconexões
   assert.equal(sample(700, 3, 120000).stalled, false);
 });
 
+test('vídeo esperando o primeiro quadro-chave (OBS com intervalo longo): não reconecta antes da hora', () => {
+  const health = createVideoHealth();
+  const sample = (bytes, frames, now) => health.sample({ bytesReceived: bytes, framesDecoded: frames }, now);
+  sample(100, 0, 0);
+  for (let t = 2000; t <= 28000; t += 2000) assert.equal(sample(100 + t, 0, t).stalled, false, `esperando aos ${t / 1000} s`);
+  assert.equal(sample(30000, 0, 30000).waitingKeyframe, true, 'avisa que está esperando');
+  assert.equal(sample(40000, 5, 32000).stalled, false, 'chegou o quadro-chave: a imagem aparece e não reconecta');
+  let stalledAt = null;
+  for (let t = 34000; t <= 48000 && stalledAt === null; t += 2000) if (sample(40000 + t, 5, t).stalled) stalledAt = t;
+  assert.equal(stalledAt, 44000, 'depois do primeiro quadro (aos 32 s), 12 s sem novos quadros: reconecta');
+  const never = createVideoHealth();
+  never.sample({ bytesReceived: 1, framesDecoded: 0 }, 0);
+  for (let t = 2000; t < 46000; t += 2000) never.sample({ bytesReceived: 1 + t, framesDecoded: 0 }, t);
+  assert.equal(never.sample({ bytesReceived: 50000, framesDecoded: 0 }, 46000).stalled, true, 'nenhum quadro em 45 s: aí sim reconecta');
+});
+
 test('upload demorado não bloqueia leitura ou revogação e espera pode ser cancelada', async () => {
   let resolvePhoto;
   const contents = { isDestroyed: () => false, getURL: () => 'https://sala', executeJavaScript: (source) => source.includes('"type":"photo"')

@@ -5,6 +5,17 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.4.2 — 2026-11-28
+
+- **Tela preta pra quem entra numa transmissão do OBS ou da câmera**: o pedido de
+  quadro-chave de quem assiste não chegava até o OBS/celular quando passava pelo app.
+  Agora chega: a câmera do celular, que só manda quadro-chave quando pedem, aparece pra
+  quem entra depois.
+- Quem assiste espera o quadro-chave ("Esperando a imagem…") em vez de ficar
+  reconectando a cada 12 s, o que recomeçava a espera e deixava a tela preta pra sempre.
+- O app avisa quem transmite quando o OBS manda quadro-chave muito espaçado (**Saída >
+  Intervalo de quadro-chave: 1**).
+
 ## 2.4.1 — 2026-11-27
 
 - **OBS com AV1 em tela preta**: o AV1 de 10 bits (NVENC com o OBS em P010 ou HDR) chega,

@@ -491,7 +491,8 @@ const obsLocal=require('./obs-local').createObsLocal({
   },
   // O vídeo do OBS não vai aparecer pra ninguém (AV1 de 10 bits): a sala avisa quem transmite.
   onWarning:(value)=>{
-    log('stream',`OBS mandando AV1 perfil ${value.profile}, ${value.bitDepth} bits: o navegador não decodifica (só 8 bits).`,'warn');
+    if(value.type==='av1')log('stream',`OBS mandando AV1 perfil ${value.profile}, ${value.bitDepth} bits: o navegador não decodifica (só 8 bits).`,'warn');
+    else log('stream',`OBS com quadro-chave a cada ${value.seconds?value.seconds+' s':'mais de 10 s'}: quem entra fica esse tempo sem imagem.`,'warn');
     toPage('desktop:obs-warning',value);
   },
 });

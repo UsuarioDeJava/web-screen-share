@@ -1,6 +1,7 @@
 const http=require('node:http');
 const crypto=require('node:crypto');
-const {formats,packet,media,negotiate}=require('./obs-rtp');
+const {formats,packet,media,negotiate,keyframeStart,keyframeRequest}=require('./obs-rtp');
+const KEY_GAP_WARN=4000; // quadro-chave mais espaçado que isso: quem entra fica esse tempo no preto
 const {cleanIce}=require('./native-video');
 const {rtpSequenceHeader}=require('./av1-info');
 
@@ -31,7 +32,18 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
       if(state==='connected' && row.videoSeen && row.video?.isOpen()) row.video.requestKeyframe();
       if(state==='failed' || state==='closed'){if(key==='server') end(row);else drop(row,key);}
     });
-    for(const f of row.formats)dest.tracks.set(f.mid,media(rtc(),pc,f,true));
+    for(const f of row.formats){
+      const out=media(rtc(),pc,f,true);dest.tracks.set(f.mid,out);
+      // Quem assiste pede quadro-chave (o MediaMTX repassa): leva até a origem. A câmera do
+      // celular (WebRTC) só manda quadro-chave quando pedem; o OBS manda no intervalo dele.
+      if(f.kind==='video')out.track.onMessage(bytes=>{
+        if(current!==row || !Buffer.isBuffer(bytes) || !keyframeRequest(bytes))return;
+        const now=Date.now();
+        if(now-(row.keyAskedAt||0)<1000 || !row.video?.isOpen())return;
+        row.keyAskedAt=now;row.keyPending=row.keyPending||now;
+        row.video.requestKeyframe();
+      });
+    }
     return dest;
   }
   async function publish(row){
@@ -110,6 +122,20 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
           if(f.codec==='AV1' && !row.av1){
             const info=rtpSequenceHeader(out.subarray(12));
             if(info){row.av1=info;if(info.bitDepth!==8 || info.profile!==0)onWarning({type:'av1',source:row.source,...info});}
+          }
+          // O OBS não atende pedido de quadro-chave: quem entra espera o próximo. Intervalo
+          // longo (ou o "0 = automático" de alguns codificadores) vira tela preta longa.
+          if(f.kind==='video'){
+            const now=Date.now();
+            const key=keyframeStart(out.subarray(12),f.codec);
+            // Pediu e veio logo: a origem atende pedido (a câmera atende; o OBS, em geral, não).
+            if(key && row.keyPending){if(now-row.keyPending<2000)row.keyHonored=true;row.keyPending=0;}
+            if(!row.keyWarned && !row.keyHonored && row.source==='obs'){
+              if(key){
+                if(row.keyAt && now-row.keyAt>300 && now-row.keyAt>KEY_GAP_WARN){row.keyWarned=true;onWarning({type:'keyframe',source:row.source,seconds:Math.round((now-row.keyAt)/1000)});}
+              }else if(row.keyAt && now-row.keyAt>10000){row.keyWarned=true;onWarning({type:'keyframe',source:row.source,seconds:null});}
+            }
+            if(key && (!row.keyAt || now-row.keyAt>300))row.keyAt=now;
           }
           for(const dest of row.outputs.values()){
             const t=dest.tracks.get(f.mid);
