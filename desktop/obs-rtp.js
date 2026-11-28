@@ -44,7 +44,9 @@ function media(rtc,pc,f,outgoing){
     const clock=f.kind==='audio'?48000:90000;
     const config=new rtc.RtpPacketizationConfig(f.ssrc,'obs',f.pt,clock);
     const reporter=new rtc.RtcpSrReporter(config);
-    reporter.addToChain(new rtc.RtcpNackResponder(256));track.setMediaHandler(reporter);
+    // Reenvio do que o servidor pedir (NACK): o do vídeo fica no obs-local, no ritmo.
+    if(f.kind==='audio')reporter.addToChain(new rtc.RtcpNackResponder(256));
+    track.setMediaHandler(reporter);
     return {track,config};
   }
   return {track};
@@ -84,4 +86,36 @@ function keyframeRequest(bytes){
   }
   return false;
 }
-module.exports={formats,packet,media,negotiate,keyframeStart,keyframeRequest};
+// Fração perdida (0 a 1) que quem recebe relata (RTCP RR, ou SR com relatório) pro SSRC
+// dado; null se o pacote não traz relatório dele.
+function receiverLoss(bytes,ssrc){
+  for(let i=0;i+4<=bytes.length;){
+    if(bytes[i]>>6!==2)return null;
+    const count=bytes[i]&31,type=bytes[i+1],end=Math.min(bytes.length,i+4*(bytes.readUInt16BE(i+2)+1));
+    const first=type===201?i+8:type===200?i+28:-1;
+    if(first>=0)for(let k=0;k<count && first+24*(k+1)<=end;k++){
+      const block=first+24*k;
+      if(bytes.readUInt32BE(block)===ssrc>>>0)return bytes[block+4]/256;
+    }
+    i=end;
+  }
+  return null;
+}
+// Números de sequência que quem recebe pede de novo (RTCP NACK genérico) pro SSRC dado.
+function nackedSequences(bytes,ssrc){
+  const list=[];
+  for(let i=0;i+4<=bytes.length;){
+    if(bytes[i]>>6!==2)break;
+    const end=Math.min(bytes.length,i+4*(bytes.readUInt16BE(i+2)+1));
+    if(bytes[i+1]===205 && (bytes[i]&31)===1 && i+12<=end && bytes.readUInt32BE(i+8)===ssrc>>>0){
+      for(let k=i+12;k+4<=end;k+=4){
+        const pid=bytes.readUInt16BE(k),blp=bytes.readUInt16BE(k+2);
+        list.push(pid);
+        for(let b=0;b<16;b++)if(blp&(1<<b))list.push((pid+b+1)&0xffff);
+      }
+    }
+    i=end;
+  }
+  return list;
+}
+module.exports={formats,packet,media,negotiate,keyframeStart,keyframeRequest,receiverLoss,nackedSequences};

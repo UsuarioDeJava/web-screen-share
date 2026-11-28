@@ -1759,8 +1759,9 @@
         const codec = video && stats.get(video.codecId)?.mimeType;
         checkBlackVideo(s, pc, video, codec);
         if (!video) return;
-        // AV1 que chega e não decodifica nunca (10 bits: o decodificador do navegador só
-        // aceita 8): mostra o motivo e não fica reconectando à toa.
+        // AV1 que chega e não decodifica nunca (10 bits, que o navegador não decodifica, ou
+        // perda no caminho de quem transmite; o app de quem transmite avisa qual): mostra e
+        // não fica reconectando à toa.
         if (/av1/i.test(codec || '') && !video.framesDecoded && (video.framesReceived || 0) >= 60) {
           if (s.undecodablePc !== pc) { s.undecodablePc = pc; setStatus(s, AV1_UNDECODABLE, false); }
           health.reset();
@@ -1816,7 +1817,7 @@
       + `${video ? `${video.packetsSent || 0} pacotes enviados` : 'sem envio de vídeo'}; captura ${set.width || '?'}x${set.height || '?'} a ${Math.round(set.frameRate || 0)} fps, `
       + `faixa ${track ? track.readyState : 'ausente'}${track && track.muted ? ' (muda)' : ''}.`);
   }
-  const AV1_UNDECODABLE = 'Sem imagem: este AV1 não toca no navegador (10 bits). No OBS, use o formato de cor NV12.';
+  const AV1_UNDECODABLE = 'Sem imagem: o vídeo AV1 chega, mas não decodifica.';
   function checkBlackVideo(s, pc, video, codec) {
     if (s.blackPc !== pc) { s.blackPc = pc; s.blackSince = Date.now(); s.blackReported = false; }
     if (s.blackReported || (video && video.framesDecoded > 0) || s.video.videoWidth > 0 || Date.now() - s.blackSince < SILENT_AFTER) return;
@@ -5926,6 +5927,7 @@
   // O app repassando o OBS viu AV1 de 10 bits (ou 4:4:4): ninguém vai ver a imagem.
   desktop?.onObsWarning?.((value) => {
     if (value?.type === 'av1') showToast(`O OBS está mandando AV1 de ${value.bitDepth} bits${value.profile ? ' (4:4:4)' : ''}: ninguém vê a imagem. No OBS: Configurações > Avançado > Formato de cor: NV12.`, 20000);
+    else if (value?.type === 'loss') showToast(value.source === 'camera' ? `Perdendo ${value.percent}% do vídeo da câmera até o servidor: a conexão não aguenta essa qualidade.` : `Perdendo ${value.percent}% do vídeo do OBS até o servidor. Baixe o bitrate no OBS (Saída > Taxa de bits).`, 20000);
     else if (value?.type === 'keyframe') showToast(`${value.seconds ? `O OBS manda quadro-chave a cada ${value.seconds} s` : 'O OBS passou mais de 10 s sem mandar quadro-chave'}: quem entra fica esse tempo sem imagem. No OBS: Saída > Intervalo de quadro-chave: 1.`, 20000);
   });
   desktop?.onControlBlocked?.(value => {

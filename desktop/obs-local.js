@@ -1,9 +1,14 @@
 const http=require('node:http');
 const crypto=require('node:crypto');
-const {formats,packet,media,negotiate,keyframeStart,keyframeRequest}=require('./obs-rtp');
+const {formats,packet,media,negotiate,keyframeStart,keyframeRequest,receiverLoss,nackedSequences}=require('./obs-rtp');
 const KEY_GAP_WARN=4000; // quadro-chave mais espaçado que isso: quem entra fica esse tempo no preto
+const LOSS_WARN=0.03; // perda média até o servidor, já no ritmo mais suave: falta banda
+// Reenvio: o MediaMTX só espera uns 64 pacotes por um que faltou. Mais velho que isso não
+// adianta, e reenviar num caminho que já está no limite só aumenta a perda.
+const RESEND_KEEP=1024,RESEND_AGE=150;
 const {cleanIce}=require('./native-video');
 const {createSequenceHeaderRepeater}=require('./av1-info');
+const {createPacer}=require('./pacer');
 
 // onWarning: o vídeo que chega não vai aparecer pra quem assiste (ex.: AV1 de 10 bits).
 function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) {
@@ -11,7 +16,7 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
   const rtc=()=>injected || require('node-datachannel');
   function drop(row,key) {
     const dest=row.outputs.get(key);
-    if(dest){row.outputs.delete(key);dest.pc.close();}
+    if(dest){row.outputs.delete(key);dest.pacer.close();dest.pc.close();}
   }
   function end(row) {
     if(!row || current!==row)return;
@@ -26,7 +31,8 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
   function destination(row,key,ice) {
     drop(row,key);
     const pc=new (rtc().PeerConnection)('obs-output',{iceServers:ice,disableAutoNegotiation:true,forceMediaTransport:true});
-    const dest={pc,tracks:new Map()};row.outputs.set(key,dest);
+    // O vídeo sai no ritmo (pacer.js): o quadro-chave inteiro de uma vez se perde no caminho.
+    const dest={pc,tracks:new Map(),pacer:createPacer()};row.outputs.set(key,dest);
     pc.onStateChange(state=>{
       if(row.outputs.get(key)!==dest)return;
       if(state==='connected' && row.videoSeen && row.video?.isOpen()) row.video.requestKeyframe();
@@ -34,10 +40,34 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
     });
     for(const f of row.formats){
       const out=media(rtc(),pc,f,true);dest.tracks.set(f.mid,out);
+      if(f.kind==='video')out.sent=new Array(RESEND_KEEP);
       // Quem assiste pede quadro-chave (o MediaMTX repassa): leva até a origem. A câmera do
       // celular (WebRTC) só manda quadro-chave quando pedem; o OBS manda no intervalo dele.
       if(f.kind==='video')out.track.onMessage(bytes=>{
-        if(current!==row || !Buffer.isBuffer(bytes) || !keyframeRequest(bytes))return;
+        if(current!==row || row.outputs.get(key)!==dest || !Buffer.isBuffer(bytes))return;
+        // Relatório de quem recebe: com perda, o ritmo fica mais suave. Até o servidor,
+        // perda que continua no mais suave é banda curta: avisa pra baixar o bitrate.
+        const lost=receiverLoss(bytes,f.ssrc);
+        if(lost!==null){
+          const gentlest=dest.pacer.gentlest();
+          dest.pacer.report(lost);
+          if(key==='server' && !row.lossWarned){
+            dest.losses=gentlest?[...(dest.losses||[]),lost].slice(-5):[];
+            const mean=dest.losses.reduce((a,b)=>a+b,0)/dest.losses.length;
+            if(dest.pacer.gentlest() && dest.losses.length===5 && mean>LOSS_WARN){row.lossWarned=true;onWarning({type:'loss',source:row.source,percent:Math.round(mean*100)});}
+          }
+        }
+        const nacked=nackedSequences(bytes,f.ssrc);
+        if(nacked.length && !dest.pacer.gentlest()){
+          const now=Date.now();
+          for(const seq of nacked.slice(0,128)){
+            const sent=out.sent[seq%RESEND_KEEP];
+            if(!sent || sent.resent || now-sent.at>RESEND_AGE || sent.bytes.readUInt16BE(2)!==seq)continue;
+            sent.resent=true;
+            dest.pacer.push(sent.bytes.length,()=>{if(out.track.isOpen()){try{out.track.sendMessageBinary(sent.bytes);}catch{/* fechou */}}},{resend:true});
+          }
+        }
+        if(!keyframeRequest(bytes))return;
         const now=Date.now();
         if(now-(row.keyAskedAt||0)<1000 || !row.video?.isOpen())return;
         row.keyAskedAt=now;row.keyPending=row.keyPending||now;
@@ -144,7 +174,14 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
           }
           for(const dest of row.outputs.values()){
             const t=dest.tracks.get(f.mid);
-            if(t?.track.isOpen()){t.config.timestamp=out.readUInt32BE(4);try{t.track.sendMessageBinary(out);}catch{/* A conexão pode fechar com um pacote em trânsito. */}}
+            if(!t)continue;
+            const deliver=()=>{
+              if(!t.track.isOpen())return;
+              t.config.timestamp=out.readUInt32BE(4);
+              if(t.sent)t.sent[out.readUInt16BE(2)%RESEND_KEEP]={bytes:out,at:Date.now(),resent:false};
+              try{t.track.sendMessageBinary(out);}catch{/* A conexão pode fechar com um pacote em trânsito. */}
+            };
+            if(f.kind==='video')dest.pacer.push(out.length,deliver);else deliver();
           }
         });
       }

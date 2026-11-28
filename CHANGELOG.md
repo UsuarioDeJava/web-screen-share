@@ -5,6 +5,19 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.4.4 — 2026-11-28
+
+- **OBS em tela preta com "RTP packets lost" no servidor**: o OBS manda cada quadro de
+  uma vez, e um quadro-chave são centenas de pacotes no mesmo instante. Num caminho com
+  fila curta (o DERP do Tailscale, quando não tem conexão direta, roteador, CGNAT), boa
+  parte se perdia e nenhum quadro decodificava. O app agora espalha os pacotes no tempo
+  e, se o servidor relatar perda, espalha mais. Mesmo em rede boa, a imagem do OBS fica
+  mais estável.
+- Se nem assim passar (a conexão tem menos banda que o bitrate do OBS), quem transmite
+  é avisado pra baixar o bitrate.
+- Quem assiste um AV1 que não decodifica vê "o vídeo AV1 chega, mas não decodifica" (o
+  motivo, 10 bits ou perda, aparece pra quem transmite).
+
 ## 2.4.3 — 2026-11-28
 
 - **OBS em AV1 (NVENC) com tela preta mesmo com quadro-chave a cada 1 s**: a NVENC pode
