@@ -5,6 +5,13 @@ navegador e no app) chega com a atualização do servidor; o que é do app (sele
 tela, marcações na tela de verdade, controle remoto, Configurações) chega com a versão
 nova do app. As notas de cada release no GitHub vêm daqui.
 
+## 2.4.3 — 2026-11-28
+
+- **OBS em AV1 (NVENC) com tela preta mesmo com quadro-chave a cada 1 s**: a NVENC pode
+  mandar o cabeçalho de sequência do AV1 só no começo da transmissão, e sem ele quem
+  entra depois não decodifica nada. O app agora guarda esse cabeçalho e coloca de volta
+  em cada quadro-chave (fica anotado no Log do app quando acontece).
+
 ## 2.4.2 — 2026-11-28
 
 - **Tela preta pra quem entra numa transmissão do OBS ou da câmera**: o pedido de

@@ -3,7 +3,7 @@ const crypto=require('node:crypto');
 const {formats,packet,media,negotiate,keyframeStart,keyframeRequest}=require('./obs-rtp');
 const KEY_GAP_WARN=4000; // quadro-chave mais espaçado que isso: quem entra fica esse tempo no preto
 const {cleanIce}=require('./native-video');
-const {rtpSequenceHeader}=require('./av1-info');
+const {createSequenceHeaderRepeater}=require('./av1-info');
 
 // onWarning: o vídeo que chega não vai aparecer pra quem assiste (ex.: AV1 de 10 bits).
 function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) {
@@ -114,14 +114,19 @@ function createObsLocal({fetch,renew,port=47981,rtc:injected,onWarning=()=>{}}) 
 
         track.onMessage(bytes=>{
           if(current!==row || !Buffer.isBuffer(bytes))return;
-          const out=packet(bytes,f);
+          let out=packet(bytes,f);
           if(!out)return;
           if(f.kind==='video')row.videoSeen=true;
           // AV1: o primeiro cabeçalho de sequência diz a profundidade de cor. O navegador só
           // decodifica 8 bits (perfil 0): 10 bits (NVENC com o OBS em P010/HDR) fica preto.
-          if(f.codec==='AV1' && !row.av1){
-            const info=rtpSequenceHeader(out.subarray(12));
-            if(info){row.av1=info;if(info.bitDepth!==8 || info.profile!==0)onWarning({type:'av1',source:row.source,...info});}
+          if(f.codec==='AV1'){
+            // Quadro-chave sem o cabeçalho de sequência (a NVENC do OBS manda só no começo):
+            // o app coloca de volta, senão quem entra depois não decodifica nada.
+            const fixer=row.av1Fix||(row.av1Fix=createSequenceHeaderRepeater());
+            out=fixer.packet(out);
+            const info=fixer.info();
+            if(info && !row.av1){row.av1=info;if(info.bitDepth!==8 || info.profile!==0)onWarning({type:'av1',source:row.source,...info});}
+            if(!row.av1Repeated && fixer.injected()){row.av1Repeated=true;onWarning({type:'av1-sequence',source:row.source});}
           }
           // O OBS não atende pedido de quadro-chave: quem entra espera o próximo. Intervalo
           // longo (ou o "0 = automático" de alguns codificadores) vira tela preta longa.

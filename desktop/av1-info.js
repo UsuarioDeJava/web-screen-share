@@ -55,7 +55,7 @@ function sequenceHeader(body) {
     f(1); f(1); f(1); // superres, cdef, restoration
     const high = f(1);
     const bitDepth = profile === 2 && high ? (f(1) ? 12 : 10) : high ? 10 : 8;
-    return { profile, bitDepth };
+    return { profile, bitDepth, ...(reduced ? { reduced: true } : {}) };
   } catch { return null; }
 }
 
@@ -92,4 +92,88 @@ function rtpSequenceHeader(payload) {
   return sequenceHeader(payload.subarray(i, end));
 }
 
-module.exports = { sequenceHeader, rtpSequenceHeader };
+// Os OBUs de um pacote RTP AV1: W (bits 5-4 do cabeçalho de agregação) diz quantos; com
+// W=0 todos têm o tamanho (leb128) na frente; com W>0, o último vai até o fim do pacote.
+function elements(payload) {
+  if (!payload || payload.length < 2) return null;
+  const agg = payload[0];
+  const count = (agg >> 4) & 3;
+  const list = [];
+  let i = 1;
+  while (i < payload.length) {
+    let end = payload.length;
+    if (count === 0 || list.length < count - 1) {
+      const len = leb128(payload, i);
+      if (!len || len.next + len.value > payload.length) return null;
+      i = len.next; end = i + len.value;
+    }
+    list.push({ start: i, end });
+    i = end;
+    if (count && list.length === count) break;
+  }
+  return { agg, list };
+}
+
+const obuType = (payload, el) => (payload[el.start] >> 3) & 15;
+function obuBody(payload, el) {
+  const h = payload[el.start];
+  let i = el.start + 1 + ((h >> 2) & 1);
+  if (h & 2) { const size = leb128(payload, i); if (!size) return -1; i = size.next; }
+  return i;
+}
+function leb128Bytes(value) {
+  const out = [];
+  do { let b = value & 127; value = Math.floor(value / 128); if (value) b |= 128; out.push(b); } while (value);
+  return Buffer.from(out);
+}
+
+// Alguns codificadores (a NVENC AV1 do OBS, por exemplo) mandam o cabeçalho de sequência
+// só no começo da transmissão. Quem entra depois não decodifica nada, por mais quadros-chave
+// que cheguem (tela preta). Isto guarda o cabeçalho e coloca de volta em cada quadro-chave
+// que vier sem ele. packet(rtp) devolve o pacote (o mesmo ou um novo, com o cabeçalho).
+function createSequenceHeaderRepeater() {
+  let seq = null, info = null, seqTs = null, injected = 0;
+  return {
+    info: () => info,
+    injected: () => injected,
+    packet(rtp) {
+      const payload = rtp.subarray(12);
+      const parsed = elements(payload);
+      if (!parsed) return rtp;
+      const ts = rtp.readUInt32BE(4);
+      const continued = (parsed.agg & 0x80) !== 0;
+      for (let k = 0; k < parsed.list.length; k += 1) {
+        if (k === 0 && continued) continue; // pedaço de um OBU do pacote anterior
+        const el = parsed.list[k];
+        const type = obuType(payload, el);
+        if (type === 1) {
+          const body = obuBody(payload, el);
+          if (body < 0) return rtp;
+          const h = payload[el.start];
+          seq = Buffer.concat([payload.subarray(el.start, el.start + 1 + ((h >> 2) & 1)), payload.subarray(body, el.end)]);
+          seq[0] = h & ~2; // sem o campo de tamanho, como manda o RTP do AV1
+          info = sequenceHeader(payload.subarray(body, el.end)) || info;
+          seqTs = ts;
+          return rtp;
+        }
+        if (type !== 3 && type !== 6) continue; // só o cabeçalho de quadro (ou quadro inteiro)
+        if (!seq || seqTs === ts) return rtp;
+        const body = obuBody(payload, el);
+        if (body < 0 || body >= el.end) return rtp;
+        // Sem reduced_still_picture_header: show_existing_frame (1 bit) e frame_type (2 bits; 0 = chave).
+        const key = info && info.reduced ? true : !(payload[body] & 0x80) && ((payload[body] >> 5) & 3) === 0;
+        if (!key) return rtp;
+        seqTs = ts; injected += 1;
+        const parts = [rtp.subarray(0, 12), Buffer.from([(parsed.agg & 0xc0) | 0x08])]; // W=0 (todos com tamanho), N=1
+        parsed.list.forEach((item, i) => {
+          if (i === k) parts.push(leb128Bytes(seq.length), seq);
+          parts.push(leb128Bytes(item.end - item.start), payload.subarray(item.start, item.end));
+        });
+        return Buffer.concat(parts);
+      }
+      return rtp;
+    },
+  };
+}
+
+module.exports = { sequenceHeader, rtpSequenceHeader, createSequenceHeaderRepeater };
